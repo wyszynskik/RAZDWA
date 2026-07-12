@@ -202,6 +202,7 @@ export const DyplomyView: View = {
       updateLegend();
 
       ctx?.on?.("prices-updated", () => {
+        if (!container.isConnected) return;
         updateLegend();
         calculate();
       });
@@ -305,6 +306,7 @@ export const DyplomyView: View = {
       updateEkoLegend("A4");
 
       ctx?.on?.("prices-updated", () => {
+        if (!container.isConnected) return;
         const activeFormat = (ekoFormatSel?.value as DyplomyEkoFormat) ?? "A5";
         updateEkoLegend(activeFormat);
         calculateEko();
