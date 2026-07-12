@@ -112,6 +112,56 @@ export function calculateDyplomy(options: DyplomyOptions) {
   };
 }
 
+export type DyplomyEkoFormat = "A5" | "A4" | "A3";
+
+export interface DyplomyEkoOptions {
+  format: DyplomyEkoFormat;
+  qty: number;
+  isSatin: boolean;
+  express: boolean;
+}
+
+export function getResolvedDyplomyEkoTiers(format: DyplomyEkoFormat): DyplomyTier[] {
+  const ekoData = getPrice("dyplomy-eko") as Record<string, DyplomyTier[]> | undefined;
+  const baseTiers = ekoData?.[format] ?? [];
+  return baseTiers
+    .map((tier) => ({
+      qty: tier.qty,
+      price: resolveStoredPrice(`dyplomy-eko-${format}-qty-${tier.qty}`, tier.price),
+    }))
+    .sort((a, b) => a.qty - b.qty);
+}
+
+export function calculateDyplomyEko(options: DyplomyEkoOptions) {
+  const tiers = getResolvedDyplomyEkoTiers(options.format);
+  const basePrice = getInterpolatedPrice(tiers, options.qty);
+  const satinRate = resolveStoredPrice("modifier-satyna-eko", 0.07);
+  const expressRate = resolveStoredPrice("modifier-express", 0.2);
+
+  const appliedModifiers: string[] = [];
+  let modifiersTotal = 0;
+
+  if (options.isSatin) {
+    modifiersTotal = parseFloat((basePrice * satinRate).toFixed(2));
+    appliedModifiers.push("satin");
+  }
+
+  const expressAmount = options.express ? parseFloat((basePrice * expressRate).toFixed(2)) : 0;
+  if (options.express) {
+    modifiersTotal = parseFloat((modifiersTotal + expressAmount).toFixed(2));
+    appliedModifiers.push("express");
+  }
+
+  const totalPrice = parseFloat((basePrice + modifiersTotal).toFixed(2));
+
+  return {
+    basePrice,
+    modifiersTotal,
+    totalPrice,
+    appliedModifiers,
+  };
+}
+
 export const dyplomyCategory: CategoryModule = {
   id: "dyplomy",
   name: "🎓 Dyplomy",

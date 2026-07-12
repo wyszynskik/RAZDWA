@@ -4,6 +4,9 @@ import {
   calculateDyplomy,
   DyplomyOptions,
   getResolvedDyplomyTiers,
+  calculateDyplomyEko,
+  DyplomyEkoFormat,
+  getResolvedDyplomyEkoTiers,
 } from "../../categories/dyplomy";
 import { formatPLN } from "../../core/money";
 import { resolveStoredPrice } from "../../core/compat";
@@ -16,6 +19,31 @@ export const DyplomyView: View = {
       const response = await fetch("categories/dyplomy.html");
       if (!response.ok) throw new Error("Failed to load template");
       container.innerHTML = await response.text();
+
+      const switchTab = (tab: "standard" | "eko") => {
+        const stdTab = container.querySelector("#dypTab-standard") as HTMLElement;
+        const ekoTab = container.querySelector("#dypTab-eko") as HTMLElement;
+        const stdBtn = container.querySelector("#tabBtn-standard") as HTMLButtonElement;
+        const ekoBtn = container.querySelector("#tabBtn-eko") as HTMLButtonElement;
+        if (tab === "standard") {
+          stdTab.style.display = "";
+          ekoTab.style.display = "none";
+          stdBtn.style.color = "#2563eb";
+          stdBtn.style.borderBottomColor = "#2563eb";
+          ekoBtn.style.color = "#64748b";
+          ekoBtn.style.borderBottomColor = "transparent";
+        } else {
+          stdTab.style.display = "none";
+          ekoTab.style.display = "";
+          ekoBtn.style.color = "#2563eb";
+          ekoBtn.style.borderBottomColor = "#2563eb";
+          stdBtn.style.color = "#64748b";
+          stdBtn.style.borderBottomColor = "transparent";
+        }
+      };
+
+      container.querySelector("#tabBtn-standard")?.addEventListener("click", () => switchTab("standard"));
+      container.querySelector("#tabBtn-eko")?.addEventListener("click", () => switchTab("eko"));
 
       const sidesSel = container.querySelector("#dypSides") as HTMLSelectElement;
       const formatSel = container.querySelector("#dypFormat") as HTMLSelectElement;
@@ -164,12 +192,137 @@ export const DyplomyView: View = {
         return { options, result };
       };
 
-      autoCalc({ root: container, calc: calculate, cancelOn: [addToCartBtn] });
+      autoCalc({ root: container.querySelector("#dypTab-standard") as HTMLElement, calc: calculate, cancelOn: [addToCartBtn] });
       updateLegend();
 
       ctx?.on?.("prices-updated", () => {
         updateLegend();
         calculate();
+      });
+
+      const ekoFormatSel = container.querySelector("#ekoFormat") as HTMLSelectElement;
+      const ekoQtyInput = container.querySelector("#ekoQty") as HTMLInputElement;
+      const ekoPaperSel = container.querySelector("#ekoPaper") as HTMLSelectElement;
+      const ekoAddToCartBtn = container.querySelector("#ekoAddToCartBtn") as HTMLButtonElement;
+      const ekoResultArea = container.querySelector("#ekoResult") as HTMLElement;
+      const ekoBreakdownBox = container.querySelector("#ekoBreakdown") as HTMLElement;
+      const ekoLegendRows = container.querySelector("#eko-legend-rows") as HTMLElement;
+
+      const updateEkoLegend = (format: DyplomyEkoFormat) => {
+        if (!ekoLegendRows) return;
+        const tiers = getResolvedDyplomyEkoTiers(format);
+        ekoLegendRows.innerHTML = tiers
+          .map((t) => `<tr><td>${t.qty} szt</td><td>${formatPLN(t.price)}</td></tr>`)
+          .join("");
+
+        container.querySelectorAll<HTMLButtonElement>(".eko-legend-tab").forEach((btn) => {
+          const isActive = btn.dataset.format === format;
+          btn.style.background = isActive ? "#2563eb" : "#fff";
+          btn.style.color = isActive ? "#fff" : "#334155";
+        });
+      };
+
+      container.querySelectorAll<HTMLButtonElement>(".eko-legend-tab").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          updateEkoLegend((btn.dataset.format as DyplomyEkoFormat) ?? "A4");
+        });
+      });
+
+      const calculateEko = () => {
+        const satinRate = resolveStoredPrice("modifier-satyna-eko", 0.07);
+        const expressRate = resolveStoredPrice("modifier-express", 0.2);
+        if (!ekoQtyInput?.value || parseInt(ekoQtyInput.value) <= 0) {
+          ekoResultArea.style.display = "none";
+          ekoBreakdownBox.style.display = "none";
+          ekoAddToCartBtn.disabled = true;
+          return null;
+        }
+        const format = (ekoFormatSel.value as DyplomyEkoFormat) ?? "A4";
+        const qty = parseInt(ekoQtyInput.value);
+        const isSatin = ekoPaperSel.value === "satyna";
+
+        const result = calculateDyplomyEko({ format, qty, isSatin, express: ctx.expressMode });
+
+        const breakdown = [
+          `<div><strong>Parametry:</strong> ${qty} szt, ${format}, ${isSatin ? "Satyna" : "Kreda"}</div>`,
+          `<div><strong>Cena bazowa:</strong> ${formatPLN(result.basePrice)}</div>`,
+        ];
+        if (isSatin) {
+          const satinAmount = parseFloat((result.basePrice * satinRate).toFixed(2));
+          breakdown.push(
+            `<div><strong>Satyna:</strong> ${Math.round(satinRate * 100)}% × ${formatPLN(result.basePrice)} = ${formatPLN(satinAmount)}</div>`
+          );
+        }
+        if (ctx.expressMode) {
+          const expressAmount = parseFloat((result.basePrice * expressRate).toFixed(2));
+          breakdown.push(
+            `<div><strong>EXPRESS:</strong> ${Math.round(expressRate * 100)}% × ${formatPLN(result.basePrice)} = ${formatPLN(expressAmount)}</div>`
+          );
+        }
+        breakdown.push(
+          `<div style="padding-top:8px;border-top:1px solid #e2e8f0;"><strong>Razem:</strong> <strong>${formatPLN(result.totalPrice)}</strong></div>`
+        );
+
+        while (ekoBreakdownBox.children.length > 1) ekoBreakdownBox.removeChild(ekoBreakdownBox.lastChild!);
+        Object.assign(ekoBreakdownBox.style, { gap: "8px", fontSize: "14px", lineHeight: "1.45", color: "#334155" });
+        ekoBreakdownBox.insertAdjacentHTML("beforeend", breakdown.join(""));
+        ekoBreakdownBox.style.display = "grid";
+
+        ekoResultArea.style.display = "block";
+        ekoAddToCartBtn.disabled = false;
+        (container.querySelector("#ekoTotalPrice") as HTMLElement).textContent = formatPLN(result.totalPrice);
+        (container.querySelector("#ekoUnitPrice") as HTMLElement).textContent = formatPLN(result.totalPrice / qty);
+        const ekoTierHintEl = container.querySelector("#ekoTierHint") as HTMLElement;
+        if (ekoTierHintEl) {
+          ekoTierHintEl.textContent = `${qty} szt ${format}, papier: ${isSatin ? "satyna" : "kreda"}`;
+        }
+        (container.querySelector("#ekoExpressHint") as HTMLElement).style.display = ctx.expressMode ? "block" : "none";
+        (container.querySelector("#ekoSatinHint") as HTMLElement).style.display = isSatin ? "block" : "none";
+
+        ctx.updateLastCalculated(result.totalPrice, `Dyplomy Ekonomiczny ${format}`);
+        return { format, qty, isSatin, result };
+      };
+
+      autoCalc({ root: container.querySelector("#dypTab-eko") as HTMLElement, calc: calculateEko, cancelOn: [ekoAddToCartBtn] });
+      updateEkoLegend("A4");
+
+      ctx?.on?.("prices-updated", () => {
+        const activeFormat = (ekoFormatSel?.value as DyplomyEkoFormat) ?? "A5";
+        updateEkoLegend(activeFormat);
+        calculateEko();
+      });
+
+      ekoFormatSel?.addEventListener("change", () => {
+        updateEkoLegend(ekoFormatSel.value as DyplomyEkoFormat);
+      });
+
+      ekoAddToCartBtn.addEventListener("click", () => {
+        const calc = calculateEko();
+        if (!calc) return;
+        const { format, qty, isSatin, result } = calc;
+
+        ctx.cart.addItem({
+          id: `dyp-eko-${Date.now()}`,
+          category: "Dyplomy",
+          name: `Dyplomy Ekonomiczny ${format}`,
+          quantity: qty,
+          unit: "szt",
+          unitPrice: result.totalPrice / qty,
+          isExpress: ctx.expressMode,
+          totalPrice: result.totalPrice,
+          optionsHint: [
+            `${qty} szt`,
+            format,
+            isSatin ? "Satyna (+7%)" : "Kreda",
+            ...(ctx.expressMode ? ["EXPRESS (+20%)"] : []),
+          ].join(", "),
+          payload: { format, qty, isSatin, express: ctx.expressMode },
+        });
+
+        ekoResultArea.style.display = "none";
+        if (ekoBreakdownBox) ekoBreakdownBox.style.display = "none";
+        ekoAddToCartBtn.disabled = true;
+        container.dispatchEvent(new CustomEvent("view:reset"));
       });
 
       addToCartBtn.addEventListener("click", () => {

@@ -1,84 +1,163 @@
 <div class="category-view">
   <h2>Dyplomy</h2>
 
-  <div class="form-group">
-    <label for="dypFormat">Rozmiar:</label>
-    <select id="dypFormat">
-      <option value="A4" selected>A4</option>
-      <option value="A5">A5</option>
-    </select>
+  <div class="tab-bar" style="display:flex;gap:8px;margin-bottom:20px;border-bottom:2px solid #e2e8f0;padding-bottom:0;">
+    <button id="tabBtn-standard" class="tab-btn tab-btn--active" data-tab="standard"
+      style="padding:8px 18px;border:none;background:none;font-size:15px;font-weight:600;color:#2563eb;border-bottom:2px solid #2563eb;margin-bottom:-2px;cursor:pointer;">
+      Dyplomy
+    </button>
+    <button id="tabBtn-eko" class="tab-btn" data-tab="eko"
+      style="padding:8px 18px;border:none;background:none;font-size:15px;font-weight:600;color:#64748b;border-bottom:2px solid transparent;margin-bottom:-2px;cursor:pointer;">
+      Ekonomiczny
+    </button>
   </div>
 
-  <div class="form-group">
-    <label for="dypSides">Zadruk:</label>
-    <select id="dypSides">
-      <option value="1">Jednostronne</option>
-      <option value="2">Dwustronne</option>
-    </select>
-  </div>
+  <div id="dypTab-standard" class="dyp-tab">
+    <div class="form-group">
+      <label for="dypFormat">Rozmiar:</label>
+      <select id="dypFormat">
+        <option value="A4" selected>A4</option>
+        <option value="A5">A5</option>
+      </select>
+    </div>
 
-  <div class="form-group">
-    <label for="dypQty">Ilość (szt):</label>
-    <input type="number" id="dypQty" min="1" step="1" placeholder="ilość" inputmode="numeric">
-    <div class="hint">Od 6 szt. automatyczny rabat -12% dla jednostronnych.</div>
-  </div>
+    <div class="form-group">
+      <label for="dypSides">Zadruk:</label>
+      <select id="dypSides">
+        <option value="1">Jednostronne</option>
+        <option value="2">Dwustronne</option>
+      </select>
+    </div>
 
-  <div class="form-group">
-    <label for="dypPaper">Papier:</label>
-    <select id="dypPaper">
-      <optgroup label="Kreda (standard)">
-        <option value="kreda_130">130g Kreda</option>
-        <option value="kreda_170">170g Kreda</option>
-        <option value="kreda_200" selected>200g Kreda</option>
-        <option value="kreda_250">250g Kreda</option>
-        <option value="kreda_300">300g Kreda</option>
-        <option value="kreda_350">350g Kreda</option>
-      </optgroup>
-      <optgroup label="Satyna">
-        <option value="satyna_130">130g Satyna</option>
-        <option value="satyna_170">170g Satyna</option>
-        <option value="satyna_200">200g Satyna</option>
-        <option value="satyna_250">250g Satyna</option>
-        <option value="satyna_300">300g Satyna</option>
-        <option value="satyna_350">350g Satyna</option>
-      </optgroup>
-      <optgroup label="Premium">
-        <option value="modigliani">Modigliani</option>
-      </optgroup>
-    </select>
-  </div>
+    <div class="form-group">
+      <label for="dypQty">Ilość (szt):</label>
+      <input type="number" id="dypQty" min="1" step="1" placeholder="ilość" inputmode="numeric">
+      <div class="hint">Od 6 szt. automatyczny rabat -12% dla jednostronnych.</div>
+    </div>
 
-  <div class="form-actions">
-    <button id="addToCartBtn" class="btn-success">DODAJ DO KOSZYKA</button>
-  </div>
+    <div class="form-group">
+      <label for="dypPaper">Papier:</label>
+      <select id="dypPaper">
+        <optgroup label="Kreda (standard)">
+          <option value="kreda_130">130g Kreda</option>
+          <option value="kreda_170">170g Kreda</option>
+          <option value="kreda_200" selected>200g Kreda</option>
+          <option value="kreda_250">250g Kreda</option>
+          <option value="kreda_300">300g Kreda</option>
+          <option value="kreda_350">350g Kreda</option>
+        </optgroup>
+        <optgroup label="Satyna">
+          <option value="satyna_130">130g Satyna</option>
+          <option value="satyna_170">170g Satyna</option>
+          <option value="satyna_200">200g Satyna</option>
+          <option value="satyna_250">250g Satyna</option>
+          <option value="satyna_300">300g Satyna</option>
+          <option value="satyna_350">350g Satyna</option>
+        </optgroup>
+        <optgroup label="Premium">
+          <option value="modigliani">Modigliani</option>
+        </optgroup>
+      </select>
+    </div>
 
-  <div id="dypResult" class="result-display card" style="display:none; margin-top: 20px;">
-    <div class="price-line highlight">SUMA ZA WSZYSTKO: <span id="resTotalPrice">0.00</span></div>
-    <div class="price-line">Cena za szt: <span id="resUnitPrice">0.00</span></div>
-    <div id="resTierHint" class="modifier-hint" style="color: #555; font-size: 12px;"></div>
-    <div id="resDiscountHint" class="modifier-hint" style="display: none; color: #22c55e;"></div>
-    <div id="resExpressHint" class="express-hint" style="display: none;">W tym dopłata EXPRESS +20%</div>
-    <div id="resSatinHint" class="modifier-hint" style="display: none;">W tym dopłata SATYNA +12%</div>
-    <div id="resModiglianiHint" class="modifier-hint" style="display: none;">W tym dopłata MODIGLIANI +20% od ceny satyny</div>
-  </div>
+    <div class="form-actions">
+      <button id="addToCartBtn" class="btn-success">DODAJ DO KOSZYKA</button>
+    </div>
 
-  <div id="dypBreakdown" class="card" style="display: none; margin-top: 16px; overflow: visible;">
-    <h3 style="margin: 0 0 12px 0; font-size: 16px;">Jak liczona jest cena</h3>
-  </div>
+    <div id="dypResult" class="result-display card" style="display:none; margin-top: 20px;">
+      <div class="price-line highlight">SUMA ZA WSZYSTKO: <span id="resTotalPrice">0.00</span></div>
+      <div class="price-line">Cena za szt: <span id="resUnitPrice">0.00</span></div>
+      <div id="resTierHint" class="modifier-hint" style="color: #555; font-size: 12px;"></div>
+      <div id="resDiscountHint" class="modifier-hint" style="display: none; color: #22c55e;"></div>
+      <div id="resExpressHint" class="express-hint" style="display: none;">W tym dopłata EXPRESS +20%</div>
+      <div id="resSatinHint" class="modifier-hint" style="display: none;">W tym dopłata SATYNA +12%</div>
+      <div id="resModiglianiHint" class="modifier-hint" style="display: none;">W tym dopłata MODIGLIANI +20% od ceny satyny</div>
+    </div>
 
-  <div class="cennik-table pricing-legend">
-    <div class="legend-head">
-      <div>
-        <h4>CENNIK DYPLOMY</h4>
-        <p class="legend-subtitle">Cena zależy od ilości i zadruku (jedno-/dwustronne).</p>
+    <div id="dypBreakdown" class="card" style="display: none; margin-top: 16px; overflow: visible;">
+      <h3 style="margin: 0 0 12px 0; font-size: 16px;">Jak liczona jest cena</h3>
+    </div>
+
+    <div class="cennik-table pricing-legend">
+      <div class="legend-head">
+        <div>
+          <h4>CENNIK DYPLOMY</h4>
+          <p class="legend-subtitle">Cena zależy od ilości i zadruku (jedno-/dwustronne).</p>
+        </div>
       </div>
+      <div class="legend-badges">
+        <span class="legend-badge"><strong>Rabat:</strong> od 6 szt. -12%</span>
+      </div>
+      <table>
+        <thead><tr><th>Ilość (szt)</th><th>Cena</th></tr></thead>
+        <tbody id="dyp-legend-rows"></tbody>
+      </table>
     </div>
-    <div class="legend-badges">
-      <span class="legend-badge"><strong>Rabat:</strong> od 6 szt. -12%</span>
+  </div>
+
+  <div id="dypTab-eko" class="dyp-tab" style="display:none;">
+    <p style="color:#64748b;font-size:14px;margin-bottom:16px;">Druk PDF z dopasowaniem do strony. Jednostronny 4+0. Bez cięcia.</p>
+
+    <div class="form-group">
+      <label for="ekoFormat">Format:</label>
+      <select id="ekoFormat">
+        <option value="A5">A5</option>
+        <option value="A4" selected>A4</option>
+        <option value="A3">A3</option>
+      </select>
     </div>
-    <table>
-      <thead><tr><th>Ilość (szt)</th><th>Cena</th></tr></thead>
-      <tbody id="dyp-legend-rows"></tbody>
-    </table>
+
+    <div class="form-group">
+      <label for="ekoQty">Ilość (szt):</label>
+      <input type="number" id="ekoQty" min="1" step="1" placeholder="ilość" inputmode="numeric">
+    </div>
+
+    <div class="form-group">
+      <label for="ekoPaper">Papier:</label>
+      <select id="ekoPaper">
+        <option value="kreda">Kreda 200–250g</option>
+        <option value="satyna">Satyna (+7%)</option>
+      </select>
+    </div>
+
+    <div class="form-actions">
+      <button id="ekoAddToCartBtn" class="btn-success">DODAJ DO KOSZYKA</button>
+    </div>
+
+    <div id="ekoResult" class="result-display card" style="display:none; margin-top: 20px;">
+      <div class="price-line highlight">SUMA ZA WSZYSTKO: <span id="ekoTotalPrice">0.00</span></div>
+      <div class="price-line">Cena za szt: <span id="ekoUnitPrice">0.00</span></div>
+      <div id="ekoTierHint" class="modifier-hint" style="color: #555; font-size: 12px;"></div>
+      <div id="ekoExpressHint" class="express-hint" style="display: none;">W tym dopłata EXPRESS +20%</div>
+      <div id="ekoSatinHint" class="modifier-hint" style="display: none;">W tym dopłata SATYNA +7%</div>
+    </div>
+
+    <div id="ekoBreakdown" class="card" style="display: none; margin-top: 16px; overflow: visible;">
+      <h3 style="margin: 0 0 12px 0; font-size: 16px;">Jak liczona jest cena</h3>
+    </div>
+
+    <div class="cennik-table pricing-legend" style="margin-top:24px;">
+      <div class="legend-head">
+        <div>
+          <h4>CENNIK DYPLOMY EKONOMICZNY</h4>
+          <p class="legend-subtitle">Cena całkowita zależy od formatu i ilości.</p>
+        </div>
+      </div>
+      <div class="legend-badges">
+        <span class="legend-badge"><strong>Satyna:</strong> +7%</span>
+      </div>
+      <div id="eko-legend-tabs" style="display:flex;gap:8px;margin-bottom:10px;">
+        <button class="eko-legend-tab eko-legend-tab--active" data-format="A5"
+          style="padding:4px 12px;font-size:13px;border:1px solid #cbd5e1;border-radius:6px;cursor:pointer;background:#2563eb;color:#fff;">A5</button>
+        <button class="eko-legend-tab" data-format="A4"
+          style="padding:4px 12px;font-size:13px;border:1px solid #cbd5e1;border-radius:6px;cursor:pointer;background:#fff;color:#334155;">A4</button>
+        <button class="eko-legend-tab" data-format="A3"
+          style="padding:4px 12px;font-size:13px;border:1px solid #cbd5e1;border-radius:6px;cursor:pointer;background:#fff;color:#334155;">A3</button>
+      </div>
+      <table>
+        <thead><tr><th>Ilość (szt)</th><th>Cena</th></tr></thead>
+        <tbody id="eko-legend-rows"></tbody>
+      </table>
+    </div>
   </div>
 </div>

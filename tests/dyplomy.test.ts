@@ -1,5 +1,10 @@
 import { afterEach, beforeEach, describe, it, expect, vi } from "vitest";
-import { calculateDyplomy, getResolvedDyplomyTiers } from "../src/categories/dyplomy";
+import {
+  calculateDyplomy,
+  getResolvedDyplomyTiers,
+  calculateDyplomyEko,
+  getResolvedDyplomyEkoTiers,
+} from "../src/categories/dyplomy";
 import { getPrice, resetPrices, setPrice } from "../src/services/priceService";
 
 let storageData: Record<string, string> = {};
@@ -279,5 +284,82 @@ describe("getResolvedDyplomyTiers – legenda progów ilościowych", () => {
     const result = calculateDyplomy({ qty: 10, sides: 2, isSatin: false, express: false });
     expect(result.tierPrice).toBe(50);
     expect(result.totalPrice).toBe(50);
+  });
+});
+
+describe("Dyplomy Ekonomiczny", () => {
+  it("A4 1 szt – cena bazowa 12.00", () => {
+    const result = calculateDyplomyEko({ format: "A4", qty: 1, isSatin: false, express: false });
+    expect(result.basePrice).toBe(12.0);
+    expect(result.totalPrice).toBe(12.0);
+  });
+
+  it("A4 10 szt – cena bazowa 35.00", () => {
+    const result = calculateDyplomyEko({ format: "A4", qty: 10, isSatin: false, express: false });
+    expect(result.basePrice).toBe(35.0);
+    expect(result.totalPrice).toBe(35.0);
+  });
+
+  it("A5 1 szt – cena bazowa 10.00", () => {
+    const result = calculateDyplomyEko({ format: "A5", qty: 1, isSatin: false, express: false });
+    expect(result.basePrice).toBe(10.0);
+  });
+
+  it("A3 1 szt – cena bazowa 15.00", () => {
+    const result = calculateDyplomyEko({ format: "A3", qty: 1, isSatin: false, express: false });
+    expect(result.basePrice).toBe(15.0);
+  });
+
+  it("A4 100 szt – cena bazowa 310.00", () => {
+    const result = calculateDyplomyEko({ format: "A4", qty: 100, isSatin: false, express: false });
+    expect(result.basePrice).toBe(310.0);
+    expect(result.totalPrice).toBe(310.0);
+  });
+
+  it("A4 satyna +7% dla 1 szt: 12 * 1.07 = 12.84", () => {
+    const result = calculateDyplomyEko({ format: "A4", qty: 1, isSatin: true, express: false });
+    expect(result.basePrice).toBe(12.0);
+    expect(result.modifiersTotal).toBe(0.84);
+    expect(result.totalPrice).toBe(12.84);
+    expect(result.appliedModifiers).toContain("satin");
+  });
+
+  it("A4 express +20% dla 10 szt: 35 * 1.20 = 42.00", () => {
+    const result = calculateDyplomyEko({ format: "A4", qty: 10, isSatin: false, express: true });
+    expect(result.basePrice).toBe(35.0);
+    expect(result.totalPrice).toBe(42.0);
+    expect(result.appliedModifiers).toContain("express");
+  });
+
+  it("A4 satyna + express dla 10 szt: 35 + 7% + 20% = 35 + 2.45 + 7.00 = 44.45", () => {
+    const result = calculateDyplomyEko({ format: "A4", qty: 10, isSatin: true, express: true });
+    expect(result.basePrice).toBe(35.0);
+    expect(result.totalPrice).toBe(44.45);
+  });
+
+  it("A4 qty=5 – interpolacja między 1 i 10 szt: 12 + (4/9)*(35-12) = 22.22", () => {
+    const result = calculateDyplomyEko({ format: "A4", qty: 5, isSatin: false, express: false });
+    expect(result.basePrice).toBe(22.22);
+  });
+
+  it("A4 qty=200 – powyżej max (100 szt) → flat 310.00", () => {
+    const result = calculateDyplomyEko({ format: "A4", qty: 200, isSatin: false, express: false });
+    expect(result.basePrice).toBe(310.0);
+  });
+
+  it("getResolvedDyplomyEkoTiers – zwraca posortowane progi dla A4", () => {
+    const tiers = getResolvedDyplomyEkoTiers("A4");
+    expect(tiers.length).toBe(7);
+    expect(tiers[0]).toEqual({ qty: 1, price: 12.0 });
+    expect(tiers[6]).toEqual({ qty: 100, price: 310.0 });
+    for (let i = 1; i < tiers.length; i++) {
+      expect(tiers[i].qty).toBeGreaterThan(tiers[i - 1].qty);
+    }
+  });
+
+  it("override ceny eko-A4 przez defaultPrices", () => {
+    setPrice("defaultPrices.dyplomy-eko-A4-qty-1", 20);
+    const result = calculateDyplomyEko({ format: "A4", qty: 1, isSatin: false, express: false });
+    expect(result.basePrice).toBe(20);
   });
 });

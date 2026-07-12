@@ -359,6 +359,9 @@ function getAddablePrefixOptions(category: PriceCategory): PrefixOption[] {
       break;
     case "dyplomy":
       options.push({ value: "dyplomy-qty-", label: "Dyplomy – nowy próg ilościowy" });
+      options.push({ value: "dyplomy-eko-A5-qty-", label: "Dyplomy Ekonomiczny A5 – nowy próg ilościowy" });
+      options.push({ value: "dyplomy-eko-A4-qty-", label: "Dyplomy Ekonomiczny A4 – nowy próg ilościowy" });
+      options.push({ value: "dyplomy-eko-A3-qty-", label: "Dyplomy Ekonomiczny A3 – nowy próg ilościowy" });
       break;
     case "koperty":
       options.push(
@@ -1072,6 +1075,11 @@ function getPriceLabel(key: string): string {
     return `Dyplomy – ${dyplomyMatch[1]} szt.`;
   }
 
+  const dyplomyEkoMatch = key.match(/^dyplomy-eko-(A5|A4|A3)-qty-(\d+)$/);
+  if (dyplomyEkoMatch) {
+    return `Dyplomy Ekonomiczny ${dyplomyEkoMatch[1]} – ${dyplomyEkoMatch[2]} szt.`;
+  }
+
   const ulotkiJedMatch = key.match(/^ulotki-jed-(a6|a5|dl)-(\d+)$/);
   if (ulotkiJedMatch) {
     return `Ulotki jednostronne ${ulotkiJedMatch[1].toUpperCase()} – ${ulotkiJedMatch[2]} szt.`;
@@ -1498,17 +1506,30 @@ function sortVoucheryCategoryKeys(keys: string[]): string[] {
 }
 
 function sortDyplomyCategoryKeys(keys: string[]): string[] {
+  const formatRankEko: Record<string, number> = { A5: 0, A4: 1, A3: 2 };
+
   const parse = (key: string) => {
-    const m = key.match(/^dyplomy-qty-(\d+)$/);
-    return {
-      qty: m ? Number.parseInt(m[1], 10) : Number.POSITIVE_INFINITY,
-      raw: key,
-    };
+    const std = key.match(/^dyplomy-qty-(\d+)$/);
+    if (std) {
+      return { group: 0, format: 0, qty: Number.parseInt(std[1], 10), raw: key };
+    }
+    const eko = key.match(/^dyplomy-eko-(A5|A4|A3)-qty-(\d+)$/);
+    if (eko) {
+      return {
+        group: 1,
+        format: formatRankEko[eko[1]] ?? 99,
+        qty: Number.parseInt(eko[2], 10),
+        raw: key,
+      };
+    }
+    return { group: 2, format: 0, qty: Number.POSITIVE_INFINITY, raw: key };
   };
 
   return [...keys].sort((a, b) => {
     const pa = parse(a);
     const pb = parse(b);
+    if (pa.group !== pb.group) return pa.group - pb.group;
+    if (pa.format !== pb.format) return pa.format - pb.format;
     if (pa.qty !== pb.qty) return pa.qty - pb.qty;
     return pa.raw.localeCompare(pb.raw, "pl");
   });

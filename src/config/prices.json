@@ -2860,6 +2860,35 @@
       "price": 120
     }
   ],
+  "dyplomy-eko": {
+    "A5": [
+      { "qty": 1, "price": 10.0 },
+      { "qty": 10, "price": 25.0 },
+      { "qty": 20, "price": 35.0 },
+      { "qty": 30, "price": 55.0 },
+      { "qty": 40, "price": 69.0 },
+      { "qty": 50, "price": 85.0 },
+      { "qty": 100, "price": 160.0 }
+    ],
+    "A4": [
+      { "qty": 1, "price": 12.0 },
+      { "qty": 10, "price": 35.0 },
+      { "qty": 20, "price": 65.0 },
+      { "qty": 30, "price": 99.0 },
+      { "qty": 40, "price": 129.0 },
+      { "qty": 50, "price": 159.0 },
+      { "qty": 100, "price": 310.0 }
+    ],
+    "A3": [
+      { "qty": 1, "price": 15.0 },
+      { "qty": 10, "price": 65.0 },
+      { "qty": 20, "price": 119.0 },
+      { "qty": 30, "price": 180.0 },
+      { "qty": 40, "price": 229.0 },
+      { "qty": 50, "price": 289.0 },
+      { "qty": 100, "price": 570.0 }
+    ]
+  },
   "defaultPrices": {
     "druk-bw-a4-1-5": 0.9,
     "druk-bw-a4-6-20": 0.6,
@@ -3275,6 +3304,28 @@
     "dyplomy-qty-40": 65.0,
     "dyplomy-qty-50": 75.0,
     "dyplomy-qty-100": 120.0,
+    "modifier-satyna-eko": 0.07,
+    "dyplomy-eko-A5-qty-1": 10.0,
+    "dyplomy-eko-A5-qty-10": 25.0,
+    "dyplomy-eko-A5-qty-20": 35.0,
+    "dyplomy-eko-A5-qty-30": 55.0,
+    "dyplomy-eko-A5-qty-40": 69.0,
+    "dyplomy-eko-A5-qty-50": 85.0,
+    "dyplomy-eko-A5-qty-100": 160.0,
+    "dyplomy-eko-A4-qty-1": 12.0,
+    "dyplomy-eko-A4-qty-10": 35.0,
+    "dyplomy-eko-A4-qty-20": 65.0,
+    "dyplomy-eko-A4-qty-30": 99.0,
+    "dyplomy-eko-A4-qty-40": 129.0,
+    "dyplomy-eko-A4-qty-50": 159.0,
+    "dyplomy-eko-A4-qty-100": 310.0,
+    "dyplomy-eko-A3-qty-1": 15.0,
+    "dyplomy-eko-A3-qty-10": 65.0,
+    "dyplomy-eko-A3-qty-20": 119.0,
+    "dyplomy-eko-A3-qty-30": 180.0,
+    "dyplomy-eko-A3-qty-40": 229.0,
+    "dyplomy-eko-A3-qty-50": 289.0,
+    "dyplomy-eko-A3-qty-100": 570.0,
     "ulotki-jed-a6-10": 30.0,
     "ulotki-jed-a6-20": 35.0,
     "ulotki-jed-a6-30": 40.0,
