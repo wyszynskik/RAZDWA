@@ -1,4 +1,4 @@
-import { getDefaultPricesMap } from "../core/compat";
+import { getDefaultPricesMap, readStoredPrices } from "../core/compat";
 import { priceStore } from "./priceStore";
 import type { PriceRecord } from "../types/price-schema";
 
@@ -8,7 +8,8 @@ const IS_DEV =
 
 // Inkrementuj gdy zmienia się logika lub zakres migracji.
 // v1 = import prices z DEFAULT_PRICES (bez Modifier).
-const MIGRATION_VERSION = 1;
+// v2 = modifier-* keys included; localStorage value wins over default.
+const MIGRATION_VERSION = 2;
 const MIGRATION_STATUS_KEY = "razdwa_migration_status";
 const MIGRATION_RETRY_KEY = "razdwa_migration_retry";
 const MIGRATION_RETRY_LIMIT = 3;
@@ -245,6 +246,7 @@ export async function runMigrationIfNeeded(): Promise<void> {
     await priceStore.clearAll();
 
     const defaultPrices = getDefaultPricesMap();
+    const storedPrices = readStoredPrices();
     const entries = Object.entries(defaultPrices);
     const now = startedAt;
     let imported = 0;
@@ -257,8 +259,8 @@ export async function runMigrationIfNeeded(): Promise<void> {
         continue;
       }
 
-      const value = Number(rawValue);
-      if (!Number.isFinite(value)) {
+      const defaultValue = Number(rawValue);
+      if (!Number.isFinite(defaultValue)) {
         if (IS_DEV)
           console.warn(`[priceMigrator] "${key}" wartość nienumeryczna "${rawValue}" — pominięto`);
         skipped++;
@@ -266,15 +268,10 @@ export async function runMigrationIfNeeded(): Promise<void> {
       }
 
       const parsed = parseLegacyKey(key);
-
-      if (parsed.isModifier) {
-        if (IS_DEV)
-          console.warn(
-            `[priceMigrator] "${key}" pominięto: globalny Modifier — Modifier store poza zakresem Etapu 1`
-          );
-        skipped++;
-        continue;
-      }
+      const value =
+        parsed.isModifier && typeof storedPrices[key] === "number"
+          ? storedPrices[key]
+          : defaultValue;
 
       if (IS_DEV && key.startsWith("druk-cad-")) {
         console.warn(
@@ -284,8 +281,8 @@ export async function runMigrationIfNeeded(): Promise<void> {
 
       const record: PriceRecord = {
         id: crypto.randomUUID(),
-        category: parsed.category,
-        subcategory: parsed.subcategory,
+        category: parsed.isModifier ? "modifier" : parsed.category,
+        subcategory: parsed.isModifier ? key.replace(/^modifier-/, "") : parsed.subcategory,
         label: key,
         qtyFrom: parsed.qtyFrom,
         qtyTo: parsed.qtyTo,
