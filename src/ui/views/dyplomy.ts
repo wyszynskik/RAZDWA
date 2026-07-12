@@ -42,7 +42,9 @@ export const DyplomyView: View = {
         }
       };
 
-      container.querySelector("#tabBtn-standard")?.addEventListener("click", () => switchTab("standard"));
+      container
+        .querySelector("#tabBtn-standard")
+        ?.addEventListener("click", () => switchTab("standard"));
       container.querySelector("#tabBtn-eko")?.addEventListener("click", () => switchTab("eko"));
 
       const sidesSel = container.querySelector("#dypSides") as HTMLSelectElement;
@@ -192,7 +194,11 @@ export const DyplomyView: View = {
         return { options, result };
       };
 
-      autoCalc({ root: container.querySelector("#dypTab-standard") as HTMLElement, calc: calculate, cancelOn: [addToCartBtn] });
+      autoCalc({
+        root: container.querySelector("#dypTab-standard") as HTMLElement,
+        calc: calculate,
+        cancelOn: [addToCartBtn],
+      });
       updateLegend();
 
       ctx?.on?.("prices-updated", () => {
@@ -263,27 +269,45 @@ export const DyplomyView: View = {
           `<div style="padding-top:8px;border-top:1px solid #e2e8f0;"><strong>Razem:</strong> <strong>${formatPLN(result.totalPrice)}</strong></div>`
         );
 
-        while (ekoBreakdownBox.children.length > 1) ekoBreakdownBox.removeChild(ekoBreakdownBox.lastChild!);
-        Object.assign(ekoBreakdownBox.style, { gap: "8px", fontSize: "14px", lineHeight: "1.45", color: "#334155" });
+        while (ekoBreakdownBox.children.length > 1)
+          ekoBreakdownBox.removeChild(ekoBreakdownBox.lastChild!);
+        Object.assign(ekoBreakdownBox.style, {
+          gap: "8px",
+          fontSize: "14px",
+          lineHeight: "1.45",
+          color: "#334155",
+        });
         ekoBreakdownBox.insertAdjacentHTML("beforeend", breakdown.join(""));
         ekoBreakdownBox.style.display = "grid";
 
         ekoResultArea.style.display = "block";
         ekoAddToCartBtn.disabled = false;
-        (container.querySelector("#ekoTotalPrice") as HTMLElement).textContent = formatPLN(result.totalPrice);
-        (container.querySelector("#ekoUnitPrice") as HTMLElement).textContent = formatPLN(result.totalPrice / qty);
+        (container.querySelector("#ekoTotalPrice") as HTMLElement).textContent = formatPLN(
+          result.totalPrice
+        );
+        (container.querySelector("#ekoUnitPrice") as HTMLElement).textContent = formatPLN(
+          result.totalPrice / qty
+        );
         const ekoTierHintEl = container.querySelector("#ekoTierHint") as HTMLElement;
         if (ekoTierHintEl) {
           ekoTierHintEl.textContent = `${qty} szt ${format}, papier: ${isSatin ? "satyna" : "kreda"}`;
         }
-        (container.querySelector("#ekoExpressHint") as HTMLElement).style.display = ctx.expressMode ? "block" : "none";
-        (container.querySelector("#ekoSatinHint") as HTMLElement).style.display = isSatin ? "block" : "none";
+        (container.querySelector("#ekoExpressHint") as HTMLElement).style.display = ctx.expressMode
+          ? "block"
+          : "none";
+        (container.querySelector("#ekoSatinHint") as HTMLElement).style.display = isSatin
+          ? "block"
+          : "none";
 
         ctx.updateLastCalculated(result.totalPrice, `Dyplomy Ekonomiczny ${format}`);
         return { format, qty, isSatin, result };
       };
 
-      autoCalc({ root: container.querySelector("#dypTab-eko") as HTMLElement, calc: calculateEko, cancelOn: [ekoAddToCartBtn] });
+      autoCalc({
+        root: container.querySelector("#dypTab-eko") as HTMLElement,
+        calc: calculateEko,
+        cancelOn: [ekoAddToCartBtn],
+      });
       updateEkoLegend("A4");
 
       ctx?.on?.("prices-updated", () => {

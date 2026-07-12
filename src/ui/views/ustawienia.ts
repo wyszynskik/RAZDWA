@@ -359,9 +359,18 @@ function getAddablePrefixOptions(category: PriceCategory): PrefixOption[] {
       break;
     case "dyplomy":
       options.push({ value: "dyplomy-qty-", label: "Dyplomy – nowy próg ilościowy" });
-      options.push({ value: "dyplomy-eko-A5-qty-", label: "Dyplomy Ekonomiczny A5 – nowy próg ilościowy" });
-      options.push({ value: "dyplomy-eko-A4-qty-", label: "Dyplomy Ekonomiczny A4 – nowy próg ilościowy" });
-      options.push({ value: "dyplomy-eko-A3-qty-", label: "Dyplomy Ekonomiczny A3 – nowy próg ilościowy" });
+      options.push({
+        value: "dyplomy-eko-A5-qty-",
+        label: "Dyplomy Ekonomiczny A5 – nowy próg ilościowy",
+      });
+      options.push({
+        value: "dyplomy-eko-A4-qty-",
+        label: "Dyplomy Ekonomiczny A4 – nowy próg ilościowy",
+      });
+      options.push({
+        value: "dyplomy-eko-A3-qty-",
+        label: "Dyplomy Ekonomiczny A3 – nowy próg ilościowy",
+      });
       break;
     case "koperty":
       options.push(
@@ -3652,9 +3661,7 @@ export const UstawieniaView: View = {
         updateDraftIndicator();
         showStatus("✓ Zapisano cennik i warianty.");
       } else {
-        const msg = !pricesOk
-          ? "✗ Błąd zapisu cennika do GAS."
-          : "✗ Błąd zapisu wariantów do GAS.";
+        const msg = !pricesOk ? "✗ Błąd zapisu cennika do GAS." : "✗ Błąd zapisu wariantów do GAS.";
         renderPricesSync("error", errorDetail);
         showStatus(msg, "error");
       }
