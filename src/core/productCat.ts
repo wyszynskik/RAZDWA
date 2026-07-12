@@ -158,6 +158,14 @@ export const BASE_PRICE_CATEGORIES: PriceCategory[] = [
     newKeyPrefix: "dyplomy-qty-",
   },
   {
+    id: "dyplomy-eko",
+    label: "Dyplomy Ekonomiczny",
+    icon: "assets/icons/scroll-text.svg",
+    prefixes: ["dyplomy-eko-"],
+    description: "Ceny dyplomów ekonomicznych (A5/A4/A3) wg formatu i progów ilościowych.",
+    newKeyPrefix: "dyplomy-eko-A4-qty-",
+  },
+  {
     id: "artykuly",
     label: "Artykuły biurowe",
     icon: "assets/icons/package.svg",

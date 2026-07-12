@@ -220,19 +220,9 @@ export const DyplomyView: View = {
         ekoLegendRows.innerHTML = tiers
           .map((t) => `<tr><td>${t.qty} szt</td><td>${formatPLN(t.price)}</td></tr>`)
           .join("");
-
-        container.querySelectorAll<HTMLButtonElement>(".eko-legend-tab").forEach((btn) => {
-          const isActive = btn.dataset.format === format;
-          btn.style.background = isActive ? "#2563eb" : "#fff";
-          btn.style.color = isActive ? "#fff" : "#334155";
-        });
+        const titleEl = container.querySelector("#eko-legend-title") as HTMLElement | null;
+        if (titleEl) titleEl.textContent = `CENNIK DYPLOMY EKONOMICZNY – ${format}`;
       };
-
-      container.querySelectorAll<HTMLButtonElement>(".eko-legend-tab").forEach((btn) => {
-        btn.addEventListener("click", () => {
-          updateEkoLegend((btn.dataset.format as DyplomyEkoFormat) ?? "A4");
-        });
-      });
 
       const calculateEko = () => {
         const satinRate = resolveStoredPrice("modifier-satyna-eko", 0.07);
@@ -245,12 +235,16 @@ export const DyplomyView: View = {
         }
         const format = (ekoFormatSel.value as DyplomyEkoFormat) ?? "A4";
         const qty = parseInt(ekoQtyInput.value);
-        const isSatin = ekoPaperSel.value === "satyna";
+        const paperVal = ekoPaperSel.value;
+        const isSatin = paperVal.startsWith("satyna");
+        const paperLabel = paperVal.startsWith("satyna_")
+          ? `Satyna ${paperVal.slice(7)}g`
+          : `Kreda ${paperVal.slice(6)}g`;
 
         const result = calculateDyplomyEko({ format, qty, isSatin, express: ctx.expressMode });
 
         const breakdown = [
-          `<div><strong>Parametry:</strong> ${qty} szt, ${format}, ${isSatin ? "Satyna" : "Kreda"}</div>`,
+          `<div><strong>Parametry:</strong> ${qty} szt, ${format}, ${paperLabel}</div>`,
           `<div><strong>Cena bazowa:</strong> ${formatPLN(result.basePrice)}</div>`,
         ];
         if (isSatin) {
@@ -290,7 +284,7 @@ export const DyplomyView: View = {
         );
         const ekoTierHintEl = container.querySelector("#ekoTierHint") as HTMLElement;
         if (ekoTierHintEl) {
-          ekoTierHintEl.textContent = `${qty} szt ${format}, papier: ${isSatin ? "satyna" : "kreda"}`;
+          ekoTierHintEl.textContent = `${qty} szt ${format}, papier: ${paperLabel}`;
         }
         (container.querySelector("#ekoExpressHint") as HTMLElement).style.display = ctx.expressMode
           ? "block"
@@ -300,7 +294,7 @@ export const DyplomyView: View = {
           : "none";
 
         ctx.updateLastCalculated(result.totalPrice, `Dyplomy Ekonomiczny ${format}`);
-        return { format, qty, isSatin, result };
+        return { format, qty, isSatin, paperLabel, result };
       };
 
       autoCalc({
@@ -323,7 +317,7 @@ export const DyplomyView: View = {
       ekoAddToCartBtn.addEventListener("click", () => {
         const calc = calculateEko();
         if (!calc) return;
-        const { format, qty, isSatin, result } = calc;
+        const { format, qty, isSatin, paperLabel, result } = calc;
 
         ctx.cart.addItem({
           id: `dyp-eko-${Date.now()}`,
@@ -337,7 +331,7 @@ export const DyplomyView: View = {
           optionsHint: [
             `${qty} szt`,
             format,
-            isSatin ? "Satyna (+7%)" : "Kreda",
+            paperLabel,
             ...(ctx.expressMode ? ["EXPRESS (+20%)"] : []),
           ].join(", "),
           payload: { format, qty, isSatin, express: ctx.expressMode },

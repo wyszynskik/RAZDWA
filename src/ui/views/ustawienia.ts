@@ -359,6 +359,8 @@ function getAddablePrefixOptions(category: PriceCategory): PrefixOption[] {
       break;
     case "dyplomy":
       options.push({ value: "dyplomy-qty-", label: "Dyplomy – nowy próg ilościowy" });
+      break;
+    case "dyplomy-eko":
       options.push({
         value: "dyplomy-eko-A5-qty-",
         label: "Dyplomy Ekonomiczny A5 – nowy próg ilościowy",
@@ -1064,6 +1066,7 @@ const PRICE_LABELS: Record<string, string> = {
   "modifier-satyna": "Dopłata papier satynowy (mnożnik, 0.12 = +12%)",
   "modifier-express": "Dopłata tryb express (mnożnik, 0.20 = +20%)",
   "modifier-modigliani": "Dopłata papier Modigliani (mnożnik, 0.20 = +20%)",
+  "modifier-satyna-eko": "Dopłata satyna – Dyplomy Ekonomiczny (mnożnik, 0.07 = +7%)",
 };
 
 function humanizeSegment(value: string): string {
@@ -1515,29 +1518,36 @@ function sortVoucheryCategoryKeys(keys: string[]): string[] {
 }
 
 function sortDyplomyCategoryKeys(keys: string[]): string[] {
-  const formatRankEko: Record<string, number> = { A5: 0, A4: 1, A3: 2 };
-
   const parse = (key: string) => {
-    const std = key.match(/^dyplomy-qty-(\d+)$/);
-    if (std) {
-      return { group: 0, format: 0, qty: Number.parseInt(std[1], 10), raw: key };
-    }
-    const eko = key.match(/^dyplomy-eko-(A5|A4|A3)-qty-(\d+)$/);
-    if (eko) {
-      return {
-        group: 1,
-        format: formatRankEko[eko[1]] ?? 99,
-        qty: Number.parseInt(eko[2], 10),
-        raw: key,
-      };
-    }
-    return { group: 2, format: 0, qty: Number.POSITIVE_INFINITY, raw: key };
+    const m = key.match(/^dyplomy-qty-(\d+)$/);
+    return {
+      qty: m ? Number.parseInt(m[1], 10) : Number.POSITIVE_INFINITY,
+      raw: key,
+    };
   };
 
   return [...keys].sort((a, b) => {
     const pa = parse(a);
     const pb = parse(b);
-    if (pa.group !== pb.group) return pa.group - pb.group;
+    if (pa.qty !== pb.qty) return pa.qty - pb.qty;
+    return pa.raw.localeCompare(pb.raw, "pl");
+  });
+}
+
+function sortDyplomyEkoCategoryKeys(keys: string[]): string[] {
+  const formatRank: Record<string, number> = { A5: 0, A4: 1, A3: 2 };
+
+  const parse = (key: string) => {
+    const m = key.match(/^dyplomy-eko-(A5|A4|A3)-qty-(\d+)$/);
+    if (m) {
+      return { format: formatRank[m[1]] ?? 99, qty: Number.parseInt(m[2], 10), raw: key };
+    }
+    return { format: 99, qty: Number.POSITIVE_INFINITY, raw: key };
+  };
+
+  return [...keys].sort((a, b) => {
+    const pa = parse(a);
+    const pb = parse(b);
     if (pa.format !== pb.format) return pa.format - pb.format;
     if (pa.qty !== pb.qty) return pa.qty - pb.qty;
     return pa.raw.localeCompare(pb.raw, "pl");
@@ -2067,6 +2077,10 @@ function getCategoryKeys(prices: PriceMap, category: PriceCategory): string[] {
 
   if (category.id === "dyplomy") {
     return sortDyplomyCategoryKeys(keys);
+  }
+
+  if (category.id === "dyplomy-eko") {
+    return sortDyplomyEkoCategoryKeys(keys);
   }
 
   if (category.id === "laminowanie") {

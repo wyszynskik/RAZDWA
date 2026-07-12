@@ -115,8 +115,18 @@
     <div class="form-group">
       <label for="ekoPaper">Papier:</label>
       <select id="ekoPaper">
-        <option value="kreda">Kreda 200–250g</option>
-        <option value="satyna">Satyna (+7%)</option>
+        <optgroup label="Kreda (standard)">
+          <option value="kreda_130">130g Kreda</option>
+          <option value="kreda_170">170g Kreda</option>
+          <option value="kreda_200" selected>200g Kreda</option>
+          <option value="kreda_250">250g Kreda</option>
+        </optgroup>
+        <optgroup label="Satyna (+7%)">
+          <option value="satyna_130">130g Satyna</option>
+          <option value="satyna_170">170g Satyna</option>
+          <option value="satyna_200">200g Satyna</option>
+          <option value="satyna_250">250g Satyna</option>
+        </optgroup>
       </select>
     </div>
 
@@ -139,20 +149,12 @@
     <div class="cennik-table pricing-legend" style="margin-top:24px;">
       <div class="legend-head">
         <div>
-          <h4>CENNIK DYPLOMY EKONOMICZNY</h4>
-          <p class="legend-subtitle">Cena całkowita zależy od formatu i ilości.</p>
+          <h4 id="eko-legend-title">CENNIK DYPLOMY EKONOMICZNY – A4</h4>
+          <p class="legend-subtitle">Cena całkowita. Zmień format wyżej, aby zobaczyć odpowiedni cennik.</p>
         </div>
       </div>
       <div class="legend-badges">
         <span class="legend-badge"><strong>Satyna:</strong> +7%</span>
-      </div>
-      <div id="eko-legend-tabs" style="display:flex;gap:8px;margin-bottom:10px;">
-        <button class="eko-legend-tab eko-legend-tab--active" data-format="A5"
-          style="padding:4px 12px;font-size:13px;border:1px solid #cbd5e1;border-radius:6px;cursor:pointer;background:#2563eb;color:#fff;">A5</button>
-        <button class="eko-legend-tab" data-format="A4"
-          style="padding:4px 12px;font-size:13px;border:1px solid #cbd5e1;border-radius:6px;cursor:pointer;background:#fff;color:#334155;">A4</button>
-        <button class="eko-legend-tab" data-format="A3"
-          style="padding:4px 12px;font-size:13px;border:1px solid #cbd5e1;border-radius:6px;cursor:pointer;background:#fff;color:#334155;">A3</button>
       </div>
       <table>
         <thead><tr><th>Ilość (szt)</th><th>Cena</th></tr></thead>
