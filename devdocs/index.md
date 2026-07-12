@@ -18,6 +18,10 @@ Jeśli dopiero zaczynasz z projektem, przeczytaj w tej kolejności:
 
 → **[REFACTORING_PRICE_SERVICE.md](REFACTORING_PRICE_SERVICE.md)** - Pełna dokumentacja techniczna
 
+### Przygotowujesz kopię dla klientki?
+
+→ **[DEPLOY_CLIENT.md](DEPLOY_CLIENT.md)** - Jak zbudować i spakować gotową kopię aplikacji
+
 ## 📁 Struktura dokumentacji
 
 ```

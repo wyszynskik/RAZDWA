@@ -34,6 +34,9 @@ service-account.json
 playwright-report/
 test-results/
 
+# Paczki dla klienta (scripts/package-client.mjs)
+dist-client/
+
 # Przypadkowe pliki
 result-display
 \#e2e8f0
