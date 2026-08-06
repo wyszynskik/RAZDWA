@@ -5,8 +5,17 @@
   <meta charset="UTF-8">
   <meta name="referrer" content="strict-origin-when-cross-origin">
   <script>(function(){if(window.top!==window.self){try{window.top.location.href=window.self.location.href;}catch(e){window.top.location.replace(window.self.location.href);}}}());</script>
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; connect-src 'self' https://script.google.com https://script.googleusercontent.com https://cdn.jsdelivr.net; font-src 'self' https://cdn.jsdelivr.net; img-src 'self' data:; worker-src 'self'; object-src 'none'; base-uri 'self';">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://www.googletagmanager.com; style-src 'self' 'unsafe-inline'; connect-src 'self' https://script.google.com https://script.googleusercontent.com https://cdn.jsdelivr.net https://www.google-analytics.com https://*.google-analytics.com https://*.analytics.google.com https://www.googletagmanager.com; font-src 'self' https://cdn.jsdelivr.net; img-src 'self' data: https://www.google-analytics.com https://*.google-analytics.com; worker-src 'self'; object-src 'none'; base-uri 'self';">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <!-- Google tag (gtag.js) -->
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-0C4E5ZCWLM"></script>
+  <script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag(){dataLayer.push(arguments);}
+    gtag('js', new Date());
+    gtag('config', 'G-0C4E5ZCWLM');
+  </script>
   <title>Kalkulator &#x2013; Studio Druku Raz Dwa</title>
   <meta name="description" content="Kalkulator cen brutto dla Studio Druku Raz Dwa &#x2013; druk cyfrowy, wielkoformatowy, wizyt&#xF3;wki, naklejki i wi&#x119;cej.">
   <meta name="theme-color" content="#004080">
