@@ -13,7 +13,7 @@ import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const rootDir = resolve(fileURLToPath(import.meta.url), "..", "..");
-const devDomainPrefix = "https://kwyszynskidesign.github.io/RAZDWA/";
+const devDomainPrefix = "https://wyszynskik.github.io/RAZDWA/";
 
 function parseArgs(argv) {
   const args = { clientId: "raz-dwa", includeHandover: false, allowIndexing: false };
