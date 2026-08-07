@@ -306,7 +306,7 @@ export interface PlakatyMalyCanonResult {
  * @param tiers - array of {qty, price} objects
  * @returns interpolated price, or the exact tier price if qty matches
  */
-function interpolatePrice(qty: number, tiers: any[]): number {
+export function interpolatePrice(qty: number, tiers: any[]): number {
   if (!tiers || tiers.length === 0) return 0;
 
   // If qty matches exactly, return that price

@@ -59,6 +59,31 @@ type PrefixOption = { value: string; label: string };
 
 const CUSTOM_PREFIX_VALUE = "__custom_prefix__";
 
+/**
+ * Custom subgroups ("Nowa podkategoria…") always get their own quantity
+ * tier table so the calculator can render a real per-quantity container for
+ * them (see ui/dynamicSubgroups.ts) — regardless of whether the parent
+ * category is itself in QUANTITY_BASED_CATEGORIES. `selectedPrefixValue` is
+ * the raw <select> value: either the CUSTOM_PREFIX_VALUE sentinel (creating
+ * a brand-new subgroup) or an already-registered custom prefix (adding
+ * another tier to one that exists).
+ */
+function isCustomSubgroupSelection(categoryId: string, selectedPrefixValue: string): boolean {
+  if (selectedPrefixValue === CUSTOM_PREFIX_VALUE) return true;
+  return Boolean(customPriceSubgroups[categoryId]?.[selectedPrefixValue]);
+}
+
+function findExistingQuantityKey(
+  prefix: string,
+  qty: string,
+  existingKeys: Record<string, unknown>
+): string | null {
+  const trimmed = qty.trim();
+  if (!trimmed) return null;
+  const baseKey = `${prefix}${trimmed}`;
+  return baseKey in existingKeys ? baseKey : null;
+}
+
 const ENVELOPE_PLACEHOLDER_KEYS = [
   "koperty-a",
   "koperty-b",
@@ -123,6 +148,20 @@ function getCategorySectionTitle(category: PriceCategory, key: string): string {
       return category.label.toUpperCase();
   }
 }
+
+/**
+ * Categories where "Nowa podkategoria…" actually renders to the customer:
+ * either via ui/dynamicSubgroups.ts's mountDynamicSubgroupContainers
+ * (qty-tiered — currently only plakaty-a4-a3), or via the pre-existing
+ * getPriceSubgroups()-driven flat rendering in artykuly-biurowe.ts/uslugi.ts.
+ * Any other category would let the admin "save" a subgroup that never
+ * appears in the calculator.
+ */
+const DYNAMIC_SUBGROUP_CATEGORIES: ReadonlySet<string> = new Set([
+  "plakaty-a4-a3",
+  "artykuly",
+  "uslugi",
+]);
 
 function getAddablePrefixOptions(category: PriceCategory): PrefixOption[] {
   const options: PrefixOption[] = [];
@@ -385,8 +424,10 @@ function getAddablePrefixOptions(category: PriceCategory): PrefixOption[] {
       break;
   }
 
-  options.push(...getCustomSubgroupDefinitions(category.id));
-  options.push({ value: CUSTOM_PREFIX_VALUE, label: "Nowa podkategoria…" });
+  if (DYNAMIC_SUBGROUP_CATEGORIES.has(category.id)) {
+    options.push(...getCustomSubgroupDefinitions(category.id));
+    options.push({ value: CUSTOM_PREFIX_VALUE, label: "Nowa podkategoria…" });
+  }
   return options;
 }
 
@@ -2387,7 +2428,9 @@ export const UstawieniaView: View = {
       const labelDescEl = container.querySelector<HTMLElement>("#new-price-label-desc");
       if (qtyWrapper) {
         const chosenCatId = addCategorySelect.value;
-        const isQtyBased = isQuantityBasedCategory(chosenCatId);
+        const isQtyBased =
+          isQuantityBasedCategory(chosenCatId) ||
+          isCustomSubgroupSelection(chosenCatId, addPrefixSelect.value);
         qtyWrapper.style.display = isQtyBased ? "" : "none";
         if (!isQtyBased && qtyInput) qtyInput.value = "";
 
@@ -3334,7 +3377,10 @@ export const UstawieniaView: View = {
       }
 
       let preview: string;
-      if (isQuantityBasedCategory(chosenCategoryId)) {
+      if (
+        isQuantityBasedCategory(chosenCategoryId) ||
+        isCustomSubgroupSelection(chosenCategoryId, selectedPrefix)
+      ) {
         if (!qty) {
           if (previewWrap) previewWrap.style.display = "none";
           return;
@@ -3399,7 +3445,11 @@ export const UstawieniaView: View = {
 
       const qtyValue = addQtyInput?.value.trim() || "";
 
-      if (isQuantityBasedCategory(chosenCategoryId)) {
+      const useQtyMode =
+        isQuantityBasedCategory(chosenCategoryId) ||
+        isCustomSubgroupSelection(chosenCategoryId, selectedPrefix);
+
+      if (useQtyMode) {
         if (!qtyValue) {
           logVariantOperation({
             action: "skip",
@@ -3501,17 +3551,17 @@ export const UstawieniaView: View = {
       const newVariantPrice = Number.isFinite(parsedPrice) && parsedPrice >= 0 ? parsedPrice : null;
 
       // Idempotent upsert: jeśli wariant o tej samej sygnaturze już istnieje, rób update zamiast tworzyć nowy klucz.
-      const existingKey = findVariantBySignature(
-        chosenCategoryId,
-        chosenPrefix,
-        productLabel,
-        qtyValue,
-        prices
-      );
+      // Kategorie natywnie ilościowe (vouchery/wizytówki mają własny format klucza) idą przez
+      // findVariantBySignature jak dotychczas; nowe podgrupy w kategoriach nieilościowych (np.
+      // Plakaty A4-A3) mają zawsze prosty format {prefix}{qty}, więc nie mogą użyć tej samej ścieżki.
+      const existingKey =
+        useQtyMode && !isQuantityBasedCategory(chosenCategoryId)
+          ? findExistingQuantityKey(chosenPrefix, qtyValue, prices)
+          : findVariantBySignature(chosenCategoryId, chosenPrefix, productLabel, qtyValue, prices);
       const isUpdate = existingKey !== null;
       const newKey = isUpdate
         ? existingKey
-        : isQuantityBasedCategory(chosenCategoryId)
+        : useQtyMode
           ? buildUniqueQuantityKey(chosenCategoryId, chosenPrefix, qtyValue, prices)
           : buildUniquePriceKey(chosenPrefix, productLabel, prices);
 
@@ -3535,7 +3585,9 @@ export const UstawieniaView: View = {
         subgroupLabel:
           selectedPrefix === CUSTOM_PREFIX_VALUE
             ? subgroupName
-            : (existingDef?.subgroupLabel ?? ""),
+            : (customPriceSubgroups[chosenCategory.id]?.[chosenPrefix] ??
+              existingDef?.subgroupLabel ??
+              ""),
         label: legendText || productLabel || getPriceLabel(newKey),
         legend: legendText,
         visibleInSettings: true,
@@ -3563,6 +3615,15 @@ export const UstawieniaView: View = {
         isUpdate ? `✓ Zaktualizowano (niezapisane): ${newKey}` : `✓ Dodano (niezapisane): ${newKey}`
       );
       updateDraftIndicator();
+
+      // Po utworzeniu nowej podgrupy przełącz selektor na jej realny prefiks, żeby kolejne
+      // "Dodaj wariant" (bez dotykania selektora) dopisywały kolejne progi do TEJ SAMEJ podgrupy,
+      // zamiast tworzyć nową podgrupę o tej samej nazwie za każdym razem (buildUniqueSubgroupPrefix
+      // dostałby ponownie CUSTOM_PREFIX_VALUE i wygenerowałby "-2", "-3"...).
+      if (addPrefixSelect && selectedPrefix === CUSTOM_PREFIX_VALUE) {
+        addPrefixSelect.value = chosenPrefix;
+        lastBasePrefix = chosenPrefix;
+      }
 
       renderTabs();
       renderTable();
