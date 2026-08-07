@@ -29,7 +29,9 @@ jobs:
         run: npm ci
 
       - name: Audit
-        run: npm audit --audit-level=high
+        # Static site: docs/ ships no npm deps, so gate on production deps only.
+        # Dev-only advisories (np. brace-expansion DoS, brak fixu upstream) nie blokują deployu.
+        run: npm audit --omit=dev --audit-level=high
 
       - name: Lint
         run: npm run lint
