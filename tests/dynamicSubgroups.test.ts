@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import {
   getDynamicSubgroups,
   safeInterpolate,
+  computeSubgroupPrice,
   type DynamicSubgroupTier,
 } from "../src/ui/dynamicSubgroups";
 import {
@@ -64,6 +65,7 @@ describe("getDynamicSubgroups", () => {
 
     expect(groups).toHaveLength(1);
     expect(groups[0].label).toBe("Grupa A");
+    expect(groups[0].calcType).toBe("interpolated");
     expect(groups[0].tiers).toEqual([
       { key: "cat-prefix-5", qty: 5, price: 60 },
       { key: "cat-prefix-10", qty: 10, price: 100 },
@@ -242,5 +244,32 @@ describe("safeInterpolate", () => {
       { key: "k5", qty: 5, price: 10 },
     ];
     expect(safeInterpolate(7, unsorted)).toBe(safeInterpolate(7, tiers));
+  });
+});
+
+describe("computeSubgroupPrice", () => {
+  const tiers: DynamicSubgroupTier[] = [
+    { key: "k5", qty: 5, price: 10 },
+    { key: "k10", qty: 10, price: 20 },
+  ];
+
+  it("dispatches 'interpolated' to the exact same result as safeInterpolate", () => {
+    expect(computeSubgroupPrice("interpolated", 7, tiers)).toBe(safeInterpolate(7, tiers));
+    expect(computeSubgroupPrice("interpolated", 3, tiers)).toBe(safeInterpolate(3, tiers));
+    expect(computeSubgroupPrice("interpolated", 50, tiers)).toBe(safeInterpolate(50, tiers));
+  });
+
+  it("'flat-per-unit' multiplies the single tier's price by qty", () => {
+    const flatTiers: DynamicSubgroupTier[] = [{ key: "unit", qty: 1, price: 12.5 }];
+    expect(computeSubgroupPrice("flat-per-unit", 1, flatTiers)).toBe(12.5);
+    expect(computeSubgroupPrice("flat-per-unit", 4, flatTiers)).toBe(50);
+    expect(computeSubgroupPrice("flat-per-unit", 100, flatTiers)).toBe(1250);
+  });
+
+  it("'flat-rate' returns the single tier's price regardless of qty", () => {
+    const flatTiers: DynamicSubgroupTier[] = [{ key: "rate", qty: 1, price: 30 }];
+    expect(computeSubgroupPrice("flat-rate", 1, flatTiers)).toBe(30);
+    expect(computeSubgroupPrice("flat-rate", 4, flatTiers)).toBe(30);
+    expect(computeSubgroupPrice("flat-rate", 100, flatTiers)).toBe(30);
   });
 });

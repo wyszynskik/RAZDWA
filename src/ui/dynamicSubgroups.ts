@@ -25,9 +25,20 @@ export interface DynamicSubgroupTier {
   price: number;
 }
 
+/**
+ * Closed set of pricing strategies a subgroup's tiers can be evaluated with.
+ * "interpolated" is the only value any current caller produces (qty-tiered
+ * linear interpolation, e.g. plakaty-a4-a3). "flat-per-unit" (single price
+ * × qty) and "flat-rate" (single price regardless of qty) are implemented
+ * and tested but not yet wired to any category — reserved for the artykuly/
+ * uslugi migration onto this module.
+ */
+export type SubgroupCalcType = "interpolated" | "flat-per-unit" | "flat-rate";
+
 export interface DynamicSubgroup {
   prefix: string;
   label: string;
+  calcType: SubgroupCalcType;
   tiers: DynamicSubgroupTier[];
 }
 
@@ -56,7 +67,7 @@ export function getDynamicSubgroups(categoryId: string): DynamicSubgroup[] {
 
     let group = byPrefix.get(variant.subcategoryPrefix);
     if (!group) {
-      group = { prefix: variant.subcategoryPrefix, label, tiers: [] };
+      group = { prefix: variant.subcategoryPrefix, label, calcType: "interpolated", tiers: [] };
       byPrefix.set(variant.subcategoryPrefix, group);
     }
     group.tiers.push({ key: variant.key, qty, price });
@@ -86,6 +97,33 @@ export function safeInterpolate(qty: number, tiers: DynamicSubgroupTier[]): numb
     qty,
     sorted.map((t) => ({ qty: t.qty, price: t.price }))
   );
+}
+
+/**
+ * flat-per-unit and flat-rate both assume a single-tier group — "flat"
+ * strategies have no per-quantity price ladder to pick a tier from, unlike
+ * "interpolated". Reading tiers[0] is only safe under that assumption;
+ * multi-tier flat groups aren't produced by any caller today.
+ */
+const CALC_STRATEGIES: Record<
+  SubgroupCalcType,
+  (qty: number, tiers: DynamicSubgroupTier[]) => number
+> = {
+  interpolated: safeInterpolate,
+  "flat-per-unit": (qty, tiers) => tiers[0].price * qty,
+  "flat-rate": (_qty, tiers) => tiers[0].price,
+};
+
+/**
+ * Exported for unit tests only — not part of this module's public API for
+ * other views, which should go through mountDynamicSubgroupContainers().
+ */
+export function computeSubgroupPrice(
+  calcType: SubgroupCalcType,
+  qty: number,
+  tiers: DynamicSubgroupTier[]
+): number {
+  return CALC_STRATEGIES[calcType](qty, tiers);
 }
 
 export function mountDynamicSubgroupContainers(
@@ -144,7 +182,7 @@ export function mountDynamicSubgroupContainers(
         addBtn.disabled = true;
         return;
       }
-      const basePrice = safeInterpolate(qty, group.tiers);
+      const basePrice = computeSubgroupPrice(group.calcType, qty, group.tiers);
       const expressRate = ctx.expressMode ? getExpressRate() : 0;
       const total = parseFloat((basePrice * (1 + expressRate)).toFixed(2));
 
