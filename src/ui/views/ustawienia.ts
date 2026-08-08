@@ -8,6 +8,7 @@ import {
 import { logVariantOperation } from "../../core/variantLogger";
 import { clearAdminSession } from "../../core/adminSession";
 import {
+  buildQuantityKey,
   buildUniquePriceKey,
   buildUniqueQuantityKey,
   buildUniqueSubgroupPrefix,
@@ -73,14 +74,19 @@ function isCustomSubgroupSelection(categoryId: string, selectedPrefixValue: stri
   return Boolean(customPriceSubgroups[categoryId]?.[selectedPrefixValue]);
 }
 
-function findExistingQuantityKey(
+/**
+ * Exported for unit tests only — not part of this module's public API for
+ * other views, which should go through the add-subgroup-variant upsert flow.
+ */
+export function findExistingQuantityKey(
+  categoryId: string,
   prefix: string,
   qty: string,
   existingKeys: Record<string, unknown>
 ): string | null {
   const trimmed = qty.trim();
   if (!trimmed) return null;
-  const baseKey = `${prefix}${trimmed}`;
+  const baseKey = buildQuantityKey(categoryId, prefix, trimmed);
   return baseKey in existingKeys ? baseKey : null;
 }
 
@@ -3556,7 +3562,7 @@ export const UstawieniaView: View = {
       // Plakaty A4-A3) mają zawsze prosty format {prefix}{qty}, więc nie mogą użyć tej samej ścieżki.
       const existingKey =
         useQtyMode && !isQuantityBasedCategory(chosenCategoryId)
-          ? findExistingQuantityKey(chosenPrefix, qtyValue, prices)
+          ? findExistingQuantityKey(chosenCategoryId, chosenPrefix, qtyValue, prices)
           : findVariantBySignature(chosenCategoryId, chosenPrefix, productLabel, qtyValue, prices);
       const isUpdate = existingKey !== null;
       const newKey = isUpdate
