@@ -5,14 +5,24 @@ describe("findExistingQuantityKey", () => {
   it("returns the base key for the default schema when it exists in existingKeys", () => {
     const existingKeys = { "plakaty-maly-canon-margin-170-100": 42 };
     expect(
-      findExistingQuantityKey("plakaty-a4-a3", "plakaty-maly-canon-margin-170-", "100", existingKeys)
+      findExistingQuantityKey(
+        "plakaty-a4-a3",
+        "plakaty-maly-canon-margin-170-",
+        "100",
+        existingKeys
+      )
     ).toBe("plakaty-maly-canon-margin-170-100");
   });
 
   it("returns null for the default schema when the key does not exist", () => {
     const existingKeys = { "plakaty-maly-canon-margin-170-100": 42 };
     expect(
-      findExistingQuantityKey("plakaty-a4-a3", "plakaty-maly-canon-margin-170-", "200", existingKeys)
+      findExistingQuantityKey(
+        "plakaty-a4-a3",
+        "plakaty-maly-canon-margin-170-",
+        "200",
+        existingKeys
+      )
     ).toBeNull();
   });
 
@@ -22,7 +32,12 @@ describe("findExistingQuantityKey", () => {
       findExistingQuantityKey("plakaty-a4-a3", "plakaty-maly-canon-margin-170-", "", existingKeys)
     ).toBeNull();
     expect(
-      findExistingQuantityKey("plakaty-a4-a3", "plakaty-maly-canon-margin-170-", "   ", existingKeys)
+      findExistingQuantityKey(
+        "plakaty-a4-a3",
+        "plakaty-maly-canon-margin-170-",
+        "   ",
+        existingKeys
+      )
     ).toBeNull();
   });
 
@@ -52,8 +67,8 @@ describe("findExistingQuantityKey", () => {
       findExistingQuantityKey("wizytowki", "wizytowki-85x55-none-", "100", { [naiveKey]: 42 })
     ).toBeNull();
 
-    expect(
-      findExistingQuantityKey("wizytowki", "wizytowki-85x55-none-", "100", existingKeys)
-    ).toBe(realSchemaKey);
+    expect(findExistingQuantityKey("wizytowki", "wizytowki-85x55-none-", "100", existingKeys)).toBe(
+      realSchemaKey
+    );
   });
 });

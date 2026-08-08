@@ -1,5 +1,9 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { getDynamicSubgroups, safeInterpolate, type DynamicSubgroupTier } from "../src/ui/dynamicSubgroups";
+import {
+  getDynamicSubgroups,
+  safeInterpolate,
+  type DynamicSubgroupTier,
+} from "../src/ui/dynamicSubgroups";
 import {
   setVariantDefinitions,
   setPriceSubgroups,
@@ -85,7 +89,11 @@ describe("getDynamicSubgroups", () => {
   it("excludes variants belonging to a different category", () => {
     setVariantDefinitions([
       makeVariant({ key: "cat3-prefix-10", categoryId: "cat3", subcategoryPrefix: "cat3-prefix-" }),
-      makeVariant({ key: "other-prefix-10", categoryId: "other", subcategoryPrefix: "other-prefix-" }),
+      makeVariant({
+        key: "other-prefix-10",
+        categoryId: "other",
+        subcategoryPrefix: "other-prefix-",
+      }),
     ]);
     setPriceSubgroups({
       cat3: { "cat3-prefix-": "Grupa" },
@@ -173,7 +181,11 @@ describe("getDynamicSubgroups", () => {
   it("excludes variants whose parsed qty is zero or non-finite", () => {
     setVariantDefinitions([
       makeVariant({ key: "cat9-prefix-0", categoryId: "cat9", subcategoryPrefix: "cat9-prefix-" }),
-      makeVariant({ key: "cat9-prefix-abc", categoryId: "cat9", subcategoryPrefix: "cat9-prefix-" }),
+      makeVariant({
+        key: "cat9-prefix-abc",
+        categoryId: "cat9",
+        subcategoryPrefix: "cat9-prefix-",
+      }),
     ]);
     setPriceSubgroups({ cat9: { "cat9-prefix-": "Grupa" } });
     setPrice("defaultPrices", { "cat9-prefix-0": 10, "cat9-prefix-abc": 20 });
@@ -183,8 +195,16 @@ describe("getDynamicSubgroups", () => {
 
   it("omits a prefix entirely when every one of its variants gets filtered out", () => {
     setVariantDefinitions([
-      makeVariant({ key: "cat10-prefix-10", categoryId: "cat10", subcategoryPrefix: "cat10-prefix-" }),
-      makeVariant({ key: "cat10-prefix-20", categoryId: "cat10", subcategoryPrefix: "cat10-prefix-" }),
+      makeVariant({
+        key: "cat10-prefix-10",
+        categoryId: "cat10",
+        subcategoryPrefix: "cat10-prefix-",
+      }),
+      makeVariant({
+        key: "cat10-prefix-20",
+        categoryId: "cat10",
+        subcategoryPrefix: "cat10-prefix-",
+      }),
     ]);
     setPriceSubgroups({ cat10: { "cat10-prefix-": "Grupa" } });
     setPrice("defaultPrices", {});
