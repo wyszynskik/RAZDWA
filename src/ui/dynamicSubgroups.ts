@@ -74,8 +74,11 @@ export function getDynamicSubgroups(categoryId: string): DynamicSubgroup[] {
  * at or below the lowest known tier that gap collapses to 0, producing NaN
  * (it only clamps qty *above* the top tier, not below the bottom one — see
  * categories/plakaty.ts). Clamp both ends here before deferring to it.
+ *
+ * Exported for unit tests only — not part of this module's public API for
+ * other views, which should go through mountDynamicSubgroupContainers().
  */
-function safeInterpolate(qty: number, tiers: DynamicSubgroupTier[]): number {
+export function safeInterpolate(qty: number, tiers: DynamicSubgroupTier[]): number {
   const sorted = [...tiers].sort((a, b) => a.qty - b.qty);
   if (qty <= sorted[0].qty) return sorted[0].price;
   if (qty >= sorted[sorted.length - 1].qty) return sorted[sorted.length - 1].price;
