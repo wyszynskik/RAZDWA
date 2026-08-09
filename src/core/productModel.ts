@@ -51,6 +51,7 @@ export interface Product {
   label: string;
   calcType: ProductCalcType;
   status: ProductStatus;
+  visibleInCalculator: boolean;
   entries: PriceEntry[];
 }
 
@@ -218,6 +219,7 @@ export function classifyVariantsIntoProducts(
           label: clusterVariants[0].label || clusterVariants[0].subgroupLabel || "",
           calcType: "interpolated",
           status: "published",
+          visibleInCalculator: clusterVariants[0].visibleInCalculator !== false,
           entries: integerSuffixed
             .map(({ variant, suffix }) => ({
               key: variant.key,
@@ -242,6 +244,7 @@ export function classifyVariantsIntoProducts(
           label: variant.label || variant.key,
           calcType: "flat-per-unit",
           status: "published",
+          visibleInCalculator: variant.visibleInCalculator !== false,
           entries: [
             {
               key: variant.key,
