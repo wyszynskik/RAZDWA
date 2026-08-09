@@ -6,8 +6,8 @@ import artykulyData from "../../data/normalized/artykuly-biurowe.json";
 
 const artykulyBiuroweData: any = artykulyData as any;
 const ENVELOPE_LETTERS = ["a", "b", "c", "d", "e", "f", "g"] as const;
-const CUSTOM_ARTYKULY_PREFIX = "artykuly-";
-const BASE_ARTYKULY_IDS = new Set<string>([
+export const CUSTOM_ARTYKULY_PREFIX = "artykuly-";
+export const BASE_ARTYKULY_IDS = new Set<string>([
   ...(artykulyBiuroweData.categories ?? []).flatMap((category: any) =>
     (category.items ?? []).map((item: any) => item.id)
   ),

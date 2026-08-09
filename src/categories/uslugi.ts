@@ -5,8 +5,8 @@ import { getPriceSubgroups } from "../services/priceService";
 import uslugiData from "../../data/normalized/uslugi.json";
 
 const uslugiCategoryData: any = uslugiData as any;
-const CUSTOM_SERVICE_PREFIX = "uslugi-";
-const BASE_SERVICE_IDS = new Set<string>(
+export const CUSTOM_SERVICE_PREFIX = "uslugi-";
+export const BASE_SERVICE_IDS = new Set<string>(
   (uslugiCategoryData.categories ?? []).flatMap((category: any) =>
     (category.items ?? []).map((item: any) => item.id)
   )
