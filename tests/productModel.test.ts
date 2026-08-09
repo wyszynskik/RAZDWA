@@ -65,13 +65,85 @@ describe("classifyVariantsIntoProducts — numeric-suffix clusters (interpolated
     ]);
   });
 
-  it("does not misclassify a text-then-digits suffix as numeric (stricter than parseInt)", () => {
+  it("in an interpolated category (plakaty-a4-a3), a text-then-digits suffix is NOT treated as a numeric tier (stricter than parseInt) — goes to needs-review, not silently coerced", () => {
     // parseInt("10abc", 10) === 10 — this must NOT be treated as qty 10.
     const variants = [
-      makeVariant({ key: "cat-y-10abc", categoryId: "catY", subcategoryPrefix: "cat-y-" }),
+      makeVariant({
+        key: "plakaty-y-10abc",
+        categoryId: "plakaty-a4-a3",
+        subcategoryPrefix: "plakaty-y-",
+      }),
     ];
     const report = classifyVariantsIntoProducts(variants, {});
+    expect(report.migrated).toEqual([]);
+    expect(report.needsReview).toHaveLength(1);
+  });
+
+  it("CORE AUDIT FIX: a numeric-suffix key in artykuly/uslugi is classified as flat-per-unit, NOT interpolated", () => {
+    // This is exactly the bug the audit flagged: isCustomSubgroupSelection()
+    // forces the "Dodaj wariant" form into quantity mode (numeric-suffix
+    // key) for a NEW custom subgroup in ANY category, including artykuly/
+    // uslugi — but neither category's rendering has a quantity-tier concept
+    // (see legacyFlowCharacterization.test.ts). Category identity must win
+    // over key shape.
+    const variants = [
+      makeVariant({
+        key: "artykuly-moja-nowa-grupa-10",
+        categoryId: "artykuly",
+        subcategoryPrefix: "artykuly-moja-nowa-grupa-",
+      }),
+    ];
+    const report = classifyVariantsIntoProducts(variants, { "artykuly-moja-nowa-grupa-10": 25 });
+
+    expect(report.needsReview).toEqual([]);
+    expect(report.migrated).toHaveLength(1);
     expect(report.migrated[0].calcType).toBe("flat-per-unit");
+    expect(report.migrated[0].entries).toEqual([
+      { key: "artykuly-moja-nowa-grupa-10", qty: null, price: 25 },
+    ]);
+  });
+
+  it("a mix of numeric- and text-suffixed keys under one artykuly prefix is NOT an ambiguity — both become independent flat-per-unit products", () => {
+    // Under the old (wrong) key-shape-based rule this cluster would have
+    // been reported as needs-review ("mixed suffixes"). Under the
+    // category-based rule there is nothing ambiguous about it: artykuly is
+    // always flat-per-unit, so suffix shape is irrelevant to classification.
+    const variants = [
+      makeVariant({
+        key: "artykuly-mix-10",
+        categoryId: "artykuly",
+        subcategoryPrefix: "artykuly-mix-",
+      }),
+      makeVariant({
+        key: "artykuly-mix-czerwony",
+        categoryId: "artykuly",
+        subcategoryPrefix: "artykuly-mix-",
+      }),
+    ];
+    const report = classifyVariantsIntoProducts(variants, {
+      "artykuly-mix-10": 5,
+      "artykuly-mix-czerwony": 6,
+    });
+
+    expect(report.needsReview).toEqual([]);
+    expect(report.migrated).toHaveLength(2);
+    expect(report.migrated.every((p) => p.calcType === "flat-per-unit")).toBe(true);
+  });
+
+  it("a category with no confirmed calcType evidence is skipped, never guessed", () => {
+    const variants = [
+      makeVariant({
+        key: "banner-custom-10",
+        categoryId: "banner",
+        subcategoryPrefix: "banner-custom-",
+      }),
+    ];
+    const report = classifyVariantsIntoProducts(variants, { "banner-custom-10": 100 });
+
+    expect(report.migrated).toEqual([]);
+    expect(report.needsReview).toEqual([]);
+    expect(report.skipped).toHaveLength(1);
+    expect(report.skipped[0].categoryId).toBe("banner");
   });
 });
 
@@ -112,31 +184,39 @@ describe("classifyVariantsIntoProducts — text-suffix clusters (flat-per-unit)"
 });
 
 describe("classifyVariantsIntoProducts — ambiguous clusters go to needs-review, never guessed", () => {
-  it("flags a cluster mixing numeric and text suffixes under the same prefix", () => {
+  it("in an interpolated category, flags a cluster mixing numeric and text suffixes under the same prefix as anomalous", () => {
     const variants = [
-      makeVariant({ key: "mix-a-10", categoryId: "mixCat", subcategoryPrefix: "mix-a-" }),
-      makeVariant({ key: "mix-a-czerwona", categoryId: "mixCat", subcategoryPrefix: "mix-a-" }),
+      makeVariant({
+        key: "plakaty-mix-10",
+        categoryId: "plakaty-a4-a3",
+        subcategoryPrefix: "plakaty-mix-",
+      }),
+      makeVariant({
+        key: "plakaty-mix-czerwona",
+        categoryId: "plakaty-a4-a3",
+        subcategoryPrefix: "plakaty-mix-",
+      }),
     ];
 
     const report = classifyVariantsIntoProducts(variants, {});
 
     expect(report.migrated).toEqual([]);
     expect(report.needsReview).toHaveLength(1);
-    expect(report.needsReview[0].keys.sort()).toEqual(["mix-a-10", "mix-a-czerwona"]);
+    expect(report.needsReview[0].keys.sort()).toEqual(["plakaty-mix-10", "plakaty-mix-czerwona"]);
   });
 
   it("flags numeric-suffix tiers that disagree on subgroupLabel instead of picking one", () => {
     const variants = [
       makeVariant({
-        key: "lbl-a-10",
-        categoryId: "lblCat",
-        subcategoryPrefix: "lbl-a-",
+        key: "plakaty-lbl-10",
+        categoryId: "plakaty-a4-a3",
+        subcategoryPrefix: "plakaty-lbl-",
         subgroupLabel: "Stara nazwa",
       }),
       makeVariant({
-        key: "lbl-a-20",
-        categoryId: "lblCat",
-        subcategoryPrefix: "lbl-a-",
+        key: "plakaty-lbl-20",
+        categoryId: "plakaty-a4-a3",
+        subcategoryPrefix: "plakaty-lbl-",
         subgroupLabel: "Nowa nazwa",
       }),
     ];
@@ -151,15 +231,15 @@ describe("classifyVariantsIntoProducts — ambiguous clusters go to needs-review
   it("flags numeric-suffix tiers that disagree on visibleInCalculator instead of picking one", () => {
     const variants = [
       makeVariant({
-        key: "vis-a-10",
-        categoryId: "visCat",
-        subcategoryPrefix: "vis-a-",
+        key: "plakaty-vis-10",
+        categoryId: "plakaty-a4-a3",
+        subcategoryPrefix: "plakaty-vis-",
         visibleInCalculator: true,
       }),
       makeVariant({
-        key: "vis-a-20",
-        categoryId: "visCat",
-        subcategoryPrefix: "vis-a-",
+        key: "plakaty-vis-20",
+        categoryId: "plakaty-a4-a3",
+        subcategoryPrefix: "plakaty-vis-",
         visibleInCalculator: false,
       }),
     ];
@@ -192,29 +272,50 @@ describe("classifyVariantsIntoProducts — ambiguous clusters go to needs-review
 describe("classifyVariantsIntoProducts — idempotency", () => {
   it("produces byte-identical output on repeated runs over the same input, with no duplicate productIds", () => {
     const variants = [
-      makeVariant({ key: "idem-a-10", categoryId: "idemCat", subcategoryPrefix: "idem-a-" }),
-      makeVariant({ key: "idem-a-20", categoryId: "idemCat", subcategoryPrefix: "idem-a-" }),
       makeVariant({
-        key: "idem-b-czerwony",
-        categoryId: "idemCat",
-        subcategoryPrefix: "idem-b-",
+        key: "plakaty-idem-10",
+        categoryId: "plakaty-a4-a3",
+        subcategoryPrefix: "plakaty-idem-",
+      }),
+      makeVariant({
+        key: "plakaty-idem-20",
+        categoryId: "plakaty-a4-a3",
+        subcategoryPrefix: "plakaty-idem-",
+      }),
+      makeVariant({
+        key: "artykuly-idem-czerwony",
+        categoryId: "artykuly",
+        subcategoryPrefix: "artykuly-idem-",
       }),
     ];
-    const prices = { "idem-a-10": 10, "idem-a-20": 20, "idem-b-czerwony": 5 };
+    const prices = { "plakaty-idem-10": 10, "plakaty-idem-20": 20, "artykuly-idem-czerwony": 5 };
 
     const first = classifyVariantsIntoProducts(variants, prices);
     const second = classifyVariantsIntoProducts(variants, prices);
 
     expect(second).toEqual(first);
+    expect(first.migrated.length).toBeGreaterThan(0);
     const ids = first.migrated.map((p: Product) => p.productId);
     expect(new Set(ids).size).toBe(ids.length);
   });
 
   it("is unaffected by input array order (no dependency on array position)", () => {
     const variants = [
-      makeVariant({ key: "ord-a-20", categoryId: "ordCat", subcategoryPrefix: "ord-a-" }),
-      makeVariant({ key: "ord-a-5", categoryId: "ordCat", subcategoryPrefix: "ord-a-" }),
-      makeVariant({ key: "ord-a-10", categoryId: "ordCat", subcategoryPrefix: "ord-a-" }),
+      makeVariant({
+        key: "plakaty-ord-20",
+        categoryId: "plakaty-a4-a3",
+        subcategoryPrefix: "plakaty-ord-",
+      }),
+      makeVariant({
+        key: "plakaty-ord-5",
+        categoryId: "plakaty-a4-a3",
+        subcategoryPrefix: "plakaty-ord-",
+      }),
+      makeVariant({
+        key: "plakaty-ord-10",
+        categoryId: "plakaty-a4-a3",
+        subcategoryPrefix: "plakaty-ord-",
+      }),
     ];
     const shuffled = [variants[2], variants[0], variants[1]];
 
@@ -222,6 +323,7 @@ describe("classifyVariantsIntoProducts — idempotency", () => {
     const b = classifyVariantsIntoProducts(shuffled, {});
 
     expect(a).toEqual(b);
+    expect(a.migrated.length).toBeGreaterThan(0);
   });
 });
 
@@ -249,9 +351,13 @@ describe("runMigrationDryRun", () => {
 
   it("reads live VariantDefinition[]/prices via priceService and does not write anything back", () => {
     setVariantDefinitions([
-      makeVariant({ key: "dry-a-10", categoryId: "dryCat", subcategoryPrefix: "dry-a-" }),
+      makeVariant({
+        key: "plakaty-dry-10",
+        categoryId: "plakaty-a4-a3",
+        subcategoryPrefix: "plakaty-dry-",
+      }),
     ]);
-    setPrice("defaultPrices", { "dry-a-10": 42 });
+    setPrice("defaultPrices", { "plakaty-dry-10": 42 });
 
     const before = { ...mockStorage };
     const report = runMigrationDryRun();

@@ -55,46 +55,62 @@ describe("getRenderableProducts", () => {
     resetPrices();
   });
 
-  it("collapses numeric-suffix tiers sharing a prefix into ONE interpolated product card", () => {
+  it("collapses numeric-suffix tiers sharing a prefix into ONE interpolated product card (plakaty-a4-a3)", () => {
     setVariantDefinitions([
-      makeVariant({ key: "cat-prefix-10", categoryId: "cat1", subcategoryPrefix: "cat-prefix-" }),
-      makeVariant({ key: "cat-prefix-5", categoryId: "cat1", subcategoryPrefix: "cat-prefix-" }),
-      makeVariant({ key: "cat-prefix-20", categoryId: "cat1", subcategoryPrefix: "cat-prefix-" }),
+      makeVariant({
+        key: "plakaty-prefix-10",
+        categoryId: "plakaty-a4-a3",
+        subcategoryPrefix: "plakaty-prefix-",
+      }),
+      makeVariant({
+        key: "plakaty-prefix-5",
+        categoryId: "plakaty-a4-a3",
+        subcategoryPrefix: "plakaty-prefix-",
+      }),
+      makeVariant({
+        key: "plakaty-prefix-20",
+        categoryId: "plakaty-a4-a3",
+        subcategoryPrefix: "plakaty-prefix-",
+      }),
     ]);
-    setPriceSubgroups({ cat1: { "cat-prefix-": "Grupa A" } });
-    setPrice("defaultPrices", { "cat-prefix-10": 100, "cat-prefix-5": 60, "cat-prefix-20": 150 });
+    setPriceSubgroups({ "plakaty-a4-a3": { "plakaty-prefix-": "Grupa A" } });
+    setPrice("defaultPrices", {
+      "plakaty-prefix-10": 100,
+      "plakaty-prefix-5": 60,
+      "plakaty-prefix-20": 150,
+    });
 
-    const products = getRenderableProducts("cat1");
+    const products = getRenderableProducts("plakaty-a4-a3");
 
     expect(products).toHaveLength(1);
     expect(products[0].label).toBe("Grupa A");
     expect(products[0].calcType).toBe("interpolated");
     expect(products[0].tiers).toEqual([
-      { key: "cat-prefix-5", qty: 5, price: 60 },
-      { key: "cat-prefix-10", qty: 10, price: 100 },
-      { key: "cat-prefix-20", qty: 20, price: 150 },
+      { key: "plakaty-prefix-5", qty: 5, price: 60 },
+      { key: "plakaty-prefix-10", qty: 10, price: 100 },
+      { key: "plakaty-prefix-20", qty: 20, price: 150 },
     ]);
   });
 
-  it("gives two DISTINCT product cards for two text-suffixed keys sharing one subgroup prefix — no more one-card-per-prefix", () => {
+  it("gives two DISTINCT product cards for two text-suffixed keys sharing one subgroup prefix (artykuly) — no more one-card-per-prefix", () => {
     setVariantDefinitions([
       makeVariant({
-        key: "cat11-teczka-niebieska",
-        categoryId: "cat11",
-        subcategoryPrefix: "cat11-teczka-",
+        key: "artykuly-teczka-niebieska",
+        categoryId: "artykuly",
+        subcategoryPrefix: "artykuly-teczka-",
         label: "Teczka niebieska",
       }),
       makeVariant({
-        key: "cat11-teczka-czerwona",
-        categoryId: "cat11",
-        subcategoryPrefix: "cat11-teczka-",
+        key: "artykuly-teczka-czerwona",
+        categoryId: "artykuly",
+        subcategoryPrefix: "artykuly-teczka-",
         label: "Teczka czerwona",
       }),
     ]);
-    setPriceSubgroups({ cat11: { "cat11-teczka-": "Teczki" } });
-    setPrice("defaultPrices", { "cat11-teczka-niebieska": 3.5, "cat11-teczka-czerwona": 4 });
+    setPriceSubgroups({ artykuly: { "artykuly-teczka-": "Teczki" } });
+    setPrice("defaultPrices", { "artykuly-teczka-niebieska": 3.5, "artykuly-teczka-czerwona": 4 });
 
-    const products = getRenderableProducts("cat11");
+    const products = getRenderableProducts("artykuly");
 
     expect(products).toHaveLength(2);
     const labels = products.map((p) => p.label).sort();
@@ -109,114 +125,135 @@ describe("getRenderableProducts", () => {
     expect(products[0].productId).not.toBe(products[1].productId);
   });
 
-  it("a text-suffixed (historical) key is not dropped — renders as a flat-per-unit product", () => {
+  it("a text-suffixed (historical) key in artykuly is not dropped — renders as a flat-per-unit product", () => {
     setVariantDefinitions([
       makeVariant({
-        key: "cat12-item-opis-slowny",
-        categoryId: "cat12",
-        subcategoryPrefix: "cat12-item-",
+        key: "artykuly-item-opis-slowny",
+        categoryId: "artykuly",
+        subcategoryPrefix: "artykuly-item-",
         label: "Stary produkt tekstowy",
       }),
     ]);
-    setPriceSubgroups({ cat12: { "cat12-item-": "Grupa" } });
-    setPrice("defaultPrices", { "cat12-item-opis-slowny": 12 });
+    setPriceSubgroups({ artykuly: { "artykuly-item-": "Grupa" } });
+    setPrice("defaultPrices", { "artykuly-item-opis-slowny": 12 });
 
-    const products = getRenderableProducts("cat12");
+    const products = getRenderableProducts("artykuly");
 
     expect(products).toHaveLength(1);
     expect(products[0].calcType).toBe("flat-per-unit");
-    expect(products[0].tiers).toEqual([{ key: "cat12-item-opis-slowny", qty: 1, price: 12 }]);
+    expect(products[0].tiers).toEqual([{ key: "artykuly-item-opis-slowny", qty: 1, price: 12 }]);
   });
 
-  it("returns multiple products sorted by (subgroup, label) using pl locale order", () => {
+  it("returns multiple flat-per-unit products sorted by (subgroup, label) using pl locale order (artykuly)", () => {
     setVariantDefinitions([
-      makeVariant({ key: "cat2-b-10", categoryId: "cat2", subcategoryPrefix: "cat2-b-" }),
-      makeVariant({ key: "cat2-a-10", categoryId: "cat2", subcategoryPrefix: "cat2-a-" }),
+      makeVariant({
+        key: "artykuly-b-zebra",
+        categoryId: "artykuly",
+        subcategoryPrefix: "artykuly-b-",
+        label: "Zebra",
+      }),
+      makeVariant({
+        key: "artykuly-a-alfa",
+        categoryId: "artykuly",
+        subcategoryPrefix: "artykuly-a-",
+        label: "Alfa",
+      }),
     ]);
     setPriceSubgroups({
-      cat2: { "cat2-b-": "Zebra", "cat2-a-": "Alfa" },
+      artykuly: { "artykuly-b-": "Grupa B", "artykuly-a-": "Grupa A" },
     });
-    setPrice("defaultPrices", { "cat2-b-10": 10, "cat2-a-10": 20 });
+    setPrice("defaultPrices", { "artykuly-b-zebra": 10, "artykuly-a-alfa": 20 });
 
-    const products = getRenderableProducts("cat2");
+    const products = getRenderableProducts("artykuly");
 
     expect(products.map((p) => p.label)).toEqual(["Alfa", "Zebra"]);
   });
 
-  it("excludes variants belonging to a different category", () => {
+  it("excludes variants belonging to a different (but also confirmed) category", () => {
     setVariantDefinitions([
-      makeVariant({ key: "cat3-prefix-10", categoryId: "cat3", subcategoryPrefix: "cat3-prefix-" }),
       makeVariant({
-        key: "other-prefix-10",
-        categoryId: "other",
-        subcategoryPrefix: "other-prefix-",
+        key: "artykuly-prefix-abc",
+        categoryId: "artykuly",
+        subcategoryPrefix: "artykuly-prefix-",
+      }),
+      makeVariant({
+        key: "uslugi-prefix-abc",
+        categoryId: "uslugi",
+        subcategoryPrefix: "uslugi-prefix-",
       }),
     ]);
     setPriceSubgroups({
-      cat3: { "cat3-prefix-": "Grupa" },
-      other: { "other-prefix-": "Inna grupa" },
+      artykuly: { "artykuly-prefix-": "Grupa" },
+      uslugi: { "uslugi-prefix-": "Inna grupa" },
     });
-    setPrice("defaultPrices", { "cat3-prefix-10": 10, "other-prefix-10": 20 });
+    setPrice("defaultPrices", { "artykuly-prefix-abc": 10, "uslugi-prefix-abc": 20 });
 
-    const products = getRenderableProducts("cat3");
+    const products = getRenderableProducts("artykuly");
 
     expect(products).toHaveLength(1);
-    expect(products[0].label).toBe("Grupa");
+    // flat-per-unit: .label is the product's own name (here the fixture
+    // default "Wariant"), NOT the subgroup — .subgroupLabel is the correct
+    // field to assert "this surviving product belongs to the right subgroup".
+    expect(products[0].subgroupLabel).toBe("Grupa");
   });
 
-  it("excludes variants with no matching price in defaultPrices", () => {
-    setVariantDefinitions([
-      makeVariant({ key: "cat4-prefix-10", categoryId: "cat4", subcategoryPrefix: "cat4-prefix-" }),
-    ]);
-    setPriceSubgroups({ cat4: { "cat4-prefix-": "Grupa" } });
-    setPrice("defaultPrices", {});
-
-    expect(getRenderableProducts("cat4")).toEqual([]);
-  });
-
-  it("excludes variants with visibleInCalculator set to false", () => {
+  it("excludes variants with no matching price in defaultPrices (plakaty-a4-a3)", () => {
     setVariantDefinitions([
       makeVariant({
-        key: "cat5-prefix-10",
-        categoryId: "cat5",
-        subcategoryPrefix: "cat5-prefix-",
+        key: "plakaty-prefix4-10",
+        categoryId: "plakaty-a4-a3",
+        subcategoryPrefix: "plakaty-prefix4-",
+      }),
+    ]);
+    setPriceSubgroups({ "plakaty-a4-a3": { "plakaty-prefix4-": "Grupa" } });
+    setPrice("defaultPrices", {});
+
+    expect(getRenderableProducts("plakaty-a4-a3")).toEqual([]);
+  });
+
+  it("excludes variants with visibleInCalculator set to false (plakaty-a4-a3)", () => {
+    setVariantDefinitions([
+      makeVariant({
+        key: "plakaty-prefix5-10",
+        categoryId: "plakaty-a4-a3",
+        subcategoryPrefix: "plakaty-prefix5-",
         visibleInCalculator: false,
       }),
     ]);
-    setPriceSubgroups({ cat5: { "cat5-prefix-": "Grupa" } });
-    setPrice("defaultPrices", { "cat5-prefix-10": 10 });
+    setPriceSubgroups({ "plakaty-a4-a3": { "plakaty-prefix5-": "Grupa" } });
+    setPrice("defaultPrices", { "plakaty-prefix5-10": 10 });
 
-    expect(getRenderableProducts("cat5")).toEqual([]);
+    expect(getRenderableProducts("plakaty-a4-a3")).toEqual([]);
   });
 
-  it("excludes variants with no resolvable label", () => {
+  it("excludes variants with no resolvable label (plakaty-a4-a3 — only calcType where an empty label is structurally possible)", () => {
     setVariantDefinitions([
       makeVariant({
-        key: "cat6-prefix-10",
-        categoryId: "cat6",
-        subcategoryPrefix: "cat6-prefix-",
+        key: "plakaty-prefix6-10",
+        categoryId: "plakaty-a4-a3",
+        subcategoryPrefix: "plakaty-prefix6-",
         subgroupLabel: "",
       }),
     ]);
     setPriceSubgroups({});
-    setPrice("defaultPrices", { "cat6-prefix-10": 10 });
+    setPrice("defaultPrices", { "plakaty-prefix6-10": 10 });
 
-    expect(getRenderableProducts("cat6")).toEqual([]);
+    expect(getRenderableProducts("plakaty-a4-a3")).toEqual([]);
   });
 
-  it("prefers the getPriceSubgroups() label over a stale variant.subgroupLabel", () => {
+  it("prefers the getPriceSubgroups() label over a stale variant.subgroupLabel (plakaty-a4-a3 — for flat-per-unit, product.label always wins over subgroupLabel, so this is only observable for interpolated)", () => {
     setVariantDefinitions([
       makeVariant({
-        key: "cat7-prefix-10",
-        categoryId: "cat7",
-        subcategoryPrefix: "cat7-prefix-",
+        key: "plakaty-prefix7-10",
+        categoryId: "plakaty-a4-a3",
+        subcategoryPrefix: "plakaty-prefix7-",
         subgroupLabel: "Stara",
       }),
     ]);
-    setPriceSubgroups({ cat7: { "cat7-prefix-": "Nowa" } });
-    setPrice("defaultPrices", { "cat7-prefix-10": 10 });
+    setPriceSubgroups({ "plakaty-a4-a3": { "plakaty-prefix7-": "Nowa" } });
+    setPrice("defaultPrices", { "plakaty-prefix7-10": 10 });
 
-    const products = getRenderableProducts("cat7");
+    const products = getRenderableProducts("plakaty-a4-a3");
 
     expect(products[0].label).toBe("Nowa");
   });
@@ -225,62 +262,88 @@ describe("getRenderableProducts", () => {
     setVariantDefinitions([
       makeVariant({
         key: "unrelated-key",
-        categoryId: "cat8",
-        subcategoryPrefix: "cat8-prefix-",
+        categoryId: "plakaty-a4-a3",
+        subcategoryPrefix: "plakaty-prefix8-",
       }),
     ]);
-    setPriceSubgroups({ cat8: { "cat8-prefix-": "Grupa" } });
+    setPriceSubgroups({ "plakaty-a4-a3": { "plakaty-prefix8-": "Grupa" } });
     setPrice("defaultPrices", { "unrelated-key": 10 });
 
-    expect(getRenderableProducts("cat8")).toEqual([]);
+    expect(getRenderableProducts("plakaty-a4-a3")).toEqual([]);
   });
 
-  it("a needs-review cluster (mixed numeric/text suffixes under one prefix) is never rendered by the new path", () => {
+  it("in an interpolated category (plakaty-a4-a3), a cluster mixing numeric and text suffixes under one prefix is needs-review and never rendered", () => {
     setVariantDefinitions([
-      makeVariant({ key: "cat9-prefix-0", categoryId: "cat9", subcategoryPrefix: "cat9-prefix-" }),
       makeVariant({
-        key: "cat9-prefix-abc",
-        categoryId: "cat9",
-        subcategoryPrefix: "cat9-prefix-",
+        key: "plakaty-prefix9-0",
+        categoryId: "plakaty-a4-a3",
+        subcategoryPrefix: "plakaty-prefix9-",
+      }),
+      makeVariant({
+        key: "plakaty-prefix9-abc",
+        categoryId: "plakaty-a4-a3",
+        subcategoryPrefix: "plakaty-prefix9-",
       }),
     ]);
-    setPriceSubgroups({ cat9: { "cat9-prefix-": "Grupa" } });
-    setPrice("defaultPrices", { "cat9-prefix-0": 10, "cat9-prefix-abc": 20 });
+    setPriceSubgroups({ "plakaty-a4-a3": { "plakaty-prefix9-": "Grupa" } });
+    setPrice("defaultPrices", { "plakaty-prefix9-0": 10, "plakaty-prefix9-abc": 20 });
 
-    expect(getRenderableProducts("cat9")).toEqual([]);
+    expect(getRenderableProducts("plakaty-a4-a3")).toEqual([]);
   });
 
-  it("excludes an interpolated tier with qty <= 0, dropping the product if nothing valid remains", () => {
+  it("BEHAVIOR CHANGE vs Etap 2: in artykuly, the SAME mixed-suffix pattern is NOT an ambiguity — renders as two independent flat-per-unit cards, not needs-review", () => {
     setVariantDefinitions([
       makeVariant({
-        key: "cat13-prefix-0",
-        categoryId: "cat13",
-        subcategoryPrefix: "cat13-prefix-",
+        key: "artykuly-prefix9-0",
+        categoryId: "artykuly",
+        subcategoryPrefix: "artykuly-prefix9-",
+      }),
+      makeVariant({
+        key: "artykuly-prefix9-abc",
+        categoryId: "artykuly",
+        subcategoryPrefix: "artykuly-prefix9-",
       }),
     ]);
-    setPriceSubgroups({ cat13: { "cat13-prefix-": "Grupa" } });
-    setPrice("defaultPrices", { "cat13-prefix-0": 10 });
+    setPriceSubgroups({ artykuly: { "artykuly-prefix9-": "Grupa" } });
+    setPrice("defaultPrices", { "artykuly-prefix9-0": 10, "artykuly-prefix9-abc": 20 });
 
-    expect(getRenderableProducts("cat13")).toEqual([]);
+    const products = getRenderableProducts("artykuly");
+
+    expect(products).toHaveLength(2);
+    expect(products.every((p) => p.calcType === "flat-per-unit")).toBe(true);
   });
 
-  it("omits a prefix entirely when every one of its variants gets filtered out", () => {
+  it("excludes an interpolated tier with qty <= 0, dropping the product if nothing valid remains (plakaty-a4-a3)", () => {
     setVariantDefinitions([
       makeVariant({
-        key: "cat10-prefix-10",
-        categoryId: "cat10",
-        subcategoryPrefix: "cat10-prefix-",
-      }),
-      makeVariant({
-        key: "cat10-prefix-20",
-        categoryId: "cat10",
-        subcategoryPrefix: "cat10-prefix-",
+        key: "plakaty-prefix13-0",
+        categoryId: "plakaty-a4-a3",
+        subcategoryPrefix: "plakaty-prefix13-",
       }),
     ]);
-    setPriceSubgroups({ cat10: { "cat10-prefix-": "Grupa" } });
+    setPriceSubgroups({ "plakaty-a4-a3": { "plakaty-prefix13-": "Grupa" } });
+    setPrice("defaultPrices", { "plakaty-prefix13-0": 10 });
+
+    expect(getRenderableProducts("plakaty-a4-a3")).toEqual([]);
+  });
+
+  it("omits a prefix entirely when every one of its variants gets filtered out (plakaty-a4-a3, no price)", () => {
+    setVariantDefinitions([
+      makeVariant({
+        key: "plakaty-prefix10-10",
+        categoryId: "plakaty-a4-a3",
+        subcategoryPrefix: "plakaty-prefix10-",
+      }),
+      makeVariant({
+        key: "plakaty-prefix10-20",
+        categoryId: "plakaty-a4-a3",
+        subcategoryPrefix: "plakaty-prefix10-",
+      }),
+    ]);
+    setPriceSubgroups({ "plakaty-a4-a3": { "plakaty-prefix10-": "Grupa" } });
     setPrice("defaultPrices", {});
 
-    expect(getRenderableProducts("cat10")).toEqual([]);
+    expect(getRenderableProducts("plakaty-a4-a3")).toEqual([]);
   });
 });
 

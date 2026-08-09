@@ -8,30 +8,46 @@
  *
  * Category -> Subgroup -> Product -> PriceEntry (tier or single flat entry).
  *
- * Grouping rule (why a (categoryId, subcategoryPrefix) cluster becomes ONE
- * product with many PriceEntry tiers, or MANY one-entry products):
+ * calcType is determined by CATEGORY IDENTITY, never by the shape of a
+ * price key's suffix. An earlier version of this module treated a pure
+ * numeric suffix as universal proof of "quantity tier" — that was wrong: the
+ * "Dodaj wariant" form's isCustomSubgroupSelection() forces quantity-mode
+ * key building (buildUniqueQuantityKey, numeric suffix) for a NEW custom
+ * subgroup in ANY category, including artykuly/uslugi, even though neither
+ * category's rendering has any quantity-tier concept (see
+ * legacyFlowCharacterization.test.ts — always price * quantity per
+ * individual product). A numeric-suffixed artykuly/uslugi key is real, but
+ * it is not a tier. See Krok 0 (resolveUseQtyMode in ustawienia.ts) for the
+ * write-side fix to the same root cause.
  *
- * The only mechanism live in production today (dynamicSubgroups.ts,
- * getDynamicSubgroups) treats a variant as a quantity tier exactly when its
- * key's suffix after subcategoryPrefix is a positive integer, and groups all
- * such tiers sharing one subcategoryPrefix into a single card. This module
- * formalizes that exact rule instead of inventing a new one — a suffix that
- * is a pure positive integer means "this key is a qty tier of the ONE
- * product this prefix represents" (matches today's plakaty-a4-a3 behavior,
- * where one custom subgroup has only ever produced one product). A suffix
- * that is not a pure integer means "this key is its own distinct product"
- * (matches today's artykuly/uslugi flat behavior — see
- * legacyFlowCharacterization.test.ts for the price*qty evidence backing
- * calcType: "flat-per-unit").
- *
- * If a single (categoryId, subcategoryPrefix) cluster contains BOTH integer
- * and non-integer suffixes, or the variants that would collapse into one
- * interpolated product disagree on label/subgroupLabel/visibility, there is
- * no safe deterministic single product to reconstruct — every variant in
- * that cluster is reported as needsReview and nothing is migrated for it.
+ * - isQtyTieredSubgroupCategory() (variantKeys.ts — the same source of
+ *   truth the write-side form now uses) => "interpolated". Today only
+ *   plakaty-a4-a3: the sole category where a custom subgroup's rendering
+ *   (dynamicSubgroups.ts) actually interpolates between quantity tiers, and
+ *   the sole category whose custom-subgroup keys are guaranteed numeric by
+ *   construction. Within an interpolated category, EVERY key in a
+ *   (categoryId, subcategoryPrefix) cluster is expected to carry a pure
+ *   positive-integer suffix (a real qty tier of the one product that prefix
+ *   represents); any key that doesn't is anomalous and the whole cluster is
+ *   reported as needsReview rather than guessed.
+ * - FLAT_PER_UNIT_CONFIRMED_CATEGORIES (artykuly, uslugi) => "flat-per-unit"
+ *   for every variant, regardless of suffix shape — each key is its own
+ *   distinct product (evidence: legacyFlowCharacterization.test.ts).
+ * - Any other category has no confirmed calcType evidence (no live renderer,
+ *   no characterized legacy flow) — its variants are reported as skipped,
+ *   never migrated and never guessed at.
  */
 import { getVariantDefinitions, type VariantDefinition } from "../services/priceService";
 import { getDefaultPricesMap } from "./compat";
+import { isQtyTieredSubgroupCategory } from "./variantKeys";
+
+/**
+ * Evidence-confirmed by legacyFlowCharacterization.test.ts: every custom
+ * product in these categories is billed price * quantity per key, with no
+ * quantity-tier concept anywhere in their rendering — independent of
+ * whether a given key's suffix happens to look numeric or not.
+ */
+const FLAT_PER_UNIT_CONFIRMED_CATEGORIES: ReadonlySet<string> = new Set(["artykuly", "uslugi"]);
 
 export type ProductCalcType = "interpolated" | "flat-per-unit" | "flat-rate";
 export type ProductStatus = "published" | "needs-review";
@@ -151,6 +167,8 @@ export function classifyVariantsIntoProducts(
   for (const categoryId of categoryIds) {
     const byPrefix = byCategory.get(categoryId)!;
     const prefixes = [...byPrefix.keys()].sort();
+    const isInterpolatedCategory = isQtyTieredSubgroupCategory(categoryId);
+    const isFlatPerUnitCategory = FLAT_PER_UNIT_CONFIRMED_CATEGORIES.has(categoryId);
 
     for (const subcategoryPrefix of prefixes) {
       const clusterVariants = [...byPrefix.get(subcategoryPrefix)!].sort((a, b) =>
@@ -166,12 +184,8 @@ export function classifyVariantsIntoProducts(
         continue;
       }
 
-      const suffixes = clusterVariants.map((v) => ({
-        variant: v,
-        suffix: qtySuffix(v.key, subcategoryPrefix),
-      }));
-
-      if (suffixes.some((s) => s.suffix === null)) {
+      const malformedKeys = clusterVariants.filter((v) => !v.key.startsWith(subcategoryPrefix));
+      if (malformedKeys.length > 0) {
         needsReview.push({
           categoryId,
           subcategoryPrefix,
@@ -181,21 +195,29 @@ export function classifyVariantsIntoProducts(
         continue;
       }
 
-      const integerSuffixed = suffixes.filter((s) => isPureIntegerSuffix(s.suffix!));
-      const textSuffixed = suffixes.filter((s) => !isPureIntegerSuffix(s.suffix!));
-
-      if (integerSuffixed.length > 0 && textSuffixed.length > 0) {
-        needsReview.push({
+      if (!isInterpolatedCategory && !isFlatPerUnitCategory) {
+        skipped.push({
           categoryId,
           subcategoryPrefix,
-          keys: clusterVariants.map((v) => v.key),
           reason:
-            "cluster mixes numeric-suffix (quantity tier) and text-suffix (distinct product) keys under one prefix — cannot deterministically decide whether this is one interpolated product or several flat products",
+            "no confirmed calcType evidence for this category (not plakaty-a4-a3, artykuly, or uslugi)",
         });
         continue;
       }
 
-      if (integerSuffixed.length > 0) {
+      if (isInterpolatedCategory) {
+        const suffixes = clusterVariants.map((v) => qtySuffix(v.key, subcategoryPrefix)!);
+        if (suffixes.some((s) => !isPureIntegerSuffix(s))) {
+          needsReview.push({
+            categoryId,
+            subcategoryPrefix,
+            keys: clusterVariants.map((v) => v.key),
+            reason:
+              "this category's custom subgroups are expected to be quantity-tiered (pure-integer key suffix); found a key that isn't — cannot assume it's a tier without guessing",
+          });
+          continue;
+        }
+
         const labels = new Set(clusterVariants.map((v) => v.subgroupLabel || ""));
         const visibility = new Set(clusterVariants.map((v) => v.visibleInCalculator !== false));
         if (labels.size > 1 || visibility.size > 1) {
@@ -220,21 +242,20 @@ export function classifyVariantsIntoProducts(
           calcType: "interpolated",
           status: "published",
           visibleInCalculator: clusterVariants[0].visibleInCalculator !== false,
-          entries: integerSuffixed
-            .map(({ variant, suffix }) => ({
+          entries: clusterVariants
+            .map((variant, i) => ({
               key: variant.key,
-              qty: Number.parseInt(suffix!, 10),
+              qty: Number.parseInt(suffixes[i], 10),
               price: priceFor(prices, variant.key),
             }))
-            .sort((a, b) => a.qty! - b.qty!),
+            .sort((a, b) => a.qty - b.qty),
         });
         continue;
       }
 
-      // Every remaining variant in this cluster has a text (non-integer) suffix:
-      // each key is its own distinct flat-per-unit product (see module doc —
-      // evidence in legacyFlowCharacterization.test.ts).
-      for (const { variant } of textSuffixed) {
+      // isFlatPerUnitCategory: every key is its own distinct product,
+      // regardless of its suffix shape (see module doc).
+      for (const variant of clusterVariants) {
         migrated.push({
           productId: flatProductIdFor(categoryId, variant.key),
           subgroupId: subgroupIdFor(categoryId, subcategoryPrefix),
