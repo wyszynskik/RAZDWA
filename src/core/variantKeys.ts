@@ -61,6 +61,29 @@ export function isQuantityBasedCategory(categoryId: string): boolean {
 }
 
 /**
+ * Categories whose ADMIN-CREATED CUSTOM SUBGROUPS ("Nowa podkategoria…" in
+ * Ustawienia) are quantity-tiered — i.e. the price key's numeric suffix is a
+ * real quantity threshold, not an incidental artifact of the form. Today
+ * that is plakaty-a4-a3 only: it is the sole category where a custom
+ * subgroup's rendering (dynamicSubgroups.ts) actually interpolates between
+ * quantity tiers.
+ *
+ * This is deliberately NOT the same thing as isCustomSubgroupSelection()
+ * being true — that only means "the selected prefix is an admin-created
+ * subgroup for this category," true for artykuly/uslugi too. Before this
+ * set existed, the "Dodaj wariant" form asked for a quantity on every new
+ * custom subgroup regardless of category, so a new artykuly/uslugi
+ * subgroup entry got a numeric-suffixed key that looked like a quantity
+ * tier but was never treated as one anywhere in their (flat, price*qty)
+ * rendering — a real customer-facing bug (see ustawienia.test.ts).
+ */
+export const QTY_TIERED_SUBGROUP_CATEGORIES: ReadonlySet<string> = new Set(["plakaty-a4-a3"]);
+
+export function isQtyTieredSubgroupCategory(categoryId: string): boolean {
+  return QTY_TIERED_SUBGROUP_CATEGORIES.has(categoryId);
+}
+
+/**
  * Builds a deterministic base key for quantity-based categories.
  * qty – raw quantity value, e.g. "100" or "51-1000" (broszury range).
  */

@@ -14,6 +14,7 @@ import {
   buildUniqueSubgroupPrefix,
   findVariantBySignature,
   isQuantityBasedCategory,
+  isQtyTieredSubgroupCategory,
 } from "../../core/variantKeys";
 import {
   getPrice,
@@ -72,6 +73,31 @@ const CUSTOM_PREFIX_VALUE = "__custom_prefix__";
 function isCustomSubgroupSelection(categoryId: string, selectedPrefixValue: string): boolean {
   if (selectedPrefixValue === CUSTOM_PREFIX_VALUE) return true;
   return Boolean(customPriceSubgroups[categoryId]?.[selectedPrefixValue]);
+}
+
+/**
+ * Single source of truth for whether the "Dodaj wariant" form should run in
+ * quantity mode (show/require an "ilość" field, build a qty-tiered key) vs
+ * name mode (show/require a "nazwa produktu" field, build a label-based
+ * key). Previously this exact boolean formula was duplicated inline in
+ * three places (DOM field toggling, key-preview, submit validation) with a
+ * bug shared by all three: isCustomSubgroupSelection() is true for a new
+ * admin-created subgroup in ANY category, including artykuly/uslugi, whose
+ * rendering has no quantity-tier concept at all (see
+ * legacyFlowCharacterization.test.ts) — so creating a new custom artykuly/
+ * uslugi subgroup wrongly asked the admin for a quantity instead of a
+ * product name. isQtyTieredSubgroupCategory() narrows "is a custom
+ * subgroup" down to "is a custom subgroup in a category whose custom
+ * subgroups are actually quantity-tiered" (today: plakaty-a4-a3 only).
+ *
+ * Exported for unit tests only — not part of this module's public API for
+ * other views.
+ */
+export function resolveUseQtyMode(categoryId: string, isCustomSubgroupSelected: boolean): boolean {
+  return (
+    isQuantityBasedCategory(categoryId) ||
+    (isCustomSubgroupSelected && isQtyTieredSubgroupCategory(categoryId))
+  );
 }
 
 /**
@@ -2434,9 +2460,10 @@ export const UstawieniaView: View = {
       const labelDescEl = container.querySelector<HTMLElement>("#new-price-label-desc");
       if (qtyWrapper) {
         const chosenCatId = addCategorySelect.value;
-        const isQtyBased =
-          isQuantityBasedCategory(chosenCatId) ||
-          isCustomSubgroupSelection(chosenCatId, addPrefixSelect.value);
+        const isQtyBased = resolveUseQtyMode(
+          chosenCatId,
+          isCustomSubgroupSelection(chosenCatId, addPrefixSelect.value)
+        );
         qtyWrapper.style.display = isQtyBased ? "" : "none";
         if (!isQtyBased && qtyInput) qtyInput.value = "";
 
@@ -3384,8 +3411,10 @@ export const UstawieniaView: View = {
 
       let preview: string;
       if (
-        isQuantityBasedCategory(chosenCategoryId) ||
-        isCustomSubgroupSelection(chosenCategoryId, selectedPrefix)
+        resolveUseQtyMode(
+          chosenCategoryId,
+          isCustomSubgroupSelection(chosenCategoryId, selectedPrefix)
+        )
       ) {
         if (!qty) {
           if (previewWrap) previewWrap.style.display = "none";
@@ -3451,9 +3480,10 @@ export const UstawieniaView: View = {
 
       const qtyValue = addQtyInput?.value.trim() || "";
 
-      const useQtyMode =
-        isQuantityBasedCategory(chosenCategoryId) ||
-        isCustomSubgroupSelection(chosenCategoryId, selectedPrefix);
+      const useQtyMode = resolveUseQtyMode(
+        chosenCategoryId,
+        isCustomSubgroupSelection(chosenCategoryId, selectedPrefix)
+      );
 
       if (useQtyMode) {
         if (!qtyValue) {
