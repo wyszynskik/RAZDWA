@@ -33,6 +33,7 @@ import {
 } from "../core/draftSession";
 import { isAdminSession, clearAdminSession } from "../core/adminSession";
 import { CartItem, CustomerData } from "../core/types";
+import { buildLegacyBasketCartItem } from "../core/legacyCartAdapter";
 import { downloadExcel } from "./excel";
 import {
   buildOrderExportPayload,
@@ -1040,6 +1041,11 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   });
 
+  // SYNCHRONIZED COPY: a duplicate of this function also lives in
+  // src/core/legacyCartAdapter.ts (buildLegacyBasketCartItem's private
+  // helper), kept there deliberately unimported to avoid coupling that
+  // pure module to this file. If the EXPRESS-tag logic changes here,
+  // update the copy there too.
   function normalizeExpressHint(hint: string, isExpress: boolean): string {
     const hasTag = /\bEXPRESS\b/i.test(hint);
     if (isExpress && !hasTag) return hint ? hint + ", EXPRESS" : "EXPRESS";
@@ -1131,23 +1137,7 @@ document.addEventListener("DOMContentLoaded", () => {
       },
     },
     addToBasket: (item) => {
-      const isExpress = globalExpress.checked;
-      const rate = isExpress ? getExpressRate() : undefined;
-      const cartItem: CartItem = {
-        id: `${item.category}-${Date.now()}`,
-        category: item.category,
-        name: item.category,
-        quantity: 1,
-        unit: "szt",
-        unitPrice: rate != null ? parseFloat((item.price * (1 + rate)).toFixed(2)) : item.price,
-        isExpress,
-        ...(rate != null && { expressRate: rate }),
-        baseUnitPrice: item.price,
-        baseTotalPrice: item.price,
-        totalPrice: rate != null ? parseFloat((item.price * (1 + rate)).toFixed(2)) : item.price,
-        optionsHint: normalizeExpressHint(item.description, isExpress),
-        payload: { originalPrice: item.price, description: item.description },
-      };
+      const cartItem = buildLegacyBasketCartItem(item, globalExpress.checked, getExpressRate());
       if (!isAcceptableItemPrice(cartItem.unitPrice, cartItem.totalPrice)) {
         rejectInvalidItemPrice(cartItem.category);
         return;
