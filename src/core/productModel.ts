@@ -40,6 +40,7 @@
 import { getVariantDefinitions, type VariantDefinition } from "../services/priceService";
 import { getDefaultPricesMap } from "./compat";
 import { isQtyTieredSubgroupCategory } from "./variantKeys";
+import type { OrphanedPriceKey } from "./orphanedPriceKeys";
 
 /**
  * Evidence-confirmed by legacyFlowCharacterization.test.ts: every custom
@@ -292,19 +293,56 @@ export function runMigrationDryRun(): MigrationReport {
   return classifyVariantsIntoProducts(getVariantDefinitions(), getDefaultPricesMap());
 }
 
-export function formatMigrationSummary(report: MigrationReport): string {
-  const lines: string[] = [
+export interface MigrationSummaryOptions {
+  /** Total keys in defaultPrices, for the "total price keys" line. Omit to skip that line. */
+  totalPriceKeys?: number;
+  /** Total entries in VariantDefinition[], for the "VariantDefinition[]" line. Omit to skip that line. */
+  totalVariants?: number;
+  /** From findOrphanedPriceKeys() (orphanedPriceKeys.ts) — WBS 3. Omit to skip the orphan section entirely. */
+  orphanedPriceKeys?: OrphanedPriceKey[];
+}
+
+/**
+ * Backward compatible: calling with no `options` (or omitting a given
+ * field) produces exactly the original report shape — each new section is
+ * only printed when its data is actually supplied, so this never silently
+ * shows "0" for a count nobody computed.
+ */
+export function formatMigrationSummary(
+  report: MigrationReport,
+  options: MigrationSummaryOptions = {}
+): string {
+  const lines: string[] = [];
+
+  if (options.totalPriceKeys !== undefined) {
+    lines.push(`Wszystkie price keys (defaultPrices): ${options.totalPriceKeys}`);
+  }
+  if (options.totalVariants !== undefined) {
+    lines.push(`VariantDefinition[]: ${options.totalVariants}`);
+  }
+
+  lines.push(
     `Zmigrowane produkty: ${report.migrated.length}`,
     `  interpolated: ${report.migrated.filter((p) => p.calcType === "interpolated").length}`,
     `  flat-per-unit: ${report.migrated.filter((p) => p.calcType === "flat-per-unit").length}`,
     `  flat-rate: ${report.migrated.filter((p) => p.calcType === "flat-rate").length}`,
     `Pominięte klastry: ${report.skipped.length}`,
-    `Wymagające przeglądu (needs-review): ${report.needsReview.length}`,
-  ];
+    `Wymagające przeglądu (needs-review): ${report.needsReview.length}`
+  );
   for (const nr of report.needsReview) {
     lines.push(
       `  - ${nr.categoryId}/${nr.subcategoryPrefix} (${nr.keys.length} kluczy): ${nr.reason}`
     );
   }
+
+  if (options.orphanedPriceKeys !== undefined) {
+    const orphans = options.orphanedPriceKeys;
+    const renderedToday = orphans.filter((o) => o.legacyFallbackRenders).length;
+    lines.push(
+      `Osierocone klucze cen (orphaned-price-key): ${orphans.length}`,
+      `  z tego renderowane dziś (legacy): ${renderedToday}`
+    );
+  }
+
   return lines.join("\n");
 }

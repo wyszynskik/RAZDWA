@@ -3,8 +3,11 @@ import {
   classifyVariantsIntoProducts,
   runMigrationDryRun,
   subgroupIdFor,
+  formatMigrationSummary,
   type Product,
+  type MigrationReport,
 } from "../src/core/productModel";
+import type { OrphanedPriceKey } from "../src/core/orphanedPriceKeys";
 import {
   setVariantDefinitions,
   setPrice,
@@ -366,5 +369,106 @@ describe("runMigrationDryRun", () => {
     expect(report.migrated).toHaveLength(1);
     expect(report.migrated[0].entries[0].price).toBe(42);
     expect(after).toEqual(before);
+  });
+});
+
+describe("formatMigrationSummary", () => {
+  const baseReport: MigrationReport = classifyVariantsIntoProducts(
+    [
+      makeVariant({
+        key: "plakaty-sum-10",
+        categoryId: "plakaty-a4-a3",
+        subcategoryPrefix: "plakaty-sum-",
+      }),
+      makeVariant({
+        key: "artykuly-sum-a",
+        categoryId: "artykuly",
+        subcategoryPrefix: "artykuly-sum-",
+      }),
+    ],
+    { "plakaty-sum-10": 10, "artykuly-sum-a": 5 }
+  );
+
+  it("with no options: produces exactly the original report-only format (backward compatible)", () => {
+    const summary = formatMigrationSummary(baseReport);
+
+    expect(summary).toBe(
+      [
+        "Zmigrowane produkty: 2",
+        "  interpolated: 1",
+        "  flat-per-unit: 1",
+        "  flat-rate: 0",
+        "Pominięte klastry: 0",
+        "Wymagające przeglądu (needs-review): 0",
+      ].join("\n")
+    );
+  });
+
+  it("includes totalPriceKeys/totalVariants lines only when supplied", () => {
+    const withTotals = formatMigrationSummary(baseReport, {
+      totalPriceKeys: 120,
+      totalVariants: 8,
+    });
+
+    expect(withTotals).toContain("Wszystkie price keys (defaultPrices): 120");
+    expect(withTotals).toContain("VariantDefinition[]: 8");
+
+    const withoutTotals = formatMigrationSummary(baseReport);
+    expect(withoutTotals).not.toContain("price keys");
+    expect(withoutTotals).not.toContain("VariantDefinition[]");
+  });
+
+  it("includes orphaned-price-key counts, split by legacyFallbackRenders, only on fixture data", () => {
+    const orphans: OrphanedPriceKey[] = [
+      {
+        categoryId: "artykuly",
+        matchedPrefix: "artykuly-",
+        key: "artykuly-orphan-z-cena",
+        price: 9.99,
+        reason: "no-variant-definition",
+        legacyFallbackRenders: true,
+      },
+      {
+        categoryId: "uslugi",
+        matchedPrefix: "uslugi-",
+        key: "uslugi-orphan-bez-ceny",
+        price: null,
+        reason: "no-variant-definition",
+        legacyFallbackRenders: false,
+      },
+    ];
+
+    const summary = formatMigrationSummary(baseReport, { orphanedPriceKeys: orphans });
+
+    expect(summary).toContain("Osierocone klucze cen (orphaned-price-key): 2");
+    expect(summary).toContain("z tego renderowane dziś (legacy): 1");
+  });
+
+  it("omits the orphan section entirely when orphanedPriceKeys is not supplied", () => {
+    const summary = formatMigrationSummary(baseReport);
+    expect(summary).not.toContain("Osierocone klucze cen");
+  });
+
+  it("combines all sections in one summary when all options are supplied", () => {
+    const summary = formatMigrationSummary(baseReport, {
+      totalPriceKeys: 50,
+      totalVariants: 4,
+      orphanedPriceKeys: [
+        {
+          categoryId: "artykuly",
+          matchedPrefix: "artykuly-",
+          key: "artykuly-x",
+          price: 1,
+          reason: "no-variant-definition",
+          legacyFallbackRenders: true,
+        },
+      ],
+    });
+
+    expect(summary).toContain("Wszystkie price keys (defaultPrices): 50");
+    expect(summary).toContain("VariantDefinition[]: 4");
+    expect(summary).toContain("Zmigrowane produkty: 2");
+    expect(summary).toContain("Osierocone klucze cen (orphaned-price-key): 1");
+    expect(summary).toContain("z tego renderowane dziś (legacy): 1");
   });
 });
