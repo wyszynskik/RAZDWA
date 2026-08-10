@@ -15,6 +15,7 @@ import {
   findVariantBySignature,
   isQuantityBasedCategory,
   isQtyTieredSubgroupCategory,
+  normalizePricePrefix,
 } from "../../core/variantKeys";
 import {
   getPrice,
@@ -98,6 +99,25 @@ export function resolveUseQtyMode(categoryId: string, isCustomSubgroupSelected: 
     isQuantityBasedCategory(categoryId) ||
     (isCustomSubgroupSelected && isQtyTieredSubgroupCategory(categoryId))
   );
+}
+
+/**
+ * Base prefix for a brand-new, INDEPENDENT custom subgroup ("Nowa,
+ * niezależna podkategoria…") — derived only from the category id, never
+ * from whatever prefix the admin had selected before switching to this
+ * option. Fixes an incident where the previous mechanism (lastBasePrefix,
+ * falling back to category.newKeyPrefix) leaked a specific, unrelated
+ * product's prefix into a brand-new subgroup's key — e.g. plakaty-a4-a3's
+ * newKeyPrefix is "plakaty-maly-canon-" (a specific hardcoded product, not
+ * a neutral category root), so even the old fallback chain would have
+ * nested "maly-canon" into an independent subgroup's prefix, not just
+ * lastBasePrefix.
+ *
+ * Exported for unit tests only — not part of this module's public API for
+ * other views.
+ */
+export function resolveNewSubgroupBasePrefix(categoryId: string): string {
+  return normalizePricePrefix(categoryId);
 }
 
 /**
@@ -458,7 +478,7 @@ function getAddablePrefixOptions(category: PriceCategory): PrefixOption[] {
 
   if (DYNAMIC_SUBGROUP_CATEGORIES.has(category.id)) {
     options.push(...getCustomSubgroupDefinitions(category.id));
-    options.push({ value: CUSTOM_PREFIX_VALUE, label: "Nowa podkategoria…" });
+    options.push({ value: CUSTOM_PREFIX_VALUE, label: "Nowa, niezależna podkategoria…" });
   }
   return options;
 }
@@ -2267,7 +2287,6 @@ export const UstawieniaView: View = {
 
     let renderedCategories = getRenderedCategories(prices);
     let activeCategory = renderedCategories[0]?.id ?? "druk-a4-a3";
-    let lastBasePrefix = "";
 
     function getActiveCategory(): PriceCategory {
       return (
@@ -2441,10 +2460,6 @@ export const UstawieniaView: View = {
         ? previousPrefix
         : (prefixOptions[0]?.value ?? "");
       addPrefixSelect.value = nextPrefix;
-
-      if (nextPrefix !== CUSTOM_PREFIX_VALUE) {
-        lastBasePrefix = nextPrefix || lastBasePrefix;
-      }
 
       const subgroupWrapper = container.querySelector<HTMLElement>("#new-subgroup-wrapper");
       if (subgroupWrapper) {
@@ -3399,10 +3414,8 @@ export const UstawieniaView: View = {
           if (previewWrap) previewWrap.style.display = "none";
           return;
         }
-        const basePrefix =
-          lastBasePrefix || chosenCategory.newKeyPrefix || chosenCategory.prefixes[0] || "nowa-";
         chosenPrefix = buildUniqueSubgroupPrefix(
-          basePrefix,
+          resolveNewSubgroupBasePrefix(chosenCategory.id),
           subgroupName,
           prices,
           customPriceSubgroups[chosenCategory.id] ?? {}
@@ -3442,9 +3455,6 @@ export const UstawieniaView: View = {
     });
 
     addPrefixSelect?.addEventListener("change", () => {
-      if (addPrefixSelect.value !== CUSTOM_PREFIX_VALUE) {
-        lastBasePrefix = addPrefixSelect.value;
-      }
       const subgroupWrapper = container.querySelector<HTMLElement>("#new-subgroup-wrapper");
       if (subgroupWrapper) {
         const isCustom = addPrefixSelect.value === CUSTOM_PREFIX_VALUE;
@@ -3565,10 +3575,8 @@ export const UstawieniaView: View = {
           addSubgroupInput?.focus();
           return;
         }
-        const basePrefix =
-          lastBasePrefix || chosenCategory.newKeyPrefix || chosenCategory.prefixes[0] || "nowa-";
         chosenPrefix = buildUniqueSubgroupPrefix(
-          basePrefix,
+          resolveNewSubgroupBasePrefix(chosenCategory.id),
           subgroupName,
           prices,
           customPriceSubgroups[chosenCategory.id] ?? {}
@@ -3658,7 +3666,6 @@ export const UstawieniaView: View = {
       // dostałby ponownie CUSTOM_PREFIX_VALUE i wygenerowałby "-2", "-3"...).
       if (addPrefixSelect && selectedPrefix === CUSTOM_PREFIX_VALUE) {
         addPrefixSelect.value = chosenPrefix;
-        lastBasePrefix = chosenPrefix;
       }
 
       renderTabs();
