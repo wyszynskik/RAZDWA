@@ -3455,14 +3455,17 @@ export const UstawieniaView: View = {
     });
 
     addPrefixSelect?.addEventListener("change", () => {
-      const subgroupWrapper = container.querySelector<HTMLElement>("#new-subgroup-wrapper");
-      if (subgroupWrapper) {
-        const isCustom = addPrefixSelect.value === CUSTOM_PREFIX_VALUE;
-        subgroupWrapper.style.display = isCustom ? "" : "none";
-        if (!isCustom && addSubgroupInput) {
-          addSubgroupInput.value = "";
-        }
-      }
+      // Was a duplicate, partial copy of syncAddCategorySelection() that
+      // only toggled #new-subgroup-wrapper and never re-synced
+      // #new-price-qty-wrapper — so selecting an existing custom subgroup
+      // prefix (or switching between prefixes generally) never re-showed
+      // the "Ilość" field, even though submit-time validation correctly
+      // required it. Calling the canonical sync function here fixes that
+      // and removes the duplicate implementation so the two can't drift
+      // apart again. Safe: previousPrefix stays selected after the
+      // options rebuild (it's still in the freshly generated list), and
+      // programmatic .value assignment doesn't re-fire "change".
+      syncAddCategorySelection();
       updateKeyPreview();
     });
 
