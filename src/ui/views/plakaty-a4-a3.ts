@@ -637,7 +637,8 @@ export const PlakatyA4A3View: View = {
         legendEl ?? resultBox,
         "plakaty-a4-a3",
         "Plakaty A4-A3",
-        ctx
+        ctx,
+        legendEl ? "beforebegin" : "afterend"
       );
     };
     renderDynamicSubgroups();
