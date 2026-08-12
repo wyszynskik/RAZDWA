@@ -213,6 +213,50 @@ export function buildCartItem(
   };
 }
 
+/**
+ * Human-readable pricing block built from the product's own tier data — no
+ * new data model, just a richer presentation of what the admin already
+ * defined. interpolated → full quantity→price ladder; flat-per-unit → a
+ * single per-piece price; flat-rate → one fixed price.
+ */
+function renderPriceInfoHtml(product: RenderableProduct): string {
+  if (product.calcType === "flat-rate") {
+    const price = product.tiers[0]?.price ?? 0;
+    return `
+      <div class="dyn-price-info" style="margin:0 0 10px 0; font-size:14px; color:#334155;">
+        Cena: <strong>${formatPLN(price)}</strong> (ryczałt)
+      </div>
+    `;
+  }
+
+  if (product.calcType === "flat-per-unit") {
+    const price = product.tiers[0]?.price ?? 0;
+    return `
+      <div class="dyn-price-info" style="margin:0 0 10px 0; font-size:14px; color:#334155;">
+        Cena: <strong>${formatPLN(price)}</strong> / szt.
+      </div>
+    `;
+  }
+
+  const rows = product.tiers
+    .map(
+      (tier) => `
+        <tr>
+          <td style="padding:3px 10px 3px 0; color:#475569;">${tier.qty} szt.</td>
+          <td style="padding:3px 0; text-align:right; font-weight:700; color:#1e3a8a;">${formatPLN(tier.price)}</td>
+        </tr>
+      `
+    )
+    .join("");
+
+  return `
+    <div class="dyn-price-info" style="margin:0 0 10px 0;">
+      <div style="font-size:13px; color:#64748b; margin-bottom:4px;">Cennik progowy (cena między progami liczona proporcjonalnie):</div>
+      <table style="border-collapse:collapse; font-size:14px;"><tbody>${rows}</tbody></table>
+    </div>
+  `;
+}
+
 function renderProductCard(product: RenderableProduct): HTMLElement {
   const card = document.createElement("div");
   card.className = "card";
@@ -231,8 +275,10 @@ function renderProductCard(product: RenderableProduct): HTMLElement {
 
   card.innerHTML = `
     <h3 style="margin:0 0 10px 0; font-size:18px;">${escapeHtml(product.label)}</h3>
+    ${renderPriceInfoHtml(product)}
     ${qtyFieldHtml}
     <div class="dyn-result" style="${isFlatRate ? "" : "display:none;"} margin-top:10px;">
+      <div class="price-line">Cena za szt.: <span class="dyn-unit">-</span></div>
       <div class="price-line highlight">SUMA: <span class="dyn-total">-</span></div>
       <div class="express-hint" style="display:none;">W tym dopłata EXPRESS +${Math.round(getExpressRate() * 100)}%</div>
     </div>
@@ -249,14 +295,15 @@ export function mountDynamicSubgroupContainers(
   anchor: HTMLElement,
   categoryId: string,
   categoryLabel: string,
-  ctx: ViewContext
+  ctx: ViewContext,
+  placement: InsertPosition = "afterend"
 ): void {
   const hostId = "dyn-subgroups-host";
   let host = container.querySelector<HTMLElement>(`#${hostId}`);
   if (!host) {
     host = document.createElement("div");
     host.id = hostId;
-    anchor.insertAdjacentElement("afterend", host);
+    anchor.insertAdjacentElement(placement, host);
   }
   host.replaceChildren();
 
@@ -285,6 +332,7 @@ export function mountDynamicSubgroupContainers(
       const qtyInput = card.querySelector<HTMLInputElement>(".dyn-qty");
       const resultBox = card.querySelector<HTMLElement>(".dyn-result")!;
       const totalEl = card.querySelector<HTMLElement>(".dyn-total")!;
+      const unitEl = card.querySelector<HTMLElement>(".dyn-unit")!;
       const expressHintEl = card.querySelector<HTMLElement>(".express-hint")!;
       const addBtn = card.querySelector<HTMLButtonElement>(".dyn-add")!;
 
@@ -300,6 +348,7 @@ export function mountDynamicSubgroupContainers(
           return;
         }
 
+        unitEl.textContent = formatPLN(currentComputation.unitPrice);
         totalEl.textContent = formatPLN(currentComputation.totalPrice);
         expressHintEl.style.display = ctx.expressMode ? "block" : "none";
         resultBox.style.display = "block";
