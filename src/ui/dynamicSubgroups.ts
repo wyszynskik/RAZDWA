@@ -13,11 +13,16 @@
  * "Dodaj wariant" form in Ustawienia), so classifyVariantsIntoProducts()
  * structurally cannot pick them up.
  */
-import { getVariantDefinitions, getPriceSubgroups } from "../services/priceService";
+import {
+  getVariantDefinitions,
+  getPriceSubgroups,
+  type MaterialSizeOption,
+} from "../services/priceService";
 import { getDefaultPricesMap } from "../core/compat";
 import { getExpressRate } from "../core/modifiers";
 import { interpolatePrice } from "../categories/plakaty";
 import { formatPLN } from "../core/money";
+import { escapeHtml } from "../core/validation";
 import { classifyVariantsIntoProducts, type ProductCalcType } from "../core/productModel";
 import type { CartItem } from "../core/types";
 import type { ViewContext } from "./types";
@@ -38,6 +43,7 @@ export interface RenderableProduct {
   label: string;
   calcType: ProductCalcType;
   tiers: DynamicSubgroupTier[];
+  materialSizeOptions?: MaterialSizeOption[];
 }
 
 /**
@@ -93,6 +99,7 @@ export function getRenderableProducts(categoryId: string): RenderableProduct[] {
         label,
         calcType: p.calcType,
         tiers: toRenderableTiers(p.entries),
+        materialSizeOptions: p.materialSizeOptions,
       };
     })
     .filter((p) => p.label !== "")
@@ -185,18 +192,43 @@ export function computeCartResult(
 }
 
 /**
+ * Formats one material/size combination as customer-facing text. Never
+ * guesses a value that isn't present: an empty material or size is simply
+ * omitted from the sentence, and both empty yields "" (caller decides
+ * whether to render anything for that).
+ */
+export function formatMaterialSizeOption(option: MaterialSizeOption): string {
+  const material = (option.material || "").trim();
+  const size = (option.size || "").trim();
+  if (material && size) return `Materiał: ${material}, Rozmiar: ${size}`;
+  if (size) return `Rozmiar: ${size}`;
+  if (material) return `Materiał: ${material}`;
+  return "";
+}
+
+/**
  * Builds the exact CartItem mountDynamicSubgroupContainers() passes to
  * ctx.cart.addItem() — pure and unit-testable, same rationale as
- * computeCartResult().
+ * computeCartResult(). selectedMaterialSize is purely informational (goes
+ * into optionsHint/payload) — never affects price, exactly like the DoD
+ * requires.
  */
 export function buildCartItem(
   product: RenderableProduct,
   categoryLabel: string,
   requestedQty: number,
-  isExpressMode: boolean
+  isExpressMode: boolean,
+  selectedMaterialSize?: MaterialSizeOption
 ): CartItem | null {
   const computed = computeCartResult(product, requestedQty, isExpressMode);
   if (!computed) return null;
+
+  const materialSizeText = selectedMaterialSize
+    ? formatMaterialSizeOption(selectedMaterialSize)
+    : "";
+  const optionsHint = materialSizeText
+    ? `${computed.quantity} szt, ${materialSizeText}`
+    : `${computed.quantity} szt`;
 
   return {
     id: `${product.productId}-${Date.now()}`,
@@ -207,8 +239,13 @@ export function buildCartItem(
     unitPrice: computed.unitPrice,
     isExpress: isExpressMode,
     totalPrice: computed.totalPrice,
-    optionsHint: `${computed.quantity} szt`,
-    payload: { product: product.productId, subgroup: product.subgroupId, qty: computed.quantity },
+    optionsHint,
+    payload: {
+      product: product.productId,
+      subgroup: product.subgroupId,
+      qty: computed.quantity,
+      ...(selectedMaterialSize ? { materialSize: selectedMaterialSize } : {}),
+    },
   };
 }
 
@@ -256,6 +293,37 @@ function renderPriceInfoHtml(product: RenderableProduct): string {
   `;
 }
 
+/**
+ * Zero, one, or many material/size combinations for this product — 0 renders
+ * nothing (no data to show, e.g. subgroups created before this field
+ * existed or left blank); 1 renders a static, non-editable line; >1 renders
+ * a dropdown (informational only, see buildCartItem doc — never affects
+ * price).
+ */
+function renderMaterialSizeInfoHtml(options: MaterialSizeOption[] | undefined): string {
+  if (!options || options.length === 0) return "";
+
+  if (options.length === 1) {
+    const text = formatMaterialSizeOption(options[0]);
+    if (!text) return "";
+    return `<div class="dyn-material-size" style="margin:0 0 10px 0; font-size:14px; color:#334155;">${escapeHtml(text)}</div>`;
+  }
+
+  const optionTags = options
+    .map((option, index) => {
+      const text = formatMaterialSizeOption(option) || `Opcja ${index + 1}`;
+      return `<option value="${index}">${escapeHtml(text)}</option>`;
+    })
+    .join("");
+
+  return `
+    <div class="form-group dyn-material-size-group">
+      <label>Materiał / rozmiar:</label>
+      <select class="form-control dyn-material-size-select">${optionTags}</select>
+    </div>
+  `;
+}
+
 function renderProductCard(product: RenderableProduct): HTMLElement {
   const card = document.createElement("div");
   card.className = "card";
@@ -274,6 +342,7 @@ function renderProductCard(product: RenderableProduct): HTMLElement {
 
   card.innerHTML = `
     ${renderPriceInfoHtml(product)}
+    ${renderMaterialSizeInfoHtml(product.materialSizeOptions)}
     ${qtyFieldHtml}
     <div class="dyn-result" style="${isFlatRate ? "" : "display:none;"} margin-top:10px;">
       <div class="price-line">Cena za szt.: <span class="dyn-unit">-</span></div>
@@ -333,6 +402,15 @@ export function mountDynamicSubgroupContainers(
       const unitEl = card.querySelector<HTMLElement>(".dyn-unit")!;
       const expressHintEl = card.querySelector<HTMLElement>(".express-hint")!;
       const addBtn = card.querySelector<HTMLButtonElement>(".dyn-add")!;
+      const materialSizeSelect = card.querySelector<HTMLSelectElement>(".dyn-material-size-select");
+
+      const resolveSelectedMaterialSize = (): MaterialSizeOption | undefined => {
+        if (materialSizeSelect) {
+          const index = Number.parseInt(materialSizeSelect.value, 10);
+          return product.materialSizeOptions?.[index];
+        }
+        return product.materialSizeOptions?.[0];
+      };
 
       let currentComputation: CartComputation | null = null;
 
@@ -362,7 +440,13 @@ export function mountDynamicSubgroupContainers(
 
       addBtn.addEventListener("click", () => {
         const requestedQty = qtyInput ? Number.parseInt(qtyInput.value, 10) : 1;
-        const cartItem = buildCartItem(product, categoryLabel, requestedQty, ctx.expressMode);
+        const cartItem = buildCartItem(
+          product,
+          categoryLabel,
+          requestedQty,
+          ctx.expressMode,
+          resolveSelectedMaterialSize()
+        );
         if (!cartItem) return;
 
         ctx.cart.addItem(cartItem);

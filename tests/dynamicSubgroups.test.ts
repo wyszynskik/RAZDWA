@@ -5,6 +5,7 @@ import {
   computeSubgroupPrice,
   computeCartResult,
   buildCartItem,
+  formatMaterialSizeOption,
   type DynamicSubgroupTier,
   type RenderableProduct,
 } from "../src/ui/dynamicSubgroups";
@@ -90,6 +91,41 @@ describe("getRenderableProducts", () => {
       { key: "plakaty-prefix-10", qty: 10, price: 100 },
       { key: "plakaty-prefix-20", qty: 20, price: 150 },
     ]);
+  });
+
+  it("threads materialSizeOptions through to the renderable product when present on the variant", () => {
+    setVariantDefinitions([
+      makeVariant({
+        key: "plakaty-eko-10",
+        categoryId: "plakaty-a4-a3",
+        subcategoryPrefix: "plakaty-eko-",
+        materialSizeOptions: [{ material: "130g", size: "A4" }],
+      }),
+    ]);
+    setPriceSubgroups({ "plakaty-a4-a3": { "plakaty-eko-": "Plakaty ekonomiczne A4" } });
+    setPrice("defaultPrices", { "plakaty-eko-10": 10 });
+
+    const products = getRenderableProducts("plakaty-a4-a3");
+
+    expect(products).toHaveLength(1);
+    expect(products[0].materialSizeOptions).toEqual([{ material: "130g", size: "A4" }]);
+  });
+
+  it("materialSizeOptions is undefined when absent on the variant — no crash, nothing rendered downstream", () => {
+    setVariantDefinitions([
+      makeVariant({
+        key: "plakaty-stare-10",
+        categoryId: "plakaty-a4-a3",
+        subcategoryPrefix: "plakaty-stare-",
+      }),
+    ]);
+    setPriceSubgroups({ "plakaty-a4-a3": { "plakaty-stare-": "Stara podgrupa" } });
+    setPrice("defaultPrices", { "plakaty-stare-10": 10 });
+
+    const products = getRenderableProducts("plakaty-a4-a3");
+
+    expect(products).toHaveLength(1);
+    expect(products[0].materialSizeOptions).toBeUndefined();
   });
 
   it("gives two DISTINCT product cards for two text-suffixed keys sharing one subgroup prefix (artykuly) — no more one-card-per-prefix", () => {
@@ -543,5 +579,54 @@ describe("buildCartItem", () => {
     const product = makeProduct({ calcType: "flat-per-unit" });
 
     expect(buildCartItem(product, "Kategoria", 0, false)).toBeNull();
+  });
+
+  it("selectedMaterialSize is informational only — appends to optionsHint/payload, never touches price", () => {
+    const product = makeProduct({
+      calcType: "flat-per-unit",
+      tiers: [{ key: "k", qty: 1, price: 10 }],
+    });
+
+    const withoutOption = buildCartItem(product, "Kategoria", 3, false);
+    const withOption = buildCartItem(product, "Kategoria", 3, false, {
+      material: "130g",
+      size: "A4",
+    });
+
+    expect(withOption?.totalPrice).toBe(withoutOption?.totalPrice);
+    expect(withOption?.unitPrice).toBe(withoutOption?.unitPrice);
+    expect(withOption?.optionsHint).toBe("3 szt, Materiał: 130g, Rozmiar: A4");
+    expect(withOption?.payload).toEqual({
+      product: product.productId,
+      subgroup: product.subgroupId,
+      qty: 3,
+      materialSize: { material: "130g", size: "A4" },
+    });
+    expect(withoutOption?.optionsHint).toBe("3 szt");
+    expect(withoutOption?.payload).not.toHaveProperty("materialSize");
+  });
+});
+
+describe("formatMaterialSizeOption", () => {
+  it("both material and size present: 'Materiał: X, Rozmiar: Y'", () => {
+    expect(formatMaterialSizeOption({ material: "130g", size: "A4" })).toBe(
+      "Materiał: 130g, Rozmiar: A4"
+    );
+  });
+
+  it("only size present: 'Rozmiar: Y'", () => {
+    expect(formatMaterialSizeOption({ material: "", size: "A4" })).toBe("Rozmiar: A4");
+  });
+
+  it("only material present: 'Materiał: X'", () => {
+    expect(formatMaterialSizeOption({ material: "130g", size: "" })).toBe("Materiał: 130g");
+  });
+
+  it("both empty: returns empty string (caller decides not to render)", () => {
+    expect(formatMaterialSizeOption({ material: "", size: "" })).toBe("");
+  });
+
+  it("trims whitespace-only values as empty, does not invent a label", () => {
+    expect(formatMaterialSizeOption({ material: "  ", size: "  " })).toBe("");
   });
 });
