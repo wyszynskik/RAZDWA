@@ -18,7 +18,6 @@ import { getDefaultPricesMap } from "../core/compat";
 import { getExpressRate } from "../core/modifiers";
 import { interpolatePrice } from "../categories/plakaty";
 import { formatPLN } from "../core/money";
-import { escapeHtml } from "../core/validation";
 import { classifyVariantsIntoProducts, type ProductCalcType } from "../core/productModel";
 import type { CartItem } from "../core/types";
 import type { ViewContext } from "./types";
@@ -274,7 +273,6 @@ function renderProductCard(product: RenderableProduct): HTMLElement {
     `;
 
   card.innerHTML = `
-    <h3 style="margin:0 0 10px 0; font-size:18px;">${escapeHtml(product.label)}</h3>
     ${renderPriceInfoHtml(product)}
     ${qtyFieldHtml}
     <div class="dyn-result" style="${isFlatRate ? "" : "display:none;"} margin-top:10px;">
