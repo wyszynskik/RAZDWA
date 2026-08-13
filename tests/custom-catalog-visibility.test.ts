@@ -1,7 +1,31 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { getRenderedArtykulyBiuroweCategories } from "../src/categories/artykuly-biurowe";
 import { getRenderedUslugiCategories } from "../src/categories/uslugi";
-import { resetPrices, setPrice, setPriceLabels } from "../src/services/priceService";
+import {
+  resetPrices,
+  setPrice,
+  setPriceLabels,
+  upsertVariantDefinition,
+  type VariantDefinition,
+} from "../src/services/priceService";
+
+function draftVariant(overrides: Partial<VariantDefinition>): VariantDefinition {
+  const now = new Date().toISOString();
+  return {
+    key: "",
+    categoryId: "",
+    subcategoryPrefix: "",
+    subgroupLabel: "",
+    label: "",
+    legend: "",
+    visibleInSettings: true,
+    visibleInCalculator: true,
+    sortOrder: 0,
+    createdAt: now,
+    updatedAt: now,
+    ...overrides,
+  };
+}
 
 let storageData: Record<string, string> = {};
 
@@ -28,6 +52,14 @@ describe("custom catalog visibility", () => {
     setPriceLabels({
       "uslugi-nowa-usluga": "Nowa usługa",
     });
+    upsertVariantDefinition(
+      draftVariant({
+        key: "uslugi-nowa-usluga",
+        categoryId: "uslugi",
+        subcategoryPrefix: "uslugi-",
+        label: "Nowa usługa",
+      })
+    );
 
     const categories = getRenderedUslugiCategories();
     const customCategory = categories.find((category) => category.name === "DODANE RĘCZNIE");
@@ -65,6 +97,14 @@ describe("custom catalog visibility", () => {
     setPriceLabels({
       "artykuly-nowy-archiwizer": "Nowy archiwizer",
     });
+    upsertVariantDefinition(
+      draftVariant({
+        key: "artykuly-nowy-archiwizer",
+        categoryId: "artykuly",
+        subcategoryPrefix: "artykuly-",
+        label: "Nowy archiwizer",
+      })
+    );
 
     const categories = getRenderedArtykulyBiuroweCategories();
     const customCategory = categories.find((category) => category.name === "DODANE RĘCZNIE");

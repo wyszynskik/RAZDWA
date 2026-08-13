@@ -1,7 +1,7 @@
 import { CategoryModule } from "../ui/router";
-import { getDefaultPricesMap, getStoredPriceLabel } from "../core/compat";
+import { getDefaultPricesMap } from "../core/compat";
 import { resolveStoredPrice } from "../core/compat";
-import { getPriceSubgroups } from "../services/priceService";
+import { getVariantDefinitions } from "../services/priceService";
 import artykulyData from "../../data/normalized/artykuly-biurowe.json";
 
 const artykulyBiuroweData: any = artykulyData as any;
@@ -13,9 +13,6 @@ export const BASE_ARTYKULY_IDS = new Set<string>([
   ),
   ...ENVELOPE_LETTERS.map((letter) => `koperty-${letter}`),
 ]);
-const BASE_ARTYKULY_IDS_NORMALIZED = new Set<string>(
-  [...BASE_ARTYKULY_IDS].map((id) => normalizeArticleToken(id))
-);
 
 type RenderedArticleItem = {
   id: string;
@@ -92,38 +89,27 @@ function getEnvelopeArticleCategory(): RenderedArticleCategory {
   };
 }
 
-function getMatchingArticleGroupTitle(key: string): string | null {
-  const subgroupMap = getPriceSubgroups()["artykuly"] ?? Object.create(null);
-  const matches = Object.entries(subgroupMap)
-    .filter(([prefix]) => key.startsWith(prefix))
-    .sort((a, b) => b[0].length - a[0].length);
-
-  return matches[0]?.[1] ?? null;
-}
-
 function getCustomArticleCategories(): RenderedArticleCategory[] {
   const storedPrices = getDefaultPricesMap();
+  const variants = getVariantDefinitions().filter((v) => v.categoryId === "artykuly");
   const groups = new Map<string, RenderedArticleItem[]>();
   const groupOrder: string[] = [];
 
-  for (const [key, value] of Object.entries(storedPrices)) {
-    if (!key.startsWith(CUSTOM_ARTYKULY_PREFIX)) continue;
-    const itemId = key.slice(CUSTOM_ARTYKULY_PREFIX.length);
+  for (const v of variants) {
+    if (!v.key.startsWith(CUSTOM_ARTYKULY_PREFIX)) continue;
+    const itemId = v.key.slice(CUSTOM_ARTYKULY_PREFIX.length);
     if (!itemId || BASE_ARTYKULY_IDS.has(itemId)) continue;
 
-    // Hide duplicated entries added with mojibake/variant keys when they map
-    // to existing base products (e.g. "artykuly-teczka-biaĹ‚a-gumka").
-    if (BASE_ARTYKULY_IDS_NORMALIZED.has(normalizeArticleToken(itemId))) continue;
-
-    const groupTitle = getMatchingArticleGroupTitle(key) ?? "DODANE RĘCZNIE";
+    const groupTitle = v.subgroupLabel || "DODANE RĘCZNIE";
     if (!groups.has(groupTitle)) {
       groups.set(groupTitle, []);
       groupOrder.push(groupTitle);
     }
 
+    const value = storedPrices[v.key];
     groups.get(groupTitle)!.push({
       id: itemId,
-      name: getStoredPriceLabel(key),
+      name: v.label,
       price: typeof value === "number" ? value : null,
       isCustom: true,
     });

@@ -1,7 +1,7 @@
 import { CategoryModule } from "../ui/router";
-import { getDefaultPricesMap, getStoredPriceLabel } from "../core/compat";
+import { getDefaultPricesMap } from "../core/compat";
 import { resolveStoredPrice } from "../core/compat";
-import { getPriceSubgroups } from "../services/priceService";
+import { getVariantDefinitions } from "../services/priceService";
 import uslugiData from "../../data/normalized/uslugi.json";
 
 const uslugiCategoryData: any = uslugiData as any;
@@ -10,9 +10,6 @@ export const BASE_SERVICE_IDS = new Set<string>(
   (uslugiCategoryData.categories ?? []).flatMap((category: any) =>
     (category.items ?? []).map((item: any) => item.id)
   )
-);
-const BASE_SERVICE_IDS_NORMALIZED = new Set<string>(
-  [...BASE_SERVICE_IDS].map((id) => normalizeServiceToken(id))
 );
 
 type RenderedServiceItem = {
@@ -97,42 +94,27 @@ function resolveServicePrice(serviceId: string, defaultValue: number): number {
   return resolveStoredPrice(canonicalKey, defaultValue);
 }
 
-function getMatchingServiceGroupTitle(key: string): string | null {
-  const subgroupMap = getPriceSubgroups()["uslugi"] ?? Object.create(null);
-  const matches = Object.entries(subgroupMap)
-    .filter(([prefix]) => key.startsWith(prefix))
-    .sort((a, b) => b[0].length - a[0].length);
-
-  return matches[0]?.[1] ?? null;
-}
-
 function getCustomServiceCategories(): RenderedServiceCategory[] {
   const storedPrices = getDefaultPricesMap();
+  const variants = getVariantDefinitions().filter((v) => v.categoryId === "uslugi");
   const groups = new Map<string, RenderedServiceItem[]>();
   const groupOrder: string[] = [];
-  const seenNormalizedCustomIds = new Set<string>();
 
-  for (const [key, value] of Object.entries(storedPrices)) {
-    if (!key.startsWith(CUSTOM_SERVICE_PREFIX)) continue;
-    const serviceId = key.slice(CUSTOM_SERVICE_PREFIX.length);
+  for (const v of variants) {
+    if (!v.key.startsWith(CUSTOM_SERVICE_PREFIX)) continue;
+    const serviceId = v.key.slice(CUSTOM_SERVICE_PREFIX.length);
     if (!serviceId || BASE_SERVICE_IDS.has(serviceId)) continue;
-    const normalizedServiceId = normalizeServiceToken(serviceId);
 
-    // Hide duplicated entries added with mojibake/variant keys when they map
-    // to existing base services (e.g. "uslugi-pakiet-zÅ‚oÅ¼ony").
-    if (BASE_SERVICE_IDS_NORMALIZED.has(normalizedServiceId)) continue;
-    if (seenNormalizedCustomIds.has(normalizedServiceId)) continue;
-    seenNormalizedCustomIds.add(normalizedServiceId);
-
-    const groupTitle = getMatchingServiceGroupTitle(key) ?? "DODANE RĘCZNIE";
+    const groupTitle = v.subgroupLabel || "DODANE RĘCZNIE";
     if (!groups.has(groupTitle)) {
       groups.set(groupTitle, []);
       groupOrder.push(groupTitle);
     }
 
+    const value = storedPrices[v.key];
     groups.get(groupTitle)!.push({
       id: serviceId,
-      name: getStoredPriceLabel(key),
+      name: v.label,
       price: typeof value === "number" ? value : null,
       isCustom: true,
     });
