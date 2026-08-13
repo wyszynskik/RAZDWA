@@ -140,6 +140,37 @@ export function buildMaterialSizeOptionsFromInputs(
 }
 
 /**
+ * Resolves the label to store on a new/updated VariantDefinition.
+ *
+ * REGRESSION FIX: adding a qty tier to a plakaty-a4-a3-style custom subgroup
+ * (isQtyTieredSubgroupCategory) with both the legend and the optional
+ * "Nazwa"/"Opis" field left blank previously fell through to
+ * getPriceLabel(key)'s generic fallback (key.replace(/-/g, " ")) — a raw,
+ * dash-stripped key shown to the admin instead of a real label (e.g.
+ * "plakaty a4 a3 plakaty ekonomiczne a4 20" instead of "20 szt."). Every
+ * OTHER qty-based category (dyplomy/ulotki/zaproszenia/broszury-katalogi —
+ * isQuantityBasedCategory) already has bespoke getPriceLabel() regex
+ * formatting for this and must keep using it unchanged — this fallback is
+ * deliberately scoped to ONLY the isQtyTieredCustomSubgroupTier case, which
+ * has no such regex anywhere.
+ *
+ * Exported for unit tests only — not part of this module's public API for
+ * other views.
+ */
+export function resolveVariantLabel(
+  legendText: string,
+  productLabel: string,
+  isQtyTieredCustomSubgroupTier: boolean,
+  qtyValue: string,
+  fallbackKeyLabel: string
+): string {
+  if (legendText) return legendText;
+  if (productLabel) return productLabel;
+  if (isQtyTieredCustomSubgroupTier) return `${qtyValue} szt.`;
+  return fallbackKeyLabel;
+}
+
+/**
  * Exported for unit tests only — not part of this module's public API for
  * other views, which should go through the add-subgroup-variant upsert flow.
  */
@@ -3541,10 +3572,13 @@ export const UstawieniaView: View = {
 
       const qtyValue = addQtyInput?.value.trim() || "";
 
-      const useQtyMode = resolveUseQtyMode(
+      const isCustomSubgroupForCategory = isCustomSubgroupSelection(
         chosenCategoryId,
-        isCustomSubgroupSelection(chosenCategoryId, selectedPrefix)
+        selectedPrefix
       );
+      const useQtyMode = resolveUseQtyMode(chosenCategoryId, isCustomSubgroupForCategory);
+      const isQtyTieredCustomSubgroupTier =
+        isCustomSubgroupForCategory && isQtyTieredSubgroupCategory(chosenCategoryId);
 
       if (useQtyMode) {
         if (!qtyValue) {
@@ -3683,7 +3717,13 @@ export const UstawieniaView: View = {
             : (customPriceSubgroups[chosenCategory.id]?.[chosenPrefix] ??
               existingDef?.subgroupLabel ??
               ""),
-        label: legendText || productLabel || getPriceLabel(newKey),
+        label: resolveVariantLabel(
+          legendText,
+          productLabel,
+          isQtyTieredCustomSubgroupTier,
+          qtyValue,
+          getPriceLabel(newKey)
+        ),
         legend: legendText,
         visibleInSettings: true,
         visibleInCalculator: true,
