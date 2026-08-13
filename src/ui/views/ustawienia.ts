@@ -121,6 +121,25 @@ export function resolveNewSubgroupBasePrefix(categoryId: string): string {
 }
 
 /**
+ * Builds the (today, always single-entry) materialSizeOptions array from the
+ * admin's raw material/size text inputs when creating a NEW custom subgroup.
+ * Returns undefined when both are blank — no invented data, matches
+ * dynamicSubgroups.ts's "0 options → render nothing" rule.
+ *
+ * Exported for unit tests only — not part of this module's public API for
+ * other views.
+ */
+export function buildMaterialSizeOptionsFromInputs(
+  material: string,
+  size: string
+): { material: string; size: string }[] | undefined {
+  const trimmedMaterial = material.trim();
+  const trimmedSize = size.trim();
+  if (!trimmedMaterial && !trimmedSize) return undefined;
+  return [{ material: trimmedMaterial, size: trimmedSize }];
+}
+
+/**
  * Exported for unit tests only — not part of this module's public API for
  * other views, which should go through the add-subgroup-variant upsert flow.
  */
@@ -2470,6 +2489,25 @@ export const UstawieniaView: View = {
         }
       }
 
+      // Material/rozmiar są dziś renderowane wyłącznie przez dynamicSubgroups.ts
+      // (mountDynamicSubgroupContainers), a to jedyny caller z plakaty-a4-a3.ts —
+      // pokazuj te pola tylko tam, żeby nie zbierać danych, których żaden widok
+      // klienta nigdy nie wyświetli (artykuly/uslugi mają inny renderer).
+      const materialSizeWrapper = container.querySelector<HTMLElement>(
+        "#new-subgroup-materialsize-wrapper"
+      );
+      if (materialSizeWrapper) {
+        const isCustom = addPrefixSelect.value === CUSTOM_PREFIX_VALUE;
+        const showMaterialSize = isCustom && isQtyTieredSubgroupCategory(addCategorySelect.value);
+        materialSizeWrapper.style.display = showMaterialSize ? "" : "none";
+        if (!showMaterialSize) {
+          const materialInput = container.querySelector<HTMLInputElement>("#new-subgroup-material");
+          const sizeInput = container.querySelector<HTMLInputElement>("#new-subgroup-size");
+          if (materialInput) materialInput.value = "";
+          if (sizeInput) sizeInput.value = "";
+        }
+      }
+
       const qtyWrapper = container.querySelector<HTMLElement>("#new-price-qty-wrapper");
       const qtyInput = container.querySelector<HTMLInputElement>("#new-price-qty");
       const labelDescEl = container.querySelector<HTMLElement>("#new-price-label-desc");
@@ -3231,6 +3269,13 @@ export const UstawieniaView: View = {
                   <input id="new-price-subgroup" type="text" class="settings-input" placeholder="np. Ulotki kwadratowe">
                 </div>
 
+                <div id="new-subgroup-materialsize-wrapper" class="settings-field" style="display:none">
+                  <span class="settings-action-label">Materiał — opcjonalnie</span>
+                  <input id="new-subgroup-material" type="text" class="settings-input" placeholder="np. 130g">
+                  <span class="settings-action-label">Rozmiar — opcjonalnie</span>
+                  <input id="new-subgroup-size" type="text" class="settings-input" placeholder="np. A4">
+                </div>
+
                 <div id="new-price-qty-wrapper" class="settings-field" style="display:none">
                   <span id="new-price-qty-label" class="settings-action-label">3. Ilość (szt.)</span>
                   <input id="new-price-qty" type="text" inputmode="numeric" class="settings-input" placeholder="np. 500">
@@ -3389,6 +3434,9 @@ export const UstawieniaView: View = {
     const addPriceInput = container.querySelector<HTMLInputElement>("#new-price-value");
     const addLegendInput = container.querySelector<HTMLInputElement>("#new-price-legend");
     const addQtyInput = container.querySelector<HTMLInputElement>("#new-price-qty");
+    const addSubgroupMaterialInput =
+      container.querySelector<HTMLInputElement>("#new-subgroup-material");
+    const addSubgroupSizeInput = container.querySelector<HTMLInputElement>("#new-subgroup-size");
 
     function updateKeyPreview(): void {
       const previewWrap = container.querySelector<HTMLElement>("#key-preview-wrap");
@@ -3643,6 +3691,13 @@ export const UstawieniaView: View = {
           existingDef?.sortOrder ?? getVariantDefinitions().length + _draftVariantDefs.length,
         createdAt: existingDef?.createdAt ?? _now,
         updatedAt: _now,
+        materialSizeOptions:
+          selectedPrefix === CUSTOM_PREFIX_VALUE
+            ? buildMaterialSizeOptionsFromInputs(
+                addSubgroupMaterialInput?.value ?? "",
+                addSubgroupSizeInput?.value ?? ""
+              )
+            : existingDef?.materialSizeOptions,
       };
       _draftVariantDefs = _draftVariantDefs
         .filter((d) => d.key !== _variantDef.key)
