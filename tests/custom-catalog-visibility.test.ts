@@ -76,6 +76,41 @@ describe("custom catalog visibility", () => {
     );
   });
 
+  it("groups artykuly custom items by a shared non-empty subgroupLabel", () => {
+    setPrice("defaultPrices.artykuly-marker-czarny", 5);
+    setPrice("defaultPrices.artykuly-marker-czerwony", 6);
+    upsertVariantDefinition(
+      draftVariant({
+        key: "artykuly-marker-czarny",
+        categoryId: "artykuly",
+        subcategoryPrefix: "artykuly-marker-",
+        subgroupLabel: "Markery",
+        label: "Marker czarny",
+      })
+    );
+    upsertVariantDefinition(
+      draftVariant({
+        key: "artykuly-marker-czerwony",
+        categoryId: "artykuly",
+        subcategoryPrefix: "artykuly-marker-",
+        subgroupLabel: "Markery",
+        label: "Marker czerwony",
+      })
+    );
+
+    const categories = getRenderedArtykulyBiuroweCategories();
+    const markerCategories = categories.filter((category) => category.name === "Markery");
+
+    expect(markerCategories).toHaveLength(1);
+    expect(markerCategories[0].items).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: "marker-czarny", name: "Marker czarny", price: 5 }),
+        expect.objectContaining({ id: "marker-czerwony", name: "Marker czerwony", price: 6 }),
+      ])
+    );
+    expect(categories.some((category) => category.name === "DODANE RĘCZNIE")).toBe(false);
+  });
+
   it("ignores mojibake duplicate uslugi keys and applies their price to canonical services", () => {
     const brokenBannerId = "grafika-baner-z\u00C5\u201Ao\u00C5\u00BCony";
     const brokenPakietId = "pakiet-z\u00C5\u201Ao\u00C5\u00BCony";
