@@ -148,6 +148,46 @@ describe("classifyVariantsIntoProducts — numeric-suffix clusters (interpolated
     expect(report.skipped).toHaveLength(1);
     expect(report.skipped[0].categoryId).toBe("banner");
   });
+
+  it("threads materialSizeOptions from the first tier onto the product, denormalized like subgroupLabel", () => {
+    const variants = [
+      makeVariant({
+        key: "plakaty-eko-10",
+        categoryId: "plakaty-a4-a3",
+        subcategoryPrefix: "plakaty-eko-",
+        materialSizeOptions: [{ material: "130g", size: "A4" }],
+      }),
+      makeVariant({
+        key: "plakaty-eko-20",
+        categoryId: "plakaty-a4-a3",
+        subcategoryPrefix: "plakaty-eko-",
+        materialSizeOptions: [{ material: "130g", size: "A4" }],
+      }),
+    ];
+    const report = classifyVariantsIntoProducts(variants, {
+      "plakaty-eko-10": 10,
+      "plakaty-eko-20": 18,
+    });
+
+    expect(report.needsReview).toEqual([]);
+    expect(report.migrated).toHaveLength(1);
+    expect(report.migrated[0].materialSizeOptions).toEqual([{ material: "130g", size: "A4" }]);
+  });
+
+  it("variants created before materialSizeOptions existed have it undefined on the product — no needs-review, no crash", () => {
+    const variants = [
+      makeVariant({
+        key: "plakaty-stare-10",
+        categoryId: "plakaty-a4-a3",
+        subcategoryPrefix: "plakaty-stare-",
+      }),
+    ];
+    const report = classifyVariantsIntoProducts(variants, { "plakaty-stare-10": 10 });
+
+    expect(report.needsReview).toEqual([]);
+    expect(report.migrated).toHaveLength(1);
+    expect(report.migrated[0].materialSizeOptions).toBeUndefined();
+  });
 });
 
 describe("classifyVariantsIntoProducts — text-suffix clusters (flat-per-unit)", () => {

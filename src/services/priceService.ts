@@ -272,6 +272,11 @@ export function deletePriceSubgroup(categoryId: string, prefix: string): void {
 
 export const VARIANTS_STORAGE_KEY = "razdwa_variants";
 
+export interface MaterialSizeOption {
+  material: string;
+  size: string;
+}
+
 export interface VariantDefinition {
   key: string;
   categoryId: string;
@@ -284,6 +289,14 @@ export interface VariantDefinition {
   sortOrder: number;
   createdAt: string;
   updatedAt: string;
+  /**
+   * Optional: informational material/size combinations for this subgroup's
+   * tiers (denormalized across all tiers sharing a subcategoryPrefix, same
+   * pattern as subgroupLabel). Never read by price calculation — purely
+   * customer-facing context. Absent on variants created before this field
+   * existed, and on categories that don't use it (artykuly/uslugi).
+   */
+  materialSizeOptions?: MaterialSizeOption[];
 }
 
 export function getVariantDefinitions(): VariantDefinition[] {

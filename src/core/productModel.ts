@@ -37,7 +37,11 @@
  *   no characterized legacy flow) — its variants are reported as skipped,
  *   never migrated and never guessed at.
  */
-import { getVariantDefinitions, type VariantDefinition } from "../services/priceService";
+import {
+  getVariantDefinitions,
+  type VariantDefinition,
+  type MaterialSizeOption,
+} from "../services/priceService";
 import { getDefaultPricesMap } from "./compat";
 import { isQtyTieredSubgroupCategory } from "./variantKeys";
 import type { OrphanedPriceKey } from "./orphanedPriceKeys";
@@ -70,6 +74,8 @@ export interface Product {
   status: ProductStatus;
   visibleInCalculator: boolean;
   entries: PriceEntry[];
+  /** See VariantDefinition.materialSizeOptions — same denormalization pattern as subgroupLabel. */
+  materialSizeOptions?: MaterialSizeOption[];
 }
 
 export interface SkippedCluster {
@@ -243,6 +249,7 @@ export function classifyVariantsIntoProducts(
           calcType: "interpolated",
           status: "published",
           visibleInCalculator: clusterVariants[0].visibleInCalculator !== false,
+          materialSizeOptions: clusterVariants[0].materialSizeOptions,
           entries: clusterVariants
             .map((variant, i) => ({
               key: variant.key,
