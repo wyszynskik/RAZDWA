@@ -1,5 +1,6 @@
 ﻿import { View, ViewContext } from "../types";
 import { escapeHtml } from "../../core/validation";
+import { formatMaterialSizeOption } from "../dynamicSubgroups";
 import {
   type PriceCategory,
   BASE_PRICE_CATEGORIES,
@@ -2896,10 +2897,16 @@ export const UstawieniaView: View = {
           rowClasses.push("settings-price-row--compact");
         }
 
+        const materialSizeOption = variantsByKey.get(key)?.materialSizeOptions?.[0];
+        const materialSizeText = materialSizeOption
+          ? formatMaterialSizeOption(materialSizeOption)
+          : "";
+
         rows.push(`
           <tr data-key="${escapeHtml(key)}" class="${rowClasses.join(" ")}">
           <td class="settings-td-product">
             <span class="settings-product-label${useAltLabel ? " settings-product-label--alt" : ""}" title="${escapeHtml(label)}">${escapeHtml(label)}</span>
+            ${materialSizeText ? `<span class="settings-product-materialsize" style="display:block; font-size:0.8em; color:#7a8a9a;">${escapeHtml(materialSizeText)}</span>` : ""}
           </td>
           <td class="settings-td-price">
             <input data-field="unitPrice" type="number" step="0.01" min="0" value="${displayPrice}" placeholder="—" class="settings-input settings-input--price">
