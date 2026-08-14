@@ -259,7 +259,7 @@ function renderPriceInfoHtml(product: RenderableProduct): string {
   if (product.calcType === "flat-rate") {
     const price = product.tiers[0]?.price ?? 0;
     return `
-      <div class="dyn-price-info" style="margin:0 0 10px 0; font-size:14px; color:#334155;">
+      <div class="dyn-price-info" style="margin:12px 0 0 0; padding-top:10px; border-top:1px solid #e2e8f0; font-size:14px; color:#334155;">
         Cena: <strong>${formatPLN(price)}</strong> (ryczałt)
       </div>
     `;
@@ -268,7 +268,7 @@ function renderPriceInfoHtml(product: RenderableProduct): string {
   if (product.calcType === "flat-per-unit") {
     const price = product.tiers[0]?.price ?? 0;
     return `
-      <div class="dyn-price-info" style="margin:0 0 10px 0; font-size:14px; color:#334155;">
+      <div class="dyn-price-info" style="margin:12px 0 0 0; padding-top:10px; border-top:1px solid #e2e8f0; font-size:14px; color:#334155;">
         Cena: <strong>${formatPLN(price)}</strong> / szt.
       </div>
     `;
@@ -286,7 +286,7 @@ function renderPriceInfoHtml(product: RenderableProduct): string {
     .join("");
 
   return `
-    <div class="dyn-price-info" style="margin:0 0 10px 0;">
+    <div class="dyn-price-info" style="margin:12px 0 0 0; padding-top:10px; border-top:1px solid #e2e8f0;">
       <div style="font-size:13px; color:#64748b; margin-bottom:4px;">Cennik progowy (cena między progami liczona proporcjonalnie):</div>
       <table style="border-collapse:collapse; font-size:14px;"><tbody>${rows}</tbody></table>
     </div>
@@ -341,7 +341,6 @@ function renderProductCard(product: RenderableProduct): HTMLElement {
     `;
 
   card.innerHTML = `
-    ${renderPriceInfoHtml(product)}
     ${renderMaterialSizeInfoHtml(product.materialSizeOptions)}
     ${qtyFieldHtml}
     <div class="dyn-result" style="${isFlatRate ? "" : "display:none;"} margin-top:10px;">
@@ -352,6 +351,7 @@ function renderProductCard(product: RenderableProduct): HTMLElement {
     <div class="form-actions" style="margin-top:10px;">
       <button type="button" class="btn-success dyn-add" ${isFlatRate ? "" : "disabled"}>DODAJ DO KOSZYKA</button>
     </div>
+    ${renderPriceInfoHtml(product)}
   `;
 
   return card;
