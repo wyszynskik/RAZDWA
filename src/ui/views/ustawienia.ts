@@ -16,6 +16,7 @@ import {
   findVariantBySignature,
   isQuantityBasedCategory,
   isQtyTieredSubgroupCategory,
+  hasNativeSubgroupRenderer,
   normalizePricePrefix,
 } from "../../core/variantKeys";
 import {
@@ -38,6 +39,7 @@ import {
   deleteVariantDefinition,
   variantsToPriceSubgroups,
   variantsToPriceLabels,
+  type VariantCalcScheme,
 } from "../../services/priceService";
 import {
   savePricesToAppsScript,
@@ -96,11 +98,60 @@ function isCustomSubgroupSelection(categoryId: string, selectedPrefixValue: stri
  * Exported for unit tests only — not part of this module's public API for
  * other views.
  */
-export function resolveUseQtyMode(categoryId: string, isCustomSubgroupSelected: boolean): boolean {
-  return (
-    isQuantityBasedCategory(categoryId) ||
-    (isCustomSubgroupSelected && isQtyTieredSubgroupCategory(categoryId))
+export function resolveUseQtyMode(
+  categoryId: string,
+  isCustomSubgroupSelected: boolean,
+  calcScheme?: VariantCalcScheme
+): boolean {
+  if (isQuantityBasedCategory(categoryId)) return true;
+  if (!isCustomSubgroupSelected) return false;
+  // A custom subgroup's mode follows its declared scheme: only "interpolated"
+  // (progowy) is quantity-tiered; flat-per-unit/flat-rate are name-mode.
+  if (calcScheme) return calcScheme === "interpolated";
+  // No explicit scheme (legacy 2-arg callers / native artykuly/uslugi):
+  // fall back to the historical category-identity rule.
+  return isQtyTieredSubgroupCategory(categoryId);
+}
+
+/**
+ * The effective calcScheme for the current "Dodaj wariant" form selection:
+ *  - native-renderer category (artykuly/uslugi) => undefined (legacy path,
+ *    no scheme stored, resolveUseQtyMode falls back to identity)
+ *  - creating a NEW custom subgroup => the dropdown value (defaulted per
+ *    category)
+ *  - adding a tier to an EXISTING custom subgroup => the scheme already
+ *    stored on it (or the category default if it predates the field)
+ *
+ * Exported for unit tests only.
+ */
+export function resolveFormCalcScheme(
+  categoryId: string,
+  selectedPrefixValue: string,
+  newSubgroupSchemeValue: string,
+  existingVariants: VariantDefinition[]
+): VariantCalcScheme | undefined {
+  if (hasNativeSubgroupRenderer(categoryId)) return undefined;
+  if (selectedPrefixValue === CUSTOM_PREFIX_VALUE) {
+    return isValidCalcScheme(newSubgroupSchemeValue)
+      ? newSubgroupSchemeValue
+      : defaultCalcSchemeForCategory(categoryId);
+  }
+  // Existing subgroup: a stored calcScheme is definitive proof this is a
+  // generic custom subgroup (only they carry one). Otherwise fall back to the
+  // runtime custom-subgroup registry (isCustomSubgroupSelection) for subgroups
+  // that predate the field, defaulting their scheme.
+  const existing = existingVariants.find(
+    (v) => v.categoryId === categoryId && v.subcategoryPrefix === selectedPrefixValue
   );
+  if (existing?.calcScheme) return existing.calcScheme;
+  if (isCustomSubgroupSelection(categoryId, selectedPrefixValue)) {
+    return defaultCalcSchemeForCategory(categoryId);
+  }
+  return undefined;
+}
+
+function isValidCalcScheme(value: string): value is VariantCalcScheme {
+  return value === "interpolated" || value === "flat-per-unit" || value === "flat-rate";
 }
 
 /**
@@ -299,18 +350,31 @@ function getCategorySectionTitle(category: PriceCategory, key: string): string {
 }
 
 /**
- * Categories where "Nowa podkategoria…" actually renders to the customer:
- * either via ui/dynamicSubgroups.ts's mountDynamicSubgroupContainers
- * (qty-tiered — currently only plakaty-a4-a3), or via the pre-existing
- * getPriceSubgroups()-driven flat rendering in artykuly-biurowe.ts/uslugi.ts.
- * Any other category would let the admin "save" a subgroup that never
- * appears in the calculator.
+ * Whether "Nowa podkategoria…" is offered for a category. Every real price
+ * category can now host admin-created custom subgroups — the generic ones
+ * render via ui/dynamicSubgroups.ts (mounted by the router), and
+ * artykuly/uslugi keep their own bespoke renderer. "modifiers" is a
+ * pseudo-category (global percentage surcharges), not a product list, so it
+ * stays out.
+ *
+ * Exported for unit tests only.
  */
-const DYNAMIC_SUBGROUP_CATEGORIES: ReadonlySet<string> = new Set([
-  "plakaty-a4-a3",
-  "artykuly",
-  "uslugi",
-]);
+export function categorySupportsCustomSubgroups(categoryId: string): boolean {
+  return categoryId !== "modifiers";
+}
+
+/**
+ * Default price-calculation scheme pre-selected when the admin creates a NEW
+ * custom subgroup. Progowy (interpolated) is the general default the product
+ * owner picked for the whole app; the admin can switch it per subgroup.
+ * Never called for native-renderer categories (artykuly/uslugi), which keep
+ * their legacy flat-per-unit name-mode flow untouched.
+ *
+ * Exported for unit tests only.
+ */
+export function defaultCalcSchemeForCategory(_categoryId: string): VariantCalcScheme {
+  return "interpolated";
+}
 
 function getAddablePrefixOptions(category: PriceCategory): PrefixOption[] {
   const options: PrefixOption[] = [];
@@ -573,7 +637,7 @@ function getAddablePrefixOptions(category: PriceCategory): PrefixOption[] {
       break;
   }
 
-  if (DYNAMIC_SUBGROUP_CATEGORIES.has(category.id)) {
+  if (categorySupportsCustomSubgroups(category.id)) {
     options.push(...getCustomSubgroupDefinitions(category.id));
     options.push({ value: CUSTOM_PREFIX_VALUE, label: "Nowa, niezależna podkategoria…" });
   }
@@ -2567,10 +2631,24 @@ export const UstawieniaView: View = {
         }
       }
 
-      // Material/rozmiar są dziś renderowane wyłącznie przez dynamicSubgroups.ts
-      // (mountDynamicSubgroupContainers), a to jedyny caller z plakaty-a4-a3.ts —
-      // pokazuj te pola tylko tam, żeby nie zbierać danych, których żaden widok
-      // klienta nigdy nie wyświetli (artykuly/uslugi mają inny renderer).
+      // Schemat liczenia: wybierany tylko przy tworzeniu NOWEJ podgrupy w
+      // kategorii z generycznym rendererem (artykuly/uslugi mają własny,
+      // niezmienny flow). Dla istniejącej podgrupy schemat jest już ustalony.
+      const schemeWrapper = container.querySelector<HTMLElement>("#new-subgroup-scheme-wrapper");
+      const schemeSelect = container.querySelector<HTMLSelectElement>("#new-subgroup-scheme");
+      if (schemeWrapper) {
+        const chosenCatId = addCategorySelect.value;
+        const showScheme =
+          addPrefixSelect.value === CUSTOM_PREFIX_VALUE && !hasNativeSubgroupRenderer(chosenCatId);
+        schemeWrapper.style.display = showScheme ? "" : "none";
+        if (!showScheme && schemeSelect) {
+          schemeSelect.value = defaultCalcSchemeForCategory(chosenCatId);
+        }
+      }
+
+      // Material/rozmiar renderuje generyczny dynamicSubgroups.ts (montowany
+      // centralnie w routerze) dla KAŻDEJ custom podgrupy — pokazuj te pola dla
+      // wszystkich kategorii poza natywnymi (artykuly/uslugi mają inny renderer).
       //
       // Pokazywane zarówno przy tworzeniu NOWEJ podgrupy (puste pola) jak i przy
       // dopisywaniu progu do JUŻ ISTNIEJĄCEJ (pola wstępnie wypełnione bieżącą
@@ -2584,7 +2662,7 @@ export const UstawieniaView: View = {
         const isCreatingNew = addPrefixSelect.value === CUSTOM_PREFIX_VALUE;
         const showMaterialSize =
           isCustomSubgroupSelection(chosenCatId, addPrefixSelect.value) &&
-          isQtyTieredSubgroupCategory(chosenCatId);
+          !hasNativeSubgroupRenderer(chosenCatId);
         materialSizeWrapper.style.display = showMaterialSize ? "" : "none";
 
         const materialInput = container.querySelector<HTMLInputElement>("#new-subgroup-material");
@@ -2607,9 +2685,16 @@ export const UstawieniaView: View = {
       const labelDescEl = container.querySelector<HTMLElement>("#new-price-label-desc");
       if (qtyWrapper) {
         const chosenCatId = addCategorySelect.value;
+        const effectiveScheme = resolveFormCalcScheme(
+          chosenCatId,
+          addPrefixSelect.value,
+          schemeSelect?.value ?? "",
+          getVariantDefinitions()
+        );
         const isQtyBased = resolveUseQtyMode(
           chosenCatId,
-          isCustomSubgroupSelection(chosenCatId, addPrefixSelect.value)
+          isCustomSubgroupSelection(chosenCatId, addPrefixSelect.value),
+          effectiveScheme
         );
         qtyWrapper.style.display = isQtyBased ? "" : "none";
         if (!isQtyBased && qtyInput) qtyInput.value = "";
@@ -3371,6 +3456,15 @@ export const UstawieniaView: View = {
                   <input id="new-price-subgroup" type="text" class="settings-input" placeholder="np. Ulotki kwadratowe">
                 </div>
 
+                <div id="new-subgroup-scheme-wrapper" class="settings-field" style="display:none">
+                  <span class="settings-action-label">Schemat liczenia</span>
+                  <select id="new-subgroup-scheme" class="settings-input">
+                    <option value="interpolated">Progowy (cennik ilościowy, cena interpolowana)</option>
+                    <option value="flat-per-unit">Za sztukę (cena × ilość)</option>
+                    <option value="flat-rate">Ryczałt (jedna stała cena)</option>
+                  </select>
+                </div>
+
                 <div id="new-subgroup-materialsize-wrapper" class="settings-field" style="display:none">
                   <span class="settings-action-label">Materiał — opcjonalnie</span>
                   <input id="new-subgroup-material" type="text" class="settings-input" placeholder="np. 130g">
@@ -3539,6 +3633,7 @@ export const UstawieniaView: View = {
     const addSubgroupMaterialInput =
       container.querySelector<HTMLInputElement>("#new-subgroup-material");
     const addSubgroupSizeInput = container.querySelector<HTMLInputElement>("#new-subgroup-size");
+    const addSchemeSelect = container.querySelector<HTMLSelectElement>("#new-subgroup-scheme");
 
     function updateKeyPreview(): void {
       const previewWrap = container.querySelector<HTMLElement>("#key-preview-wrap");
@@ -3572,11 +3667,18 @@ export const UstawieniaView: View = {
         );
       }
 
+      const previewScheme = resolveFormCalcScheme(
+        chosenCategoryId,
+        selectedPrefix,
+        addSchemeSelect?.value ?? "",
+        getVariantDefinitions()
+      );
       let preview: string;
       if (
         resolveUseQtyMode(
           chosenCategoryId,
-          isCustomSubgroupSelection(chosenCategoryId, selectedPrefix)
+          isCustomSubgroupSelection(chosenCategoryId, selectedPrefix),
+          previewScheme
         )
       ) {
         if (!qty) {
@@ -3619,6 +3721,13 @@ export const UstawieniaView: View = {
       updateKeyPreview();
     });
 
+    addSchemeSelect?.addEventListener("change", () => {
+      // Scheme drives qty-mode vs name-mode — re-sync so the "Ilość" /
+      // "Nazwa" field toggles live when the admin changes the scheme.
+      syncAddCategorySelection();
+      updateKeyPreview();
+    });
+
     addSubgroupInput?.addEventListener("input", updateKeyPreview);
     addQtyInput?.addEventListener("input", updateKeyPreview);
     addLabelInput?.addEventListener("input", updateKeyPreview);
@@ -3647,9 +3756,26 @@ export const UstawieniaView: View = {
         chosenCategoryId,
         selectedPrefix
       );
-      const useQtyMode = resolveUseQtyMode(chosenCategoryId, isCustomSubgroupForCategory);
+      const effectiveScheme = resolveFormCalcScheme(
+        chosenCategoryId,
+        selectedPrefix,
+        addSchemeSelect?.value ?? "",
+        getVariantDefinitions()
+      );
+      const useQtyMode = resolveUseQtyMode(
+        chosenCategoryId,
+        isCustomSubgroupForCategory,
+        effectiveScheme
+      );
+      // A custom subgroup handled by the generic renderer (not artykuly/uslugi).
+      // Carries a calcScheme and, optionally, material/size — both denormalized
+      // across every tier of the subgroup.
+      const isGenericCustomSubgroupTier =
+        isCustomSubgroupForCategory && !hasNativeSubgroupRenderer(chosenCategoryId);
+      // Quantity-tiered (progowy) generic subgroup — drives the qty-based label
+      // fallback ("10 szt.") that name-mode products don't use.
       const isQtyTieredCustomSubgroupTier =
-        isCustomSubgroupForCategory && isQtyTieredSubgroupCategory(chosenCategoryId);
+        isGenericCustomSubgroupTier && effectiveScheme === "interpolated";
 
       if (useQtyMode) {
         if (!qtyValue) {
@@ -3802,7 +3928,8 @@ export const UstawieniaView: View = {
           existingDef?.sortOrder ?? getVariantDefinitions().length + _draftVariantDefs.length,
         createdAt: existingDef?.createdAt ?? _now,
         updatedAt: _now,
-        materialSizeOptions: isQtyTieredCustomSubgroupTier
+        calcScheme: isGenericCustomSubgroupTier ? effectiveScheme : existingDef?.calcScheme,
+        materialSizeOptions: isGenericCustomSubgroupTier
           ? buildMaterialSizeOptionsFromInputs(
               addSubgroupMaterialInput?.value ?? "",
               addSubgroupSizeInput?.value ?? ""
@@ -3813,11 +3940,13 @@ export const UstawieniaView: View = {
         .filter((d) => d.key !== _variantDef.key)
         .concat(_variantDef);
 
-      // materialSizeOptions jest zdenormalizowane na KAŻDYM progu podgrupy (ten sam
-      // wzorzec co subgroupLabel) — formularz edytuje je na poziomie podgrupy, więc
-      // zapis musi rozpropagować nową wartość na wszystkie POZOSTAŁE progi tej samej
-      // (categoryId, subcategoryPrefix), nie tylko na próg właśnie dodawany/edytowany.
-      if (isQtyTieredCustomSubgroupTier) {
+      // materialSizeOptions i calcScheme są zdenormalizowane na KAŻDYM progu
+      // podgrupy (ten sam wzorzec co subgroupLabel) — formularz edytuje je na
+      // poziomie podgrupy, więc zapis musi rozpropagować nowe wartości na
+      // wszystkie POZOSTAŁE progi tej samej (categoryId, subcategoryPrefix),
+      // nie tylko na próg właśnie dodawany/edytowany. Spójny calcScheme jest
+      // konieczny, by klasyfikacja nie uznała progów za sprzeczne (needs-review).
+      if (isGenericCustomSubgroupTier) {
         const siblingKeys = getVariantDefinitions()
           .filter(
             (v) =>
@@ -3837,7 +3966,7 @@ export const UstawieniaView: View = {
           siblingDefs,
           _variantDef.materialSizeOptions,
           _now
-        );
+        ).map((v) => ({ ...v, calcScheme: _variantDef.calcScheme }));
         for (const updated of updatedSiblings) {
           _draftVariantDefs = _draftVariantDefs
             .filter((d) => d.key !== updated.key)

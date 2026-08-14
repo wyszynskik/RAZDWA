@@ -1,5 +1,28 @@
 import { describe, it, expect } from "vitest";
-import { resolveUseQtyMode } from "../src/ui/views/ustawienia";
+import {
+  resolveUseQtyMode,
+  resolveFormCalcScheme,
+  defaultCalcSchemeForCategory,
+  categorySupportsCustomSubgroups,
+} from "../src/ui/views/ustawienia";
+import type { VariantDefinition } from "../src/services/priceService";
+
+function makeVariant(overrides: Partial<VariantDefinition>): VariantDefinition {
+  return {
+    key: "banner-eco-10",
+    categoryId: "banner",
+    subcategoryPrefix: "banner-eco-",
+    subgroupLabel: "Eco",
+    label: "10 szt.",
+    legend: "",
+    visibleInSettings: true,
+    visibleInCalculator: true,
+    sortOrder: 0,
+    createdAt: "2024-01-01T00:00:00.000Z",
+    updatedAt: "2024-01-01T00:00:00.000Z",
+    ...overrides,
+  };
+}
 
 /**
  * Regression test for the originally reported customer problem: creating a
@@ -41,6 +64,66 @@ describe("resolveUseQtyMode", () => {
 
   it("an unrelated category with no custom subgroup and no native qty basis never uses quantity mode", () => {
     expect(resolveUseQtyMode("banner", false)).toBe(false);
-    expect(resolveUseQtyMode("banner", true)).toBe(false); // banner isn't qty-tiered even for a hypothetical custom subgroup
+    expect(resolveUseQtyMode("banner", true)).toBe(false); // legacy 2-arg: falls back to identity (banner isn't qty-tiered)
+  });
+
+  it("an explicit scheme drives qty mode for a custom subgroup in any category", () => {
+    expect(resolveUseQtyMode("banner", true, "interpolated")).toBe(true);
+    expect(resolveUseQtyMode("banner", true, "flat-per-unit")).toBe(false);
+    expect(resolveUseQtyMode("banner", true, "flat-rate")).toBe(false);
+  });
+
+  it("native qty categories ignore the scheme argument (always qty mode)", () => {
+    expect(resolveUseQtyMode("vouchery", true, "flat-rate")).toBe(true);
+  });
+});
+
+describe("defaultCalcSchemeForCategory", () => {
+  it("defaults every category to progowy (interpolated)", () => {
+    expect(defaultCalcSchemeForCategory("banner")).toBe("interpolated");
+    expect(defaultCalcSchemeForCategory("druk-a4-a3")).toBe("interpolated");
+    expect(defaultCalcSchemeForCategory("plakaty-a4-a3")).toBe("interpolated");
+  });
+});
+
+describe("categorySupportsCustomSubgroups", () => {
+  it("supports real product categories, incl. artykuly/uslugi (their own renderer)", () => {
+    expect(categorySupportsCustomSubgroups("banner")).toBe(true);
+    expect(categorySupportsCustomSubgroups("artykuly")).toBe(true);
+    expect(categorySupportsCustomSubgroups("uslugi")).toBe(true);
+  });
+
+  it("excludes the modifiers pseudo-category", () => {
+    expect(categorySupportsCustomSubgroups("modifiers")).toBe(false);
+  });
+});
+
+describe("resolveFormCalcScheme", () => {
+  it("returns undefined for native-renderer categories (artykuly/uslugi)", () => {
+    expect(
+      resolveFormCalcScheme("artykuly", "__custom_prefix__", "interpolated", [])
+    ).toBeUndefined();
+    expect(
+      resolveFormCalcScheme("uslugi", "__custom_prefix__", "flat-per-unit", [])
+    ).toBeUndefined();
+  });
+
+  it("uses the dropdown value when creating a NEW custom subgroup", () => {
+    expect(resolveFormCalcScheme("banner", "__custom_prefix__", "flat-rate", [])).toBe("flat-rate");
+  });
+
+  it("falls back to the category default when the dropdown value is invalid", () => {
+    expect(resolveFormCalcScheme("banner", "__custom_prefix__", "", [])).toBe("interpolated");
+  });
+
+  it("reads the stored scheme when adding a tier to an EXISTING custom subgroup", () => {
+    const existing = [makeVariant({ subcategoryPrefix: "banner-eco-", calcScheme: "flat-rate" })];
+    expect(resolveFormCalcScheme("banner", "banner-eco-", "interpolated", existing)).toBe(
+      "flat-rate"
+    );
+  });
+
+  it("returns undefined for a hardcoded (non-custom) prefix", () => {
+    expect(resolveFormCalcScheme("banner", "banner-standard-", "interpolated", [])).toBeUndefined();
   });
 });

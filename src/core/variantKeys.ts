@@ -84,6 +84,24 @@ export function isQtyTieredSubgroupCategory(categoryId: string): boolean {
 }
 
 /**
+ * Categories that render their custom subgroups through their OWN bespoke
+ * calculator (src/categories/artykuly-biurowe.ts, uslugi.ts), NOT through
+ * the generic Product/dynamicSubgroups pipeline. They are deliberately
+ * excluded from the generic "choose a calcScheme → form + tiered legend"
+ * system: they already have a working subgroup UX, and mounting the generic
+ * renderer on top would double-render the same subgroups. Both the admin
+ * form (scheme dropdown) and the client-side router mount skip them.
+ */
+export const NATIVE_SUBGROUP_RENDERER_CATEGORIES: ReadonlySet<string> = new Set([
+  "artykuly",
+  "uslugi",
+]);
+
+export function hasNativeSubgroupRenderer(categoryId: string): boolean {
+  return NATIVE_SUBGROUP_RENDERER_CATEGORIES.has(categoryId);
+}
+
+/**
  * Builds a deterministic base key for quantity-based categories.
  * qty – raw quantity value, e.g. "100" or "51-1000" (broszury range).
  */

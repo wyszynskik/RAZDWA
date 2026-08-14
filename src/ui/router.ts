@@ -4,6 +4,7 @@ import { verifyPinOnServer } from "../services/orderExportService";
 import { isAdminSession, setAdminSession } from "../core/adminSession";
 import { mountDynamicSubgroupContainers } from "./dynamicSubgroups";
 import { BASE_PRICE_CATEGORIES } from "../core/productCat";
+import { hasNativeSubgroupRenderer } from "../core/variantKeys";
 
 export interface CategoryContext extends ViewContext {
   cart: {
@@ -242,6 +243,10 @@ export class Router {
    * BASE_PRICE_CATEGORIES.
    */
   private mountDynamicSubgroupsFor(path: string): void {
+    // artykuly/uslugi render their custom subgroups through their own
+    // bespoke calculator — mounting the generic renderer here would
+    // double-render them (see hasNativeSubgroupRenderer).
+    if (hasNativeSubgroupRenderer(path)) return;
     const category = BASE_PRICE_CATEGORIES.find((c) => c.id === path);
     if (!category) return;
     try {
