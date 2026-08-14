@@ -277,6 +277,20 @@ export interface MaterialSizeOption {
   size: string;
 }
 
+/**
+ * How a custom subgroup's price is computed. Declared explicitly by the
+ * admin at subgroup creation ("Dodaj wariant" form) instead of inferred
+ * from category identity — the same denormalization pattern as
+ * subgroupLabel (every tier sharing a subcategoryPrefix carries the same
+ * value). Absent on variants created before this field existed; consumers
+ * fall back to the historical category-identity rule (see
+ * core/productModel.ts).
+ *  - interpolated: quantity-tiered ladder, price between tiers proportional
+ *  - flat-per-unit: single price × quantity
+ *  - flat-rate: one fixed price regardless of quantity
+ */
+export type VariantCalcScheme = "interpolated" | "flat-per-unit" | "flat-rate";
+
 export interface VariantDefinition {
   key: string;
   categoryId: string;
@@ -297,6 +311,14 @@ export interface VariantDefinition {
    * existed, and on categories that don't use it (artykuly/uslugi).
    */
   materialSizeOptions?: MaterialSizeOption[];
+  /**
+   * Optional: explicit price-calculation scheme for this subgroup's tiers
+   * (denormalized across all tiers sharing a subcategoryPrefix, same
+   * pattern as subgroupLabel/materialSizeOptions). Absent on variants
+   * created before this field existed — consumers fall back to the
+   * historical category-identity rule.
+   */
+  calcScheme?: VariantCalcScheme;
 }
 
 export function getVariantDefinitions(): VariantDefinition[] {
