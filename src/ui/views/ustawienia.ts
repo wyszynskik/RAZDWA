@@ -157,6 +157,29 @@ export function buildMaterialSizeOptionsFromInputs(
  * Exported for unit tests only — not part of this module's public API for
  * other views.
  */
+/**
+ * Resolves the label to DISPLAY for a price-table row. A VariantDefinition's
+ * own stored `label` (when the key has one and it's non-empty) always wins
+ * over the derived getPriceLabel(key) fallback chain — the variant's label
+ * is the admin's actual saved value (including the resolveVariantLabel()
+ * "{qty} szt." fix for qty-tiered custom subgroups); getPriceLabel(key) is
+ * only a best-effort guess for keys with no VariantDefinition at all
+ * (legacy/hardcoded categories never created through "Dodaj wariant").
+ *
+ * BUG this fixes: renderTable() previously called getPriceLabel(key)
+ * unconditionally, ignoring a saved VariantDefinition.label entirely — so
+ * fixing what gets WRITTEN (resolveVariantLabel, see above) had no visible
+ * effect on this list, which kept recomputing its own guess from the key.
+ *
+ * Exported for unit tests only.
+ */
+export function resolveDisplayLabel(
+  variantLabel: string | undefined,
+  fallbackKeyLabel: string
+): string {
+  return variantLabel && variantLabel.trim() ? variantLabel : fallbackKeyLabel;
+}
+
 export function resolveVariantLabel(
   legendText: string,
   productLabel: string,
@@ -2621,6 +2644,8 @@ export const UstawieniaView: View = {
       let previousBindowanieSubgroup = "";
       let isBoldGroup = false;
 
+      const variantsByKey = new Map(getVariantDefinitions().map((v) => [v.key, v]));
+
       const rows: string[] = [];
       keys.forEach((key) => {
         if (active.id === "druk-cad") {
@@ -2797,7 +2822,7 @@ export const UstawieniaView: View = {
           }
         }
 
-        const label = getPriceLabel(key);
+        const label = resolveDisplayLabel(variantsByKey.get(key)?.label, getPriceLabel(key));
         if (
           active.id !== "druk-cad" &&
           active.id !== "druk-a4-a3" &&
