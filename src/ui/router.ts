@@ -2,6 +2,8 @@ import { View, ViewContext } from "./types";
 import { VIPERPRINT_URL } from "../core/external-links";
 import { verifyPinOnServer } from "../services/orderExportService";
 import { isAdminSession, setAdminSession } from "../core/adminSession";
+import { mountDynamicSubgroupContainers } from "./dynamicSubgroups";
+import { BASE_PRICE_CATEGORIES } from "../core/productCat";
 
 export interface CategoryContext extends ViewContext {
   cart: {
@@ -24,6 +26,7 @@ export class Router {
   private getCtx: () => ViewContext;
   private categories: any[] = [];
   private previousHash: string = "#/";
+  private currentCategoryPath: string | null = null;
 
   private isSettingsAuthenticated(): boolean {
     return isAdminSession();
@@ -33,6 +36,7 @@ export class Router {
     const view = this.routes.get("ustawienia");
     if (!view) return;
     this.currentView = view;
+    this.currentCategoryPath = null;
     try {
       await view.mount(this.container, this.getCtx());
     } catch (err) {
@@ -219,6 +223,39 @@ export class Router {
         this.renderHome();
       });
     });
+
+    // Admin-created custom subgroups render below every category's own
+    // (possibly hardcoded) calculator, driven entirely by the
+    // Product/VariantDefinition model. Re-render on price/variant changes so
+    // a subgroup saved in Ustawienia appears without a reload.
+    this.getCtx().on?.("prices-updated", () => {
+      if (this.currentCategoryPath) {
+        this.mountDynamicSubgroupsFor(this.currentCategoryPath);
+      }
+    });
+  }
+
+  /**
+   * Mounts the generic custom-subgroup cards (form + tiered legend) at the
+   * bottom of the current category container. No-op for routes that aren't a
+   * price category (home, ustawienia, not-found) — those have no id in
+   * BASE_PRICE_CATEGORIES.
+   */
+  private mountDynamicSubgroupsFor(path: string): void {
+    const category = BASE_PRICE_CATEGORIES.find((c) => c.id === path);
+    if (!category) return;
+    try {
+      mountDynamicSubgroupContainers(
+        this.container,
+        this.container,
+        path,
+        category.label,
+        this.getCtx(),
+        "beforeend"
+      );
+    } catch (err) {
+      console.error("dynamic subgroups mount error:", err);
+    }
   }
 
   setCategories(categories: any[]) {
@@ -275,9 +312,12 @@ export class Router {
       this.currentView = view;
       try {
         await view.mount(this.container, this.getCtx());
+        this.currentCategoryPath = path;
+        this.mountDynamicSubgroupsFor(path);
       } catch (err) {
         console.error("❌ View mount error:", err);
         this.container.innerHTML = `<div class="error">Błąd ładowania widoku: ${this.escapeHtml(String(err))}</div>`;
+        this.currentCategoryPath = null;
       }
     } else {
       try {
@@ -291,6 +331,8 @@ export class Router {
             newScript.textContent = oldScript.textContent ?? "";
             oldScript.replaceWith(newScript);
           });
+          this.currentCategoryPath = path;
+          this.mountDynamicSubgroupsFor(path);
         } else {
           this.renderNotFound(path);
         }
@@ -301,6 +343,7 @@ export class Router {
   }
 
   renderNotFound(path: string) {
+    this.currentCategoryPath = null;
     const safePath = this.escapeHtml(path);
     this.container.innerHTML = `
       <div class="error-view">
@@ -311,6 +354,7 @@ export class Router {
   }
 
   private renderHome() {
+    this.currentCategoryPath = null;
     const categoriesById = new Map(this.categories.map((cat: any) => [cat.id, cat]));
     const groupedHomeTiles: Array<{ title: string; ids: string[] }> = [
       {
