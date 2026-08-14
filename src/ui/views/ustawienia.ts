@@ -30,6 +30,7 @@ import {
   PRICE_SUBGROUPS_STORAGE_KEY,
   VARIANTS_STORAGE_KEY,
   type VariantDefinition,
+  type MaterialSizeOption,
   getVariantDefinitions,
   setVariantDefinitions,
   upsertVariantDefinition,
@@ -132,11 +133,33 @@ export function resolveNewSubgroupBasePrefix(categoryId: string): string {
 export function buildMaterialSizeOptionsFromInputs(
   material: string,
   size: string
-): { material: string; size: string }[] | undefined {
+): MaterialSizeOption[] | undefined {
   const trimmedMaterial = material.trim();
   const trimmedSize = size.trim();
   if (!trimmedMaterial && !trimmedSize) return undefined;
   return [{ material: trimmedMaterial, size: trimmedSize }];
+}
+
+/**
+ * materialSizeOptions is denormalized on EVERY tier of a subgroup (same
+ * pattern as subgroupLabel) — the form edits it at the subgroup level, so
+ * saving a new value must propagate it onto every OTHER tier sharing the
+ * same (categoryId, subcategoryPrefix), not just the tier being
+ * added/edited right now. Pure: returns updated copies, does not mutate
+ * its input or touch localStorage.
+ *
+ * Exported for unit tests only.
+ */
+export function propagateMaterialSizeOptionsToSiblings(
+  siblings: VariantDefinition[],
+  newMaterialSizeOptions: MaterialSizeOption[] | undefined,
+  now: string
+): VariantDefinition[] {
+  return siblings.map((v) => ({
+    ...v,
+    materialSizeOptions: newMaterialSizeOptions,
+    updatedAt: now,
+  }));
 }
 
 /**
@@ -2547,18 +2570,34 @@ export const UstawieniaView: View = {
       // (mountDynamicSubgroupContainers), a to jedyny caller z plakaty-a4-a3.ts —
       // pokazuj te pola tylko tam, żeby nie zbierać danych, których żaden widok
       // klienta nigdy nie wyświetli (artykuly/uslugi mają inny renderer).
+      //
+      // Pokazywane zarówno przy tworzeniu NOWEJ podgrupy (puste pola) jak i przy
+      // dopisywaniu progu do JUŻ ISTNIEJĄCEJ (pola wstępnie wypełnione bieżącą
+      // wartością z podgrupy, do ewentualnej korekty) — zapis nadpisuje
+      // materialSizeOptions na wszystkich progach tej podgrupy (patrz btn-add-row).
       const materialSizeWrapper = container.querySelector<HTMLElement>(
         "#new-subgroup-materialsize-wrapper"
       );
       if (materialSizeWrapper) {
-        const isCustom = addPrefixSelect.value === CUSTOM_PREFIX_VALUE;
-        const showMaterialSize = isCustom && isQtyTieredSubgroupCategory(addCategorySelect.value);
+        const chosenCatId = addCategorySelect.value;
+        const isCreatingNew = addPrefixSelect.value === CUSTOM_PREFIX_VALUE;
+        const showMaterialSize =
+          isCustomSubgroupSelection(chosenCatId, addPrefixSelect.value) &&
+          isQtyTieredSubgroupCategory(chosenCatId);
         materialSizeWrapper.style.display = showMaterialSize ? "" : "none";
+
+        const materialInput = container.querySelector<HTMLInputElement>("#new-subgroup-material");
+        const sizeInput = container.querySelector<HTMLInputElement>("#new-subgroup-size");
         if (!showMaterialSize) {
-          const materialInput = container.querySelector<HTMLInputElement>("#new-subgroup-material");
-          const sizeInput = container.querySelector<HTMLInputElement>("#new-subgroup-size");
           if (materialInput) materialInput.value = "";
           if (sizeInput) sizeInput.value = "";
+        } else if (!isCreatingNew) {
+          const existingVariant = getVariantDefinitions().find(
+            (v) => v.categoryId === chosenCatId && v.subcategoryPrefix === addPrefixSelect.value
+          );
+          const existingOption = existingVariant?.materialSizeOptions?.[0];
+          if (materialInput) materialInput.value = existingOption?.material ?? "";
+          if (sizeInput) sizeInput.value = existingOption?.size ?? "";
         }
       }
 
@@ -3756,17 +3795,48 @@ export const UstawieniaView: View = {
           existingDef?.sortOrder ?? getVariantDefinitions().length + _draftVariantDefs.length,
         createdAt: existingDef?.createdAt ?? _now,
         updatedAt: _now,
-        materialSizeOptions:
-          selectedPrefix === CUSTOM_PREFIX_VALUE
-            ? buildMaterialSizeOptionsFromInputs(
-                addSubgroupMaterialInput?.value ?? "",
-                addSubgroupSizeInput?.value ?? ""
-              )
-            : existingDef?.materialSizeOptions,
+        materialSizeOptions: isQtyTieredCustomSubgroupTier
+          ? buildMaterialSizeOptionsFromInputs(
+              addSubgroupMaterialInput?.value ?? "",
+              addSubgroupSizeInput?.value ?? ""
+            )
+          : existingDef?.materialSizeOptions,
       };
       _draftVariantDefs = _draftVariantDefs
         .filter((d) => d.key !== _variantDef.key)
         .concat(_variantDef);
+
+      // materialSizeOptions jest zdenormalizowane na KAŻDYM progu podgrupy (ten sam
+      // wzorzec co subgroupLabel) — formularz edytuje je na poziomie podgrupy, więc
+      // zapis musi rozpropagować nową wartość na wszystkie POZOSTAŁE progi tej samej
+      // (categoryId, subcategoryPrefix), nie tylko na próg właśnie dodawany/edytowany.
+      if (isQtyTieredCustomSubgroupTier) {
+        const siblingKeys = getVariantDefinitions()
+          .filter(
+            (v) =>
+              v.categoryId === chosenCategoryId &&
+              v.subcategoryPrefix === chosenPrefix &&
+              v.key !== newKey
+          )
+          .map((v) => v.key);
+        const siblingDefs = siblingKeys
+          .map(
+            (key) =>
+              _draftVariantDefs.find((d) => d.key === key) ??
+              getVariantDefinitions().find((v) => v.key === key)
+          )
+          .filter((v): v is VariantDefinition => Boolean(v));
+        const updatedSiblings = propagateMaterialSizeOptionsToSiblings(
+          siblingDefs,
+          _variantDef.materialSizeOptions,
+          _now
+        );
+        for (const updated of updatedSiblings) {
+          _draftVariantDefs = _draftVariantDefs
+            .filter((d) => d.key !== updated.key)
+            .concat(updated);
+        }
+      }
       logVariantOperation({
         action: isUpdate ? "update" : "add",
         key: newKey,
