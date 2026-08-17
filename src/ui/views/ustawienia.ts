@@ -202,6 +202,23 @@ export function computeEmptySubgroupPrefixes(
 }
 
 /**
+ * The custom subgroup a price key belongs to: the LONGEST registered prefix the
+ * key starts with, so a nested key resolves to its real owner rather than a
+ * shorter sibling prefix. Returns undefined when no prefix matches.
+ *
+ * Exported for unit tests only — not part of this module's public API for
+ * other views.
+ */
+export function resolveOwningSubgroupPrefix(
+  subgroupPrefixes: string[],
+  key: string
+): string | undefined {
+  return subgroupPrefixes
+    .filter((prefix) => key.startsWith(prefix))
+    .sort((a, b) => b.length - a.length)[0];
+}
+
+/**
  * Builds the (today, always single-entry) materialSizeOptions array from the
  * admin's raw material/size text inputs when creating a NEW custom subgroup.
  * Returns undefined when both are blank — no invented data, matches
@@ -352,6 +369,30 @@ function getEmptyCustomSubgroups(categoryId: string, priceMap: PriceMap): Prefix
     )
   );
   return getCustomSubgroupDefinitions(categoryId).filter((s) => emptyPrefixes.has(s.value));
+}
+
+/**
+ * After a variant/price key is deleted, drop its owning custom subgroup prefix
+ * if that removal left the subgroup empty (no variant, no price key). Keeps the
+ * "Dodaj wariant" dropdown free of orphaned subgroups automatically instead of
+ * relying on the manual "Puste podgrupy" delete. Only ever touches a custom
+ * subgroup of the given category, and the emptiness re-check is the same guard
+ * used everywhere else — a subgroup that still has other variants is never
+ * removed. Longest matching prefix wins so nested keys resolve to their real
+ * owner. Mutation is in-memory; persisted by "Zapisz" like every other edit.
+ */
+function autoCleanupEmptySubgroupForKey(
+  categoryId: string,
+  deletedKey: string,
+  priceMap: PriceMap
+): void {
+  const groups = customPriceSubgroups[categoryId];
+  if (!groups) return;
+  const owningPrefix = resolveOwningSubgroupPrefix(Object.keys(groups), deletedKey);
+  if (!owningPrefix) return;
+  if (getEmptyCustomSubgroups(categoryId, priceMap).some((s) => s.value === owningPrefix)) {
+    delete groups[owningPrefix];
+  }
 }
 
 function getCustomSubgroupLabel(categoryId: string, key: string): string | null {
@@ -2793,12 +2834,12 @@ export const UstawieniaView: View = {
 
       tbody.dataset.category = active.id;
 
-      // Puste podgrupy (custom prefix bez wariantów i bez ceny) istnieją tylko
-      // w kategoriach z custom podgrupami — nigdzie indziej admin ich nie
-      // utworzy. Widoczne w tej sekcji nawet gdy kategoria nie ma jeszcze
-      // żadnej wycenionej pozycji (keys.length === 0), bo inaczej nie dałoby
-      // się ich usunąć.
-      const emptySubgroups = DYNAMIC_SUBGROUP_CATEGORIES.has(active.id)
+      // Puste podgrupy (custom prefix bez wariantów i bez ceny) mogą istnieć w
+      // każdej kategorii wspierającej custom podgrupy (categorySupportsCustomSubgroups
+      // — dziś wszystkie poza "modifiers"). Widoczne w tej sekcji nawet gdy
+      // kategoria nie ma jeszcze żadnej wycenionej pozycji (keys.length === 0),
+      // bo inaczej nie dałoby się ich usunąć.
+      const emptySubgroups = categorySupportsCustomSubgroups(active.id)
         ? getEmptyCustomSubgroups(active.id, prices)
         : [];
 
@@ -3090,6 +3131,7 @@ export const UstawieniaView: View = {
           delete prices[key];
           delete customPriceLabels[key];
           deleteVariantDefinition(key);
+          autoCleanupEmptySubgroupForKey(active.id, key, prices);
           renderTabs();
           renderTable();
           syncAddCategorySelection();
