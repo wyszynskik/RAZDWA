@@ -87,10 +87,37 @@ describe("defaultCalcSchemeForCategory", () => {
 });
 
 describe("categorySupportsCustomSubgroups", () => {
-  it("supports real product categories, incl. artykuly/uslugi (their own renderer)", () => {
-    expect(categorySupportsCustomSubgroups("banner")).toBe(true);
-    expect(categorySupportsCustomSubgroups("artykuly")).toBe(true);
-    expect(categorySupportsCustomSubgroups("uslugi")).toBe(true);
+  it("supports the quantity-based categories (fully-wired + nakład/próg ilościowy)", () => {
+    for (const id of [
+      "plakaty-a4-a3",
+      "artykuly",
+      "uslugi",
+      "druk-a4-a3",
+      "vouchery",
+      "wizytowki",
+      "dyplomy",
+      "dyplomy-eko",
+      "ulotki",
+      "zaproszenia",
+      "broszury-katalogi",
+    ]) {
+      expect(categorySupportsCustomSubgroups(id)).toBe(true);
+    }
+  });
+
+  it("excludes area/length categories the generic qty→price card can't reproduce", () => {
+    for (const id of [
+      "banner",
+      "folia",
+      "solwent",
+      "wycinanie-folii",
+      "canvas",
+      "wlepki",
+      "druk-cad",
+      "rollup",
+    ]) {
+      expect(categorySupportsCustomSubgroups(id)).toBe(false);
+    }
   });
 
   it("excludes the modifiers pseudo-category", () => {

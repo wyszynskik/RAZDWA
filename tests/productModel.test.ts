@@ -149,6 +149,56 @@ describe("classifyVariantsIntoProducts — numeric-suffix clusters (interpolated
     expect(report.skipped[0].categoryId).toBe("banner");
   });
 
+  it("a newly-enabled quantity category (vouchery) renders as interpolated ONLY via its declared calcScheme — the pipeline is category-agnostic", () => {
+    // Enabling custom subgroups in vouchery/dyplomy/ulotki/… relies entirely
+    // on the admin-declared calcScheme driving classification: these are NOT in
+    // the identity-fallback set (plakaty-a4-a3/artykuly/uslugi), so the form
+    // always stores a scheme (default "interpolated"). With it, the cluster
+    // classifies exactly like a plakaty tier ladder.
+    const variants = [
+      makeVariant({
+        key: "vouchery-moja-grupa-50",
+        categoryId: "vouchery",
+        subcategoryPrefix: "vouchery-moja-grupa-",
+        calcScheme: "interpolated",
+      }),
+      makeVariant({
+        key: "vouchery-moja-grupa-100",
+        categoryId: "vouchery",
+        subcategoryPrefix: "vouchery-moja-grupa-",
+        calcScheme: "interpolated",
+      }),
+    ];
+    const report = classifyVariantsIntoProducts(variants, {
+      "vouchery-moja-grupa-50": 200,
+      "vouchery-moja-grupa-100": 350,
+    });
+
+    expect(report.needsReview).toEqual([]);
+    expect(report.skipped).toEqual([]);
+    expect(report.migrated).toHaveLength(1);
+    expect(report.migrated[0].calcType).toBe("interpolated");
+    expect(report.migrated[0].entries).toEqual([
+      { key: "vouchery-moja-grupa-50", qty: 50, price: 200 },
+      { key: "vouchery-moja-grupa-100", qty: 100, price: 350 },
+    ]);
+  });
+
+  it("the same vouchery cluster WITHOUT a declared scheme is skipped, never guessed (mirrors banner)", () => {
+    const variants = [
+      makeVariant({
+        key: "vouchery-moja-grupa-50",
+        categoryId: "vouchery",
+        subcategoryPrefix: "vouchery-moja-grupa-",
+      }),
+    ];
+    const report = classifyVariantsIntoProducts(variants, { "vouchery-moja-grupa-50": 200 });
+
+    expect(report.migrated).toEqual([]);
+    expect(report.skipped).toHaveLength(1);
+    expect(report.skipped[0].categoryId).toBe("vouchery");
+  });
+
   it("threads materialSizeOptions from the first tier onto the product, denormalized like subgroupLabel", () => {
     const variants = [
       makeVariant({

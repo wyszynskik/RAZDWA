@@ -202,6 +202,23 @@ export function computeEmptySubgroupPrefixes(
 }
 
 /**
+ * The custom subgroup a price key belongs to: the LONGEST registered prefix the
+ * key starts with, so a nested key resolves to its real owner rather than a
+ * shorter sibling prefix. Returns undefined when no prefix matches.
+ *
+ * Exported for unit tests only — not part of this module's public API for
+ * other views.
+ */
+export function resolveOwningSubgroupPrefix(
+  subgroupPrefixes: string[],
+  key: string
+): string | undefined {
+  return subgroupPrefixes
+    .filter((prefix) => key.startsWith(prefix))
+    .sort((a, b) => b.length - a.length)[0];
+}
+
+/**
  * Builds the (today, always single-entry) materialSizeOptions array from the
  * admin's raw material/size text inputs when creating a NEW custom subgroup.
  * Returns undefined when both are blank — no invented data, matches
@@ -354,6 +371,30 @@ function getEmptyCustomSubgroups(categoryId: string, priceMap: PriceMap): Prefix
   return getCustomSubgroupDefinitions(categoryId).filter((s) => emptyPrefixes.has(s.value));
 }
 
+/**
+ * After a variant/price key is deleted, drop its owning custom subgroup prefix
+ * if that removal left the subgroup empty (no variant, no price key). Keeps the
+ * "Dodaj wariant" dropdown free of orphaned subgroups automatically instead of
+ * relying on the manual "Puste podgrupy" delete. Only ever touches a custom
+ * subgroup of the given category, and the emptiness re-check is the same guard
+ * used everywhere else — a subgroup that still has other variants is never
+ * removed. Longest matching prefix wins so nested keys resolve to their real
+ * owner. Mutation is in-memory; persisted by "Zapisz" like every other edit.
+ */
+function autoCleanupEmptySubgroupForKey(
+  categoryId: string,
+  deletedKey: string,
+  priceMap: PriceMap
+): void {
+  const groups = customPriceSubgroups[categoryId];
+  if (!groups) return;
+  const owningPrefix = resolveOwningSubgroupPrefix(Object.keys(groups), deletedKey);
+  if (!owningPrefix) return;
+  if (getEmptyCustomSubgroups(categoryId, priceMap).some((s) => s.value === owningPrefix)) {
+    delete groups[owningPrefix];
+  }
+}
+
 function getCustomSubgroupLabel(categoryId: string, key: string): string | null {
   const groups = customPriceSubgroups[categoryId] ?? Object.create(null);
   const matches = Object.entries(groups)
@@ -398,17 +439,42 @@ function getCategorySectionTitle(category: PriceCategory, key: string): string {
 }
 
 /**
- * Whether "Nowa podkategoria…" is offered for a category. Every real price
- * category can now host admin-created custom subgroups — the generic ones
- * render via ui/dynamicSubgroups.ts (mounted by the router), and
- * artykuly/uslugi keep their own bespoke renderer. "modifiers" is a
- * pseudo-category (global percentage surcharges), not a product list, so it
- * stays out.
+ * Categories where "Nowa podkategoria…" is offered. Deliberately limited to
+ * QUANTITY-based categories, where the generic qty→price card
+ * (ui/dynamicSubgroups.ts, mounted by the router) — or, for artykuly/uslugi,
+ * their own bespoke renderer — actually fits how the category is priced:
+ *   - plakaty-a4-a3, artykuly, uslugi: fully-wired subgroup rendering;
+ *   - druk-a4-a3, vouchery, wizytowki, dyplomy(+eko), ulotki, zaproszenia,
+ *     broszury-katalogi: nakład / próg ilościowy — a qty→price card is the
+ *     right shape (the declared calcScheme drives rendering, see
+ *     classifyVariantsIntoProducts / resolveFormCalcScheme).
+ * Excluded on purpose: area/length categories (banner, folia, solwent,
+ * wycinanie-folii, canvas, wlepki, druk-cad, roll-up) price by m²/mb/wymiar,
+ * which the generic card cannot reproduce; and "modifiers" (global surcharges,
+ * not a product list).
+ */
+const CUSTOM_SUBGROUP_CATEGORIES: ReadonlySet<string> = new Set([
+  "plakaty-a4-a3",
+  "artykuly",
+  "uslugi",
+  "druk-a4-a3",
+  "vouchery",
+  "wizytowki",
+  "dyplomy",
+  "dyplomy-eko",
+  "ulotki",
+  "zaproszenia",
+  "broszury-katalogi",
+]);
+
+/**
+ * Whether "Nowa podkategoria…" is offered for a category. See
+ * CUSTOM_SUBGROUP_CATEGORIES for the rationale behind the narrow allowlist.
  *
  * Exported for unit tests only.
  */
 export function categorySupportsCustomSubgroups(categoryId: string): boolean {
-  return categoryId !== "modifiers";
+  return CUSTOM_SUBGROUP_CATEGORIES.has(categoryId);
 }
 
 /**
@@ -2793,12 +2859,12 @@ export const UstawieniaView: View = {
 
       tbody.dataset.category = active.id;
 
-      // Puste podgrupy (custom prefix bez wariantów i bez ceny) istnieją tylko
-      // w kategoriach z custom podgrupami — nigdzie indziej admin ich nie
-      // utworzy. Widoczne w tej sekcji nawet gdy kategoria nie ma jeszcze
-      // żadnej wycenionej pozycji (keys.length === 0), bo inaczej nie dałoby
-      // się ich usunąć.
-      const emptySubgroups = DYNAMIC_SUBGROUP_CATEGORIES.has(active.id)
+      // Puste podgrupy (custom prefix bez wariantów i bez ceny) mogą istnieć w
+      // każdej kategorii wspierającej custom podgrupy (categorySupportsCustomSubgroups
+      // — dziś wszystkie poza "modifiers"). Widoczne w tej sekcji nawet gdy
+      // kategoria nie ma jeszcze żadnej wycenionej pozycji (keys.length === 0),
+      // bo inaczej nie dałoby się ich usunąć.
+      const emptySubgroups = categorySupportsCustomSubgroups(active.id)
         ? getEmptyCustomSubgroups(active.id, prices)
         : [];
 
@@ -3090,6 +3156,7 @@ export const UstawieniaView: View = {
           delete prices[key];
           delete customPriceLabels[key];
           deleteVariantDefinition(key);
+          autoCleanupEmptySubgroupForKey(active.id, key, prices);
           renderTabs();
           renderTable();
           syncAddCategorySelection();
