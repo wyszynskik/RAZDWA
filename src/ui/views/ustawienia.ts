@@ -123,6 +123,34 @@ export function resolveNewSubgroupBasePrefix(categoryId: string): string {
 }
 
 /**
+ * Custom subgroups that carry NOTHING sellable: no price key starts with the
+ * subgroup's prefix AND no VariantDefinition references that prefix. These
+ * are invisible to the customer (dynamicSubgroups.ts drops tier-less
+ * products via `.tiers.length > 0`) yet linger forever in the "Dodaj wariant"
+ * prefix dropdown, so the admin needs a way to remove them.
+ *
+ * A subgroup with ANY variant is intentionally never returned here: deletion
+ * from the settings panel is scoped to empty subgroups only, so it can never
+ * cascade into losing priced data. This is the structural guard behind that
+ * promise — it is the single source of truth the UI both renders from and
+ * re-checks on click.
+ *
+ * Exported for unit tests only — not part of this module's public API for
+ * other views.
+ */
+export function computeEmptySubgroupPrefixes(
+  subgroupPrefixes: string[],
+  variantPrefixes: string[],
+  priceKeys: string[]
+): string[] {
+  const used = new Set(variantPrefixes);
+  return subgroupPrefixes.filter((prefix) => {
+    if (used.has(prefix)) return false;
+    return !priceKeys.some((key) => key.startsWith(prefix));
+  });
+}
+
+/**
  * Builds the (today, always single-entry) materialSizeOptions array from the
  * admin's raw material/size text inputs when creating a NEW custom subgroup.
  * Returns undefined when both are blank — no invented data, matches
@@ -253,6 +281,26 @@ let _draftVariantDefs: VariantDefinition[] = [];
 function getCustomSubgroupDefinitions(categoryId: string): PrefixOption[] {
   const groups = customPriceSubgroups[categoryId] ?? Object.create(null);
   return Object.entries(groups).map(([value, label]) => ({ value, label }));
+}
+
+/**
+ * Live view over the module's in-memory state: custom subgroups in a category
+ * that have no variants and no priced keys (see computeEmptySubgroupPrefixes
+ * for the definition and the safety rationale). Returns {value, label} pairs
+ * ready for the settings table's "puste podgrupy" section.
+ */
+function getEmptyCustomSubgroups(categoryId: string, priceMap: PriceMap): PrefixOption[] {
+  const variantPrefixes = getVariantDefinitions()
+    .filter((v) => v.categoryId === categoryId)
+    .map((v) => v.subcategoryPrefix);
+  const emptyPrefixes = new Set(
+    computeEmptySubgroupPrefixes(
+      getCustomSubgroupDefinitions(categoryId).map((s) => s.value),
+      variantPrefixes,
+      Object.keys(priceMap)
+    )
+  );
+  return getCustomSubgroupDefinitions(categoryId).filter((s) => emptyPrefixes.has(s.value));
 }
 
 function getCustomSubgroupLabel(categoryId: string, key: string): string | null {
@@ -2660,7 +2708,16 @@ export const UstawieniaView: View = {
 
       tbody.dataset.category = active.id;
 
-      if (keys.length === 0) {
+      // Puste podgrupy (custom prefix bez wariantów i bez ceny) istnieją tylko
+      // w kategoriach z custom podgrupami — nigdzie indziej admin ich nie
+      // utworzy. Widoczne w tej sekcji nawet gdy kategoria nie ma jeszcze
+      // żadnej wycenionej pozycji (keys.length === 0), bo inaczej nie dałoby
+      // się ich usunąć.
+      const emptySubgroups = DYNAMIC_SUBGROUP_CATEGORIES.has(active.id)
+        ? getEmptyCustomSubgroups(active.id, prices)
+        : [];
+
+      if (keys.length === 0 && emptySubgroups.length === 0) {
         tbody.innerHTML = `
           <tr>
             <td colspan="3" class="settings-empty-state">
@@ -2918,6 +2975,27 @@ export const UstawieniaView: View = {
       `);
       });
 
+      if (emptySubgroups.length > 0) {
+        rows.push(`
+          <tr class="settings-section-row">
+            <td colspan="3"><strong>Puste podgrupy (bez wariantów)</strong></td>
+          </tr>
+        `);
+        emptySubgroups.forEach(({ value: prefix, label }) => {
+          rows.push(`
+            <tr class="settings-price-row settings-empty-subgroup-row" data-subgroup-prefix="${escapeHtml(prefix)}">
+              <td class="settings-td-product" colspan="2">
+                <span class="settings-product-label" title="${escapeHtml(label)}">${escapeHtml(label)}</span>
+                <span style="display:block; font-size:0.8em; color:#7a8a9a;">Brak wariantów — niewidoczna dla klienta</span>
+              </td>
+              <td class="settings-td-del">
+                <button type="button" data-action="delete-subgroup" data-subgroup-prefix="${escapeHtml(prefix)}" class="settings-btn-del" title="Usuń pustą podgrupę">✕</button>
+              </td>
+            </tr>
+          `);
+        });
+      }
+
       tbody.innerHTML = rows.join("");
 
       tbody.querySelectorAll<HTMLButtonElement>("[data-action='delete']").forEach((button) => {
@@ -2932,6 +3010,31 @@ export const UstawieniaView: View = {
           syncAddCategorySelection();
         });
       });
+
+      // Usuwanie pustej podgrupy: mutacja w pamięci + re-render, dokładnie jak
+      // przy usuwaniu wiersza ceny wyżej — utrwalane przez "Zapisz"
+      // (setPriceSubgroups(customPriceSubgroups)). Defensywny re-check gwarantuje,
+      // że nigdy nie skasujemy podgrupy, która w międzyczasie dostała wariant.
+      tbody
+        .querySelectorAll<HTMLButtonElement>("[data-action='delete-subgroup']")
+        .forEach((button) => {
+          button.addEventListener("click", () => {
+            const prefix = button.dataset.subgroupPrefix ?? "";
+            if (!prefix) return;
+            const stillEmpty = getEmptyCustomSubgroups(active.id, prices).some(
+              (s) => s.value === prefix
+            );
+            if (!stillEmpty) {
+              renderTable();
+              return;
+            }
+            const groups = customPriceSubgroups[active.id];
+            if (groups) delete groups[prefix];
+            renderTabs();
+            renderTable();
+            syncAddCategorySelection();
+          });
+        });
     }
 
     async function renderIdbPanel(): Promise<void> {
