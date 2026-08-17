@@ -439,20 +439,32 @@ function getCategorySectionTitle(category: PriceCategory, key: string): string {
 }
 
 /**
- * Categories where "Nowa podkategoria…" is offered — deliberately narrow, to
- * only the categories where an admin-created subgroup actually renders to the
- * customer in a way that fits the category:
- *   - plakaty-a4-a3: the generic qty→price card (ui/dynamicSubgroups.ts,
- *     mounted by the router) is exactly right for it;
- *   - artykuly, uslugi: their own bespoke renderer handles custom subgroups.
- * Every other category has a specialised calculator (m², mb, ryczałt, …) that
- * the generic card would NOT reproduce, so offering a subgroup there would
- * only save data that never appears — or appears as a mismatched card.
+ * Categories where "Nowa podkategoria…" is offered. Deliberately limited to
+ * QUANTITY-based categories, where the generic qty→price card
+ * (ui/dynamicSubgroups.ts, mounted by the router) — or, for artykuly/uslugi,
+ * their own bespoke renderer — actually fits how the category is priced:
+ *   - plakaty-a4-a3, artykuly, uslugi: fully-wired subgroup rendering;
+ *   - druk-a4-a3, vouchery, wizytowki, dyplomy(+eko), ulotki, zaproszenia,
+ *     broszury-katalogi: nakład / próg ilościowy — a qty→price card is the
+ *     right shape (the declared calcScheme drives rendering, see
+ *     classifyVariantsIntoProducts / resolveFormCalcScheme).
+ * Excluded on purpose: area/length categories (banner, folia, solwent,
+ * wycinanie-folii, canvas, wlepki, druk-cad, roll-up) price by m²/mb/wymiar,
+ * which the generic card cannot reproduce; and "modifiers" (global surcharges,
+ * not a product list).
  */
 const CUSTOM_SUBGROUP_CATEGORIES: ReadonlySet<string> = new Set([
   "plakaty-a4-a3",
   "artykuly",
   "uslugi",
+  "druk-a4-a3",
+  "vouchery",
+  "wizytowki",
+  "dyplomy",
+  "dyplomy-eko",
+  "ulotki",
+  "zaproszenia",
+  "broszury-katalogi",
 ]);
 
 /**
