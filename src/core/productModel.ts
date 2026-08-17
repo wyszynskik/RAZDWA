@@ -8,39 +8,39 @@
  *
  * Category -> Subgroup -> Product -> PriceEntry (tier or single flat entry).
  *
- * calcType is determined by CATEGORY IDENTITY, never by the shape of a
- * price key's suffix. An earlier version of this module treated a pure
- * numeric suffix as universal proof of "quantity tier" — that was wrong: the
- * "Dodaj wariant" form's isCustomSubgroupSelection() forces quantity-mode
- * key building (buildUniqueQuantityKey, numeric suffix) for a NEW custom
- * subgroup in ANY category, including artykuly/uslugi, even though neither
- * category's rendering has any quantity-tier concept (see
- * legacyFlowCharacterization.test.ts — always price * quantity per
- * individual product). A numeric-suffixed artykuly/uslugi key is real, but
- * it is not a tier. See Krok 0 (resolveUseQtyMode in ustawienia.ts) for the
- * write-side fix to the same root cause.
+ * calcType is NEVER inferred from the shape of a price key's suffix. It is
+ * resolved in two steps, explicit-declaration-first:
  *
- * - isQtyTieredSubgroupCategory() (variantKeys.ts — the same source of
- *   truth the write-side form now uses) => "interpolated". Today only
- *   plakaty-a4-a3: the sole category where a custom subgroup's rendering
- *   (dynamicSubgroups.ts) actually interpolates between quantity tiers, and
- *   the sole category whose custom-subgroup keys are guaranteed numeric by
- *   construction. Within an interpolated category, EVERY key in a
- *   (categoryId, subcategoryPrefix) cluster is expected to carry a pure
- *   positive-integer suffix (a real qty tier of the one product that prefix
- *   represents); any key that doesn't is anomalous and the whole cluster is
- *   reported as needsReview rather than guessed.
- * - FLAT_PER_UNIT_CONFIRMED_CATEGORIES (artykuly, uslugi) => "flat-per-unit"
- *   for every variant, regardless of suffix shape — each key is its own
- *   distinct product (evidence: legacyFlowCharacterization.test.ts).
- * - Any other category has no confirmed calcType evidence (no live renderer,
- *   no characterized legacy flow) — its variants are reported as skipped,
- *   never migrated and never guessed at.
+ * 1. VariantDefinition.calcScheme — the scheme the admin picked in the
+ *    "Dodaj wariant" form at subgroup creation (denormalized across every
+ *    tier sharing a subcategoryPrefix, same rule as subgroupLabel). When
+ *    present it wins outright, in ANY category. Tiers disagreeing on the
+ *    value are reported as needsReview rather than guessed. This is how a
+ *    custom subgroup in an arbitrary category (e.g. druk-a4-a3, banner)
+ *    becomes renderable.
+ * 2. CATEGORY-IDENTITY FALLBACK — only for legacy variants that carry no
+ *    calcScheme (created before the field existed):
+ *    - isQtyTieredSubgroupCategory() (variantKeys.ts) => "interpolated".
+ *      Historically only plakaty-a4-a3. Within an interpolated cluster
+ *      EVERY key must carry a pure positive-integer suffix (a real qty tier
+ *      of the one product that prefix represents); any key that doesn't is
+ *      anomalous and the whole cluster is reported as needsReview.
+ *    - FLAT_PER_UNIT_CONFIRMED_CATEGORIES (artykuly, uslugi) =>
+ *      "flat-per-unit" for every variant, each key its own distinct product
+ *      (evidence: legacyFlowCharacterization.test.ts).
+ *    - Any other legacy cluster has no evidence and is reported as skipped,
+ *      never migrated and never guessed at.
+ *
+ * flat-per-unit and flat-rate share the same record shape (one product per
+ * key, qty null); they differ only in how the renderer bills them
+ * (price*qty vs fixed price). See Krok 0 (resolveUseQtyMode in
+ * ustawienia.ts) for the write-side key-building of quantity-mode subgroups.
  */
 import {
   getVariantDefinitions,
   type VariantDefinition,
   type MaterialSizeOption,
+  type VariantCalcScheme,
 } from "../services/priceService";
 import { getDefaultPricesMap } from "./compat";
 import { isQtyTieredSubgroupCategory } from "./variantKeys";
@@ -54,7 +54,7 @@ import type { OrphanedPriceKey } from "./orphanedPriceKeys";
  */
 const FLAT_PER_UNIT_CONFIRMED_CATEGORIES: ReadonlySet<string> = new Set(["artykuly", "uslugi"]);
 
-export type ProductCalcType = "interpolated" | "flat-per-unit" | "flat-rate";
+export type ProductCalcType = VariantCalcScheme;
 export type ProductStatus = "published" | "needs-review";
 
 export interface PriceEntry {
@@ -131,6 +131,26 @@ function priceFor(prices: Record<string, number | null | undefined>, key: string
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
+/**
+ * The single price-calculation scheme this cluster explicitly declares, or
+ * a conflict. Every tier sharing a subcategoryPrefix is expected to carry
+ * the same calcScheme (denormalized, same rule as subgroupLabel):
+ *  - all tiers agree on one value  => { scheme }
+ *  - tiers disagree                => { conflict: true }
+ *  - no tier declares one (legacy) => {} (caller falls back to category rule)
+ */
+function agreedCalcScheme(clusterVariants: VariantDefinition[]): {
+  scheme?: VariantCalcScheme;
+  conflict?: boolean;
+} {
+  const declared = new Set(
+    clusterVariants.map((v) => v.calcScheme).filter((s): s is VariantCalcScheme => s !== undefined)
+  );
+  if (declared.size === 0) return {};
+  if (declared.size > 1) return { conflict: true };
+  return { scheme: [...declared][0] };
+}
+
 function groupByPrefix(
   variants: VariantDefinition[]
 ): Map<string, Map<string, VariantDefinition[]>> {
@@ -202,17 +222,36 @@ export function classifyVariantsIntoProducts(
         continue;
       }
 
-      if (!isInterpolatedCategory && !isFlatPerUnitCategory) {
-        skipped.push({
+      const declaredScheme = agreedCalcScheme(clusterVariants);
+      if (declaredScheme.conflict) {
+        needsReview.push({
           categoryId,
           subcategoryPrefix,
+          keys: clusterVariants.map((v) => v.key),
           reason:
-            "no confirmed calcType evidence for this category (not plakaty-a4-a3, artykuly, or uslugi)",
+            "tiers sharing this prefix declare different calcScheme values — cannot pick one without guessing",
         });
         continue;
       }
 
-      if (isInterpolatedCategory) {
+      // Explicit admin declaration wins; legacy variants (no calcScheme)
+      // fall back to the historical category-identity rule so existing
+      // plakaty-a4-a3/artykuly/uslugi data classifies exactly as before.
+      const effectiveScheme: VariantCalcScheme | null =
+        declaredScheme.scheme ??
+        (isInterpolatedCategory ? "interpolated" : isFlatPerUnitCategory ? "flat-per-unit" : null);
+
+      if (effectiveScheme === null) {
+        skipped.push({
+          categoryId,
+          subcategoryPrefix,
+          reason:
+            "no calcScheme declared and no category-identity fallback (not plakaty-a4-a3, artykuly, or uslugi)",
+        });
+        continue;
+      }
+
+      if (effectiveScheme === "interpolated") {
         const suffixes = clusterVariants.map((v) => qtySuffix(v.key, subcategoryPrefix)!);
         if (suffixes.some((s) => !isPureIntegerSuffix(s))) {
           needsReview.push({
@@ -261,8 +300,10 @@ export function classifyVariantsIntoProducts(
         continue;
       }
 
-      // isFlatPerUnitCategory: every key is its own distinct product,
-      // regardless of its suffix shape (see module doc).
+      // flat-per-unit / flat-rate: every key is its own distinct product,
+      // regardless of its suffix shape (see module doc). flat-rate differs
+      // only in how the renderer bills it (fixed price, quantity ignored) —
+      // the record shape is identical.
       for (const variant of clusterVariants) {
         migrated.push({
           productId: flatProductIdFor(categoryId, variant.key),
@@ -271,9 +312,10 @@ export function classifyVariantsIntoProducts(
           subcategoryPrefix,
           subgroupLabel: variant.subgroupLabel || "",
           label: variant.label || variant.key,
-          calcType: "flat-per-unit",
+          calcType: effectiveScheme,
           status: "published",
           visibleInCalculator: variant.visibleInCalculator !== false,
+          materialSizeOptions: variant.materialSizeOptions,
           entries: [
             {
               key: variant.key,

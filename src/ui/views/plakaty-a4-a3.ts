@@ -5,7 +5,6 @@ import { getPlakatyMalyCanonLegendPanels } from "../../categories/plakaty";
 import { formatPLN } from "../../core/money";
 import { getPrice } from "../../services/priceService";
 import { resolveStoredPrice } from "../../core/compat";
-import { mountDynamicSubgroupContainers } from "../dynamicSubgroups";
 
 const data: any = getPrice("plakaty");
 
@@ -630,23 +629,11 @@ export const PlakatyA4A3View: View = {
     });
     ensureLegend();
 
-    const renderDynamicSubgroups = () => {
-      const legendEl = container.querySelector<HTMLElement>("#pa-dynamic-legend");
-      mountDynamicSubgroupContainers(
-        container,
-        legendEl ?? resultBox,
-        "plakaty-a4-a3",
-        "Plakaty A4-A3",
-        ctx,
-        legendEl ? "beforebegin" : "afterend"
-      );
-    };
-    renderDynamicSubgroups();
-
+    // Custom subgroups (incl. "Plakaty ekonomiczne A4") are mounted centrally
+    // by the router below every category container — see mountDynamicSubgroupsFor.
     ctx?.on?.("prices-updated", () => {
       ensureLegend();
       recalculate();
-      renderDynamicSubgroups();
     });
 
     addBtn.onclick = () => {

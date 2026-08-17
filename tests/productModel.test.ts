@@ -512,3 +512,117 @@ describe("formatMigrationSummary", () => {
     expect(summary).toContain("z tego renderowane dziś (legacy): 1");
   });
 });
+
+describe("classifyVariantsIntoProducts — explicit calcScheme (admin-declared)", () => {
+  it("a non-whitelisted category with declared interpolated scheme is published as a tiered product", () => {
+    const variants = [
+      makeVariant({
+        key: "druk-bw-a4-eco-10",
+        categoryId: "druk-a4-a3",
+        subcategoryPrefix: "druk-bw-a4-eco-",
+        subgroupLabel: "Druk eco",
+        calcScheme: "interpolated",
+      }),
+      makeVariant({
+        key: "druk-bw-a4-eco-20",
+        categoryId: "druk-a4-a3",
+        subcategoryPrefix: "druk-bw-a4-eco-",
+        subgroupLabel: "Druk eco",
+        calcScheme: "interpolated",
+      }),
+    ];
+
+    const report = classifyVariantsIntoProducts(variants, {
+      "druk-bw-a4-eco-10": 40,
+      "druk-bw-a4-eco-20": 70,
+    });
+
+    expect(report.skipped).toEqual([]);
+    expect(report.needsReview).toEqual([]);
+    expect(report.migrated).toHaveLength(1);
+    expect(report.migrated[0].calcType).toBe("interpolated");
+    expect(report.migrated[0].entries.map((e) => e.qty)).toEqual([10, 20]);
+  });
+
+  it("a declared flat-rate subgroup is published, one fixed-price product per key", () => {
+    const variants = [
+      makeVariant({
+        key: "banner-projekt-std",
+        categoryId: "banner",
+        subcategoryPrefix: "banner-projekt-",
+        subgroupLabel: "Projekt graficzny",
+        label: "Projekt graficzny",
+        calcScheme: "flat-rate",
+        materialSizeOptions: [{ material: "PVC", size: "100x200" }],
+      }),
+    ];
+
+    const report = classifyVariantsIntoProducts(variants, { "banner-projekt-std": 150 });
+
+    expect(report.skipped).toEqual([]);
+    expect(report.needsReview).toEqual([]);
+    expect(report.migrated).toHaveLength(1);
+    expect(report.migrated[0].calcType).toBe("flat-rate");
+    expect(report.migrated[0].materialSizeOptions).toEqual([{ material: "PVC", size: "100x200" }]);
+  });
+
+  it("declared scheme overrides the category-identity fallback", () => {
+    const variants = [
+      makeVariant({
+        key: "plakaty-ryczalt-std",
+        categoryId: "plakaty-a4-a3",
+        subcategoryPrefix: "plakaty-ryczalt-",
+        subgroupLabel: "Ryczałt",
+        label: "Ryczałt",
+        calcScheme: "flat-rate",
+      }),
+    ];
+
+    const report = classifyVariantsIntoProducts(variants, { "plakaty-ryczalt-std": 99 });
+
+    expect(report.migrated).toHaveLength(1);
+    expect(report.migrated[0].calcType).toBe("flat-rate");
+  });
+
+  it("tiers declaring different calcScheme values go to needs-review, never guessed", () => {
+    const variants = [
+      makeVariant({
+        key: "druk-mix-eco-10",
+        categoryId: "druk-a4-a3",
+        subcategoryPrefix: "druk-mix-eco-",
+        calcScheme: "interpolated",
+      }),
+      makeVariant({
+        key: "druk-mix-eco-20",
+        categoryId: "druk-a4-a3",
+        subcategoryPrefix: "druk-mix-eco-",
+        calcScheme: "flat-per-unit",
+      }),
+    ];
+
+    const report = classifyVariantsIntoProducts(variants, {
+      "druk-mix-eco-10": 40,
+      "druk-mix-eco-20": 70,
+    });
+
+    expect(report.migrated).toEqual([]);
+    expect(report.needsReview).toHaveLength(1);
+    expect(report.needsReview[0].reason).toMatch(/calcScheme/);
+  });
+
+  it("a legacy variant (no calcScheme) in a non-whitelisted category is still skipped", () => {
+    const variants = [
+      makeVariant({
+        key: "banner-custom-10",
+        categoryId: "banner",
+        subcategoryPrefix: "banner-custom-",
+      }),
+    ];
+
+    const report = classifyVariantsIntoProducts(variants, { "banner-custom-10": 100 });
+
+    expect(report.migrated).toEqual([]);
+    expect(report.skipped).toHaveLength(1);
+    expect(report.skipped[0].categoryId).toBe("banner");
+  });
+});
