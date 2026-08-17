@@ -87,10 +87,15 @@ describe("defaultCalcSchemeForCategory", () => {
 });
 
 describe("categorySupportsCustomSubgroups", () => {
-  it("supports real product categories, incl. artykuly/uslugi (their own renderer)", () => {
-    expect(categorySupportsCustomSubgroups("banner")).toBe(true);
+  it("supports only the categories whose renderer fits a generic subgroup card", () => {
+    expect(categorySupportsCustomSubgroups("plakaty-a4-a3")).toBe(true);
     expect(categorySupportsCustomSubgroups("artykuly")).toBe(true);
     expect(categorySupportsCustomSubgroups("uslugi")).toBe(true);
+  });
+
+  it("excludes categories with a specialised calculator the generic card can't reproduce", () => {
+    expect(categorySupportsCustomSubgroups("banner")).toBe(false);
+    expect(categorySupportsCustomSubgroups("folia")).toBe(false);
   });
 
   it("excludes the modifiers pseudo-category", () => {

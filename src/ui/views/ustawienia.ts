@@ -439,17 +439,30 @@ function getCategorySectionTitle(category: PriceCategory, key: string): string {
 }
 
 /**
- * Whether "Nowa podkategoria…" is offered for a category. Every real price
- * category can now host admin-created custom subgroups — the generic ones
- * render via ui/dynamicSubgroups.ts (mounted by the router), and
- * artykuly/uslugi keep their own bespoke renderer. "modifiers" is a
- * pseudo-category (global percentage surcharges), not a product list, so it
- * stays out.
+ * Categories where "Nowa podkategoria…" is offered — deliberately narrow, to
+ * only the categories where an admin-created subgroup actually renders to the
+ * customer in a way that fits the category:
+ *   - plakaty-a4-a3: the generic qty→price card (ui/dynamicSubgroups.ts,
+ *     mounted by the router) is exactly right for it;
+ *   - artykuly, uslugi: their own bespoke renderer handles custom subgroups.
+ * Every other category has a specialised calculator (m², mb, ryczałt, …) that
+ * the generic card would NOT reproduce, so offering a subgroup there would
+ * only save data that never appears — or appears as a mismatched card.
+ */
+const CUSTOM_SUBGROUP_CATEGORIES: ReadonlySet<string> = new Set([
+  "plakaty-a4-a3",
+  "artykuly",
+  "uslugi",
+]);
+
+/**
+ * Whether "Nowa podkategoria…" is offered for a category. See
+ * CUSTOM_SUBGROUP_CATEGORIES for the rationale behind the narrow allowlist.
  *
  * Exported for unit tests only.
  */
 export function categorySupportsCustomSubgroups(categoryId: string): boolean {
-  return categoryId !== "modifiers";
+  return CUSTOM_SUBGROUP_CATEGORIES.has(categoryId);
 }
 
 /**
