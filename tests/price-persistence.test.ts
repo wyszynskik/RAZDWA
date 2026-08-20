@@ -331,18 +331,23 @@ describe("Price Persistence", () => {
       expect(stored).toBeDefined();
 
       const parsed = JSON.parse(stored);
-      expect(parsed["plakaty-a4-a3"]["plakaty-maly-canon-papier-350g-"]).toBe("Papier 350g");
-      expect(getPriceSubgroups()["plakaty-a4-a3"]["plakaty-maly-canon-papier-350g-"]).toBe(
-        "Papier 350g"
-      );
+      expect(parsed["plakaty-a4-a3"]["plakaty-maly-canon-papier-350g-"]).toEqual({
+        label: "Papier 350g",
+        sortOrder: 0,
+      });
+      expect(getPriceSubgroups()["plakaty-a4-a3"]["plakaty-maly-canon-papier-350g-"]).toEqual({
+        label: "Papier 350g",
+        sortOrder: 0,
+      });
 
       // Reset does NOT wipe saved subgroups — it restores from last saved state
       resetPrices();
 
       expect(storageData[PRICE_SUBGROUPS_STORAGE_KEY]).toBeDefined();
-      expect(getPriceSubgroups()["plakaty-a4-a3"]["plakaty-maly-canon-papier-350g-"]).toBe(
-        "Papier 350g"
-      );
+      expect(getPriceSubgroups()["plakaty-a4-a3"]["plakaty-maly-canon-papier-350g-"]).toEqual({
+        label: "Papier 350g",
+        sortOrder: 0,
+      });
     });
   });
 });

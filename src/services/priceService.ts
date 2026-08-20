@@ -6,6 +6,14 @@
  */
 import _config from "../config/prices.json";
 import { initPriceRoot, priceSource, eventBus } from "../bootstrap";
+import {
+  normalizeSubgroupEntry,
+  nextSortOrder,
+  type SubgroupInfo,
+  type SubgroupEntryInput,
+} from "../core/subgroupOrder";
+
+export type { SubgroupInfo, SubgroupEntryInput } from "../core/subgroupOrder";
 
 export const PRICES_STORAGE_KEY = "razdwa_prices";
 export const PRICE_LABELS_STORAGE_KEY = "razdwa_price_labels";
@@ -71,50 +79,6 @@ function readStoredJsonMap(storageKey: string): Record<string, string> {
 }
 
 function writeStoredJsonMap(storageKey: string, value: Record<string, string>): void {
-  try {
-    if (typeof localStorage === "undefined") return;
-    localStorage.setItem(storageKey, JSON.stringify(value));
-  } catch {
-    // ignore
-  }
-}
-
-function readStoredJsonNestedMap(storageKey: string): Record<string, Record<string, string>> {
-  try {
-    if (typeof localStorage === "undefined") return Object.create(null);
-    const raw = localStorage.getItem(storageKey);
-    if (!raw) return Object.create(null);
-
-    const parsed = JSON.parse(raw);
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return Object.create(null);
-
-    const result = Object.create(null) as Record<string, Record<string, string>>;
-    for (const [outerKey, outerValue] of Object.entries(parsed)) {
-      if (!isSafePathSegment(outerKey)) continue;
-      if (!outerValue || typeof outerValue !== "object" || Array.isArray(outerValue)) continue;
-
-      const nested = Object.create(null) as Record<string, string>;
-      for (const [innerKey, innerValue] of Object.entries(outerValue as Record<string, unknown>)) {
-        if (!isSafePathSegment(innerKey)) continue;
-        const label = String(innerValue ?? "").trim();
-        if (label) nested[innerKey] = label;
-      }
-
-      if (Object.keys(nested).length > 0) {
-        result[outerKey] = nested;
-      }
-    }
-
-    return result;
-  } catch {
-    return Object.create(null);
-  }
-}
-
-function writeStoredJsonNestedMap(
-  storageKey: string,
-  value: Record<string, Record<string, string>>
-): void {
   try {
     if (typeof localStorage === "undefined") return;
     localStorage.setItem(storageKey, JSON.stringify(value));
@@ -234,22 +198,83 @@ export function deletePriceLabel(key: string): void {
   writeStoredJsonMap(PRICE_LABELS_STORAGE_KEY, labels);
 }
 
-export function getPriceSubgroups(): Record<string, Record<string, string>> {
-  return readStoredJsonNestedMap(PRICE_SUBGROUPS_STORAGE_KEY);
+export type PriceSubgroupsMap = Record<string, Record<string, SubgroupInfo>>;
+export type PriceSubgroupsInput = Record<string, Record<string, SubgroupEntryInput>>;
+
+function readRawSubgroupsJson(): Record<string, Record<string, unknown>> {
+  try {
+    if (typeof localStorage === "undefined") return Object.create(null);
+    const raw = localStorage.getItem(PRICE_SUBGROUPS_STORAGE_KEY);
+    if (!raw) return Object.create(null);
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return Object.create(null);
+    return parsed as Record<string, Record<string, unknown>>;
+  } catch {
+    return Object.create(null);
+  }
 }
 
-export function setPriceSubgroups(groups: Record<string, Record<string, string>>): void {
-  const cleaned = Object.create(null) as Record<string, Record<string, string>>;
+/**
+ * Reads customPriceSubgroups compatibly with BOTH the pre-migration format
+ * (Record<categoryId, Record<prefix, string>>) and the current one
+ * (Record<categoryId, Record<prefix, SubgroupInfo>>). A bare string is
+ * normalized to {label, sortOrder} using its position of appearance within
+ * its category as a placeholder sortOrder — this is only a safety net for
+ * data that hasn't gone through subgroupOrderMigration.ts yet; the real,
+ * alphabetical-preserving backfill lives there.
+ */
+export function getPriceSubgroups(): PriceSubgroupsMap {
+  const raw = readRawSubgroupsJson();
+  const result: PriceSubgroupsMap = Object.create(null);
+
+  for (const [categoryId, prefixes] of Object.entries(raw)) {
+    if (!isSafePathSegment(categoryId)) continue;
+    if (!prefixes || typeof prefixes !== "object" || Array.isArray(prefixes)) continue;
+
+    const nested = Object.create(null) as Record<string, SubgroupInfo>;
+    let fallbackIndex = 0;
+    for (const [prefix, entry] of Object.entries(prefixes as Record<string, unknown>)) {
+      if (!isSafePathSegment(prefix)) continue;
+      const info = normalizeSubgroupEntry(entry, fallbackIndex);
+      fallbackIndex++;
+      const label = info.label.trim();
+      if (!label) continue;
+      nested[prefix] = { ...info, label };
+    }
+
+    if (Object.keys(nested).length > 0) {
+      result[categoryId] = nested;
+    }
+  }
+
+  return result;
+}
+
+/**
+ * Persists customPriceSubgroups. Accepts either a bare label string per
+ * entry (pre-migration callers, existing tests) or a full SubgroupInfo —
+ * but ALWAYS writes the new object format to storage, per the "reads accept
+ * both, writes are canonical" rule. An entry without a valid sortOrder gets
+ * one appended after the current max within its category, so callers that
+ * don't care about ordering (e.g. legacy test fixtures) still get a
+ * deterministic, collision-free value instead of NaN/undefined.
+ */
+export function setPriceSubgroups(groups: PriceSubgroupsInput): void {
+  const cleaned: PriceSubgroupsMap = Object.create(null);
 
   for (const [categoryId, subgroups] of Object.entries(groups)) {
     if (!isSafePathSegment(categoryId)) continue;
     if (!subgroups || typeof subgroups !== "object" || Array.isArray(subgroups)) continue;
 
-    const nested = Object.create(null) as Record<string, string>;
-    for (const [prefix, labelValue] of Object.entries(subgroups as Record<string, unknown>)) {
+    const nested: Record<string, SubgroupInfo> = Object.create(null);
+    let runningNext = 0;
+    for (const [prefix, entry] of Object.entries(subgroups)) {
       if (!isSafePathSegment(prefix)) continue;
-      const label = String(labelValue ?? "").trim();
-      if (label) nested[prefix] = label;
+      const info = normalizeSubgroupEntry(entry, runningNext);
+      const label = info.label.trim();
+      if (!label) continue;
+      nested[prefix] = { ...info, label };
+      runningNext = Math.max(runningNext, info.sortOrder + 1);
     }
 
     if (Object.keys(nested).length > 0) {
@@ -257,17 +282,135 @@ export function setPriceSubgroups(groups: Record<string, Record<string, string>>
     }
   }
 
-  writeStoredJsonNestedMap(PRICE_SUBGROUPS_STORAGE_KEY, cleaned);
+  try {
+    if (typeof localStorage !== "undefined") {
+      localStorage.setItem(PRICE_SUBGROUPS_STORAGE_KEY, JSON.stringify(cleaned));
+    }
+  } catch {
+    // ignore
+  }
 }
 
 export function deletePriceSubgroup(categoryId: string, prefix: string): void {
-  const groups = readStoredJsonNestedMap(PRICE_SUBGROUPS_STORAGE_KEY);
-  if (!groups[categoryId]) return;
-  delete groups[categoryId][prefix];
-  if (Object.keys(groups[categoryId]).length === 0) {
-    delete groups[categoryId];
+  const groups = getPriceSubgroups();
+  if (!groups[categoryId]?.[prefix]) return;
+  const remainingInCategory = { ...groups[categoryId] };
+  delete remainingInCategory[prefix];
+
+  const updated: PriceSubgroupsMap = { ...groups };
+  if (Object.keys(remainingInCategory).length === 0) {
+    delete updated[categoryId];
+  } else {
+    updated[categoryId] = remainingInCategory;
   }
-  writeStoredJsonNestedMap(PRICE_SUBGROUPS_STORAGE_KEY, groups);
+  setPriceSubgroups(updated);
+}
+
+/**
+ * Next sortOrder for a NEW subgroup within categoryId — always current max
+ * + 1 within that category, never a global count or length. Passing the
+ * live registry (getPriceSubgroups()) plus any in-flight draft additions
+ * that haven't been persisted yet keeps concurrent adds within one draft
+ * session collision-free.
+ */
+export function nextSubgroupSortOrderInCategory(
+  categoryId: string,
+  registry: PriceSubgroupsMap
+): number {
+  return nextSortOrder(Object.values(registry[categoryId] ?? {}));
+}
+
+/**
+ * Pure: returns a NEW registry with exactly one additional entry —
+ * (categoryId, prefix) -> { label, sortOrder: nextSubgroupSortOrderInCategory(...) }
+ * — leaving every existing entry, in this category and every other one,
+ * exactly as it was. This is the write-side counterpart used by
+ * ustawienia.ts's "Dodaj wariant" form when creating a brand-new subgroup
+ * (CUSTOM_PREFIX_VALUE), extracted so the assignment is unit-testable
+ * without mounting any UI.
+ *
+ * buildUniqueSubgroupPrefix() (variantKeys.ts) already guarantees prefix
+ * uniqueness on the UI's write path, but this function is a service-layer
+ * primitive that must stay safe under misuse from any other caller — a
+ * prefix collision throws rather than silently overwriting an existing
+ * subgroup's label/sortOrder.
+ */
+export function createSubgroupRegistryEntry(
+  categoryId: string,
+  prefix: string,
+  label: string,
+  registry: PriceSubgroupsMap
+): PriceSubgroupsMap {
+  const currentGroups = registry[categoryId] ?? {};
+
+  if (currentGroups[prefix]) {
+    throw new Error(`Subgroup prefix already exists: ${prefix}`);
+  }
+
+  const normalizedLabel = label.trim();
+  if (!normalizedLabel) {
+    throw new Error("Subgroup label cannot be empty");
+  }
+
+  return {
+    ...registry,
+    [categoryId]: {
+      ...currentGroups,
+      [prefix]: {
+        label: normalizedLabel,
+        sortOrder: nextSubgroupSortOrderInCategory(categoryId, registry),
+      },
+    },
+  };
+}
+
+/**
+ * Next sortOrder for a NEW variant/tier within (categoryId,
+ * subcategoryPrefix) — always current max + 1 within that subgroup, never a
+ * global count or length.
+ */
+export function nextVariantSortOrderInSubgroup(
+  categoryId: string,
+  subcategoryPrefix: string,
+  variants: VariantDefinition[]
+): number {
+  const scoped = variants.filter(
+    (v) => v.categoryId === categoryId && v.subcategoryPrefix === subcategoryPrefix
+  );
+  return nextSortOrder(scoped);
+}
+
+/**
+ * Adds any subgroup referenced by `variants` but missing from `existing` —
+ * assigning it the next sortOrder within its category — without ever
+ * overwriting an entry `existing` already has (label OR sortOrder). This is
+ * the shared repair step used at startup and after a remote (GAS) sync to
+ * make sure every subcategoryPrefix that has priced variants also has a
+ * registry entry, replacing four previously ad hoc Object.assign merges
+ * that risked clobbering a SubgroupInfo object with a bare label string.
+ */
+export function mergeVariantSubgroupsIntoRegistry(
+  existing: PriceSubgroupsMap,
+  variants: VariantDefinition[]
+): PriceSubgroupsMap {
+  const fromVariants = variantsToPriceSubgroups(variants);
+  const result: PriceSubgroupsMap = Object.create(null);
+  for (const [categoryId, prefixes] of Object.entries(existing)) {
+    result[categoryId] = { ...prefixes };
+  }
+
+  for (const [categoryId, labelMap] of Object.entries(fromVariants)) {
+    if (!result[categoryId]) result[categoryId] = Object.create(null);
+    for (const [prefix, label] of Object.entries(labelMap)) {
+      if (result[categoryId][prefix]) continue;
+      result[categoryId][prefix] = {
+        label,
+        sortOrder: nextSortOrder(Object.values(result[categoryId])),
+      };
+    }
+  }
+
+  return result;
 }
 
 export const VARIANTS_STORAGE_KEY = "razdwa_variants";
