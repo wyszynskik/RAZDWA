@@ -17,13 +17,20 @@ import {
   getVariantDefinitions,
   getPriceSubgroups,
   type MaterialSizeOption,
+  type VariantDefinition,
 } from "../services/priceService";
 import { getDefaultPricesMap } from "../core/compat";
 import { getExpressRate } from "../core/modifiers";
 import { interpolatePrice } from "../categories/plakaty";
 import { formatPLN } from "../core/money";
 import { escapeHtml } from "../core/validation";
-import { classifyVariantsIntoProducts, type ProductCalcType } from "../core/productModel";
+import {
+  classifyVariantsIntoProducts,
+  type Product,
+  type ProductCalcType,
+} from "../core/productModel";
+import { buildProductLabel } from "../core/productLabel";
+import { isValidSortOrder } from "../core/subgroupOrder";
 import type { CartItem } from "../core/types";
 import type { ViewContext } from "./types";
 
@@ -62,6 +69,71 @@ function toRenderableTiers(
     .sort((a, b) => a.qty - b.qty);
 }
 
+function variantIdentity(categoryId: string, subcategoryPrefix: string, key: string): string {
+  return `${categoryId}::${subcategoryPrefix}::${key}`;
+}
+
+/**
+ * Lowest variant.sortOrder among a product's own priced entries — looked up
+ * by (categoryId, subcategoryPrefix, key), NOT by bare key.
+ * VariantDefinition.key is expected to be unique only within its own
+ * subgroup by construction (buildUniquePriceKey/buildUniqueQuantityKey check
+ * collisions against the full price map at write time — see
+ * variantKeys.ts), but setVariantDefinitions(remote.variants) (GAS sync,
+ * main.ts) writes unvalidated, so a bare-key Map could silently let one
+ * category's variant shadow another's. Falls back to Number.MAX_SAFE_INTEGER
+ * (sorts last) when no entry resolves to a valid sortOrder at all — the
+ * same "missing = last" rule a missing subgroup registry entry gets, never
+ * 0, which would wrongly claim first position.
+ */
+function resolveProductSortOrder(
+  product: Product,
+  variantsByIdentity: Map<string, VariantDefinition>
+): number {
+  let min = Number.POSITIVE_INFINITY;
+  for (const entry of product.entries) {
+    const identity = variantIdentity(product.categoryId, product.subcategoryPrefix, entry.key);
+    const sortOrder = variantsByIdentity.get(identity)?.sortOrder;
+    if (isValidSortOrder(sortOrder) && sortOrder < min) {
+      min = sortOrder;
+    }
+  }
+  return Number.isFinite(min) ? min : Number.MAX_SAFE_INTEGER;
+}
+
+/**
+ * A missing or invalid subgroup.sortOrder sorts the subgroup last, same
+ * rule as resolveProductSortOrder().
+ */
+function resolveSubgroupSortOrder(
+  subcategoryPrefix: string,
+  freshSubgroups: Record<string, { sortOrder: number }>
+): number {
+  const sortOrder = freshSubgroups[subcategoryPrefix]?.sortOrder;
+  return isValidSortOrder(sortOrder) ? sortOrder : Number.MAX_SAFE_INTEGER;
+}
+
+/**
+ * category -> subgroup.sortOrder -> resolveProductSortOrder() within the
+ * subgroup. Both values come from priceService.SubgroupInfo /
+ * VariantDefinition.sortOrder — assigned at creation/migration, never
+ * derived from label text, key, productId, or array position.
+ */
+function sortProductsByOrder(
+  products: Product[],
+  freshSubgroups: Record<string, { sortOrder: number }>,
+  variantsByIdentity: Map<string, VariantDefinition>
+): Product[] {
+  return [...products].sort((a, b) => {
+    const subgroupOrderA = resolveSubgroupSortOrder(a.subcategoryPrefix, freshSubgroups);
+    const subgroupOrderB = resolveSubgroupSortOrder(b.subcategoryPrefix, freshSubgroups);
+    if (subgroupOrderA !== subgroupOrderB) return subgroupOrderA - subgroupOrderB;
+    return (
+      resolveProductSortOrder(a, variantsByIdentity) - resolveProductSortOrder(b, variantsByIdentity)
+    );
+  });
+}
+
 /**
  * One entry per PRODUCT (never per prefix) for the given category, built on
  * top of classifyVariantsIntoProducts(). Excludes needs-review records,
@@ -70,26 +142,27 @@ function toRenderableTiers(
  * table). subgroupLabel prefers the live getPriceSubgroups() value over the
  * VariantDefinition's own (possibly stale) subgroupLabel — same freshness
  * rule the old prefix-based renderer used, since a subgroup can be renamed
- * independently of any single variant's stored label.
+ * independently of any single variant's stored label. Display order comes
+ * exclusively from sortProductsByOrder() — never from label/productId text
+ * or array position (see its doc).
  */
 export function getRenderableProducts(categoryId: string): RenderableProduct[] {
   const prices = getDefaultPricesMap();
   const variants = getVariantDefinitions();
+  const variantsByIdentity = new Map(
+    variants.map((v) => [variantIdentity(v.categoryId, v.subcategoryPrefix, v.key), v])
+  );
   const report = classifyVariantsIntoProducts(variants, prices);
-  const freshSubgroupLabels = getPriceSubgroups()[categoryId] ?? {};
+  const freshSubgroups = getPriceSubgroups()[categoryId] ?? {};
 
-  return report.migrated
+  const eligible = report.migrated
     .filter((p) => p.categoryId === categoryId)
     .filter((p) => p.status === "published")
-    .filter((p) => p.visibleInCalculator)
+    .filter((p) => p.visibleInCalculator);
+
+  return sortProductsByOrder(eligible, freshSubgroups, variantsByIdentity)
     .map((p) => {
-      const subgroupLabel = freshSubgroupLabels[p.subcategoryPrefix] || p.subgroupLabel;
-      // interpolated: today's admin UI never asks for a per-product name
-      // for a qty-tiered product (see the "Dodaj wariant" form validation
-      // in ustawienia.ts — productLabel is only required in non-qty mode),
-      // so the subgroup name IS the product's display name, exactly like
-      // the old prefix-based renderer. flat-per-unit products are each a
-      // genuinely distinct named item, so they keep their own label.
+      const subgroupLabel = freshSubgroups[p.subcategoryPrefix]?.label || p.subgroupLabel;
       const label = p.calcType === "interpolated" ? subgroupLabel : p.label || subgroupLabel;
       return {
         productId: p.productId,
@@ -103,11 +176,7 @@ export function getRenderableProducts(categoryId: string): RenderableProduct[] {
       };
     })
     .filter((p) => p.label !== "")
-    .filter((p) => p.tiers.length > 0)
-    .sort(
-      (a, b) =>
-        a.subgroupLabel.localeCompare(b.subgroupLabel, "pl") || a.label.localeCompare(b.label, "pl")
-    );
+    .filter((p) => p.tiers.length > 0);
 }
 
 /**
@@ -324,7 +393,28 @@ function renderMaterialSizeInfoHtml(options: MaterialSizeOption[] | undefined): 
   `;
 }
 
-function renderProductCard(product: RenderableProduct): HTMLElement {
+/**
+ * Whether this product needs its own visible title inside a subgroup that
+ * already has an <h2> heading, and what it says. Never includes material,
+ * size, qty range, category, or subgroup — those stay in their existing
+ * separate lines/heading. The only criterion is whether the (trimmed)
+ * product label carries information beyond the (trimmed) subgroup label
+ * already shown in the h2 — returns null whenever it would just repeat it.
+ *
+ * Exported for unit tests only — this repo has no DOM testing setup, so the
+ * h3 decision is kept pure and tested without mounting anything.
+ */
+export function resolveProductCardTitle(
+  productLabel: string,
+  subgroupLabel: string
+): string | null {
+  const trimmedLabel = productLabel.trim();
+  if (!trimmedLabel) return null;
+  if (trimmedLabel === subgroupLabel.trim()) return null;
+  return buildProductLabel({ variantLabel: trimmedLabel }, "customer");
+}
+
+function renderProductCard(product: RenderableProduct, cardTitle: string | null): HTMLElement {
   const card = document.createElement("div");
   card.className = "card";
   card.style.marginTop = "16px";
@@ -339,8 +429,12 @@ function renderProductCard(product: RenderableProduct): HTMLElement {
         <input type="number" class="form-control dyn-qty" min="1" step="1" inputmode="numeric" autocomplete="off" placeholder="np. ${product.tiers[0]?.qty ?? 1}">
       </div>
     `;
+  const cardTitleHtml = cardTitle
+    ? `<h3 class="dyn-product-title" style="margin:0 0 10px; font-size:16px;">${escapeHtml(cardTitle)}</h3>`
+    : "";
 
   card.innerHTML = `
+    ${cardTitleHtml}
     ${renderMaterialSizeInfoHtml(product.materialSizeOptions)}
     ${qtyFieldHtml}
     <div class="dyn-result" style="${isFlatRate ? "" : "display:none;"} margin-top:10px;">
@@ -393,7 +487,8 @@ export function mountDynamicSubgroupContainers(
     host.appendChild(heading);
 
     for (const product of subgroupProducts) {
-      const card = renderProductCard(product);
+      const cardTitle = resolveProductCardTitle(product.label, subgroupLabel);
+      const card = renderProductCard(product, cardTitle);
       host!.appendChild(card);
 
       const qtyInput = card.querySelector<HTMLInputElement>(".dyn-qty");

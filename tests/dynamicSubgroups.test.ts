@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import {
   getRenderableProducts,
+  resolveProductCardTitle,
   safeInterpolate,
   computeSubgroupPrice,
   computeCartResult,
@@ -180,7 +181,7 @@ describe("getRenderableProducts", () => {
     expect(products[0].tiers).toEqual([{ key: "artykuly-item-opis-slowny", qty: 1, price: 12 }]);
   });
 
-  it("returns multiple flat-per-unit products sorted by (subgroup, label) using pl locale order (artykuly)", () => {
+  it("orders products by subgroup.sortOrder, NOT alphabetically by label/prefix text (artykuly)", () => {
     setVariantDefinitions([
       makeVariant({
         key: "artykuly-b-zebra",
@@ -195,14 +196,142 @@ describe("getRenderableProducts", () => {
         label: "Alfa",
       }),
     ]);
+    // "artykuly-b-" ma NIŻSZY sortOrder (0) — odwrotnie niż alfabet ("a" < "b") —
+    // więc poprawny wynik dowodzi, że o kolejności decyduje sortOrder, nie tekst.
     setPriceSubgroups({
-      artykuly: { "artykuly-b-": "Grupa B", "artykuly-a-": "Grupa A" },
+      artykuly: {
+        "artykuly-b-": { label: "Grupa B", sortOrder: 0 },
+        "artykuly-a-": { label: "Grupa A", sortOrder: 1 },
+      },
     });
     setPrice("defaultPrices", { "artykuly-b-zebra": 10, "artykuly-a-alfa": 20 });
 
     const products = getRenderableProducts("artykuly");
 
-    expect(products.map((p) => p.label)).toEqual(["Alfa", "Zebra"]);
+    expect(products.map((p) => p.label)).toEqual(["Zebra", "Alfa"]);
+  });
+
+  it("orders variants WITHIN one subgroup by variant.sortOrder, not by label/key/input array order", () => {
+    setVariantDefinitions([
+      // "Alfa" jest pierwsze w tablicy ORAZ alfabetycznie pierwsze, ale ma
+      // WYŻSZY sortOrder — tylko logika oparta o sortOrder wyrenderuje je jako drugie.
+      makeVariant({
+        key: "artykuly-teczka-alfa",
+        categoryId: "artykuly",
+        subcategoryPrefix: "artykuly-teczka-",
+        label: "Alfa",
+        sortOrder: 1,
+      }),
+      makeVariant({
+        key: "artykuly-teczka-zebra",
+        categoryId: "artykuly",
+        subcategoryPrefix: "artykuly-teczka-",
+        label: "Zebra",
+        sortOrder: 0,
+      }),
+    ]);
+    setPriceSubgroups({
+      artykuly: { "artykuly-teczka-": { label: "Teczki", sortOrder: 0 } },
+    });
+    setPrice("defaultPrices", { "artykuly-teczka-alfa": 10, "artykuly-teczka-zebra": 20 });
+
+    const products = getRenderableProducts("artykuly");
+
+    expect(products.map((p) => p.label)).toEqual(["Zebra", "Alfa"]);
+  });
+
+  it("an invalid subgroup.sortOrder (1.5) is treated as absent (renders last), a valid one renders first", () => {
+    setVariantDefinitions([
+      makeVariant({
+        key: "plakaty-zla-10",
+        categoryId: "plakaty-a4-a3",
+        subcategoryPrefix: "plakaty-zla-",
+      }),
+      makeVariant({
+        key: "plakaty-dobra-10",
+        categoryId: "plakaty-a4-a3",
+        subcategoryPrefix: "plakaty-dobra-",
+      }),
+    ]);
+    setPriceSubgroups({
+      "plakaty-a4-a3": {
+        "plakaty-zla-": { label: "Zla podgrupa", sortOrder: 1.5 },
+        "plakaty-dobra-": { label: "Dobra podgrupa", sortOrder: 0 },
+      },
+    });
+    setPrice("defaultPrices", { "plakaty-zla-10": 10, "plakaty-dobra-10": 20 });
+
+    const products = getRenderableProducts("plakaty-a4-a3");
+
+    expect(products.map((p) => p.subgroupLabel)).toEqual(["Dobra podgrupa", "Zla podgrupa"]);
+  });
+
+  it("an invalid variant.sortOrder (-1) is treated as absent (renders last), a valid one renders first", () => {
+    setVariantDefinitions([
+      makeVariant({
+        key: "artykuly-teczka-zla",
+        categoryId: "artykuly",
+        subcategoryPrefix: "artykuly-teczka-",
+        label: "Zla wartosc",
+        sortOrder: -1,
+      }),
+      makeVariant({
+        key: "artykuly-teczka-dobra",
+        categoryId: "artykuly",
+        subcategoryPrefix: "artykuly-teczka-",
+        label: "Dobra wartosc",
+        sortOrder: 0,
+      }),
+    ]);
+    setPriceSubgroups({
+      artykuly: { "artykuly-teczka-": { label: "Teczki", sortOrder: 0 } },
+    });
+    setPrice("defaultPrices", { "artykuly-teczka-zla": 10, "artykuly-teczka-dobra": 20 });
+
+    const products = getRenderableProducts("artykuly");
+
+    expect(products.map((p) => p.label)).toEqual(["Dobra wartosc", "Zla wartosc"]);
+  });
+
+  it("resolves each product's own sortOrder via a (categoryId, subcategoryPrefix, key) identity — a raw key reused by an unrelated category/subgroup does not affect the current category's order", () => {
+    setVariantDefinitions([
+      makeVariant({
+        key: "dup-key",
+        categoryId: "plakaty-a4-a3",
+        subcategoryPrefix: "dup-",
+        calcScheme: "flat-rate",
+        sortOrder: 1,
+      }),
+      makeVariant({
+        key: "plakaty-y-2",
+        categoryId: "plakaty-a4-a3",
+        subcategoryPrefix: "plakaty-y-",
+        calcScheme: "flat-rate",
+        sortOrder: 2,
+      }),
+      // Inna kategoria, ale ten sam (prefix, key) — naiwna Map<key, variant>
+      // (goły klucz, bez kategorii/prefiksu) pozwoliłaby temu nadpisać wpis
+      // z plakaty-a4-a3 powyżej.
+      makeVariant({
+        key: "dup-key",
+        categoryId: "banner",
+        subcategoryPrefix: "dup-",
+        calcScheme: "flat-rate",
+        sortOrder: 99,
+      }),
+    ]);
+    setPriceSubgroups({
+      "plakaty-a4-a3": {
+        "dup-": { label: "Plakaty X", sortOrder: 0 },
+        "plakaty-y-": { label: "Plakaty Y", sortOrder: 0 },
+      },
+      banner: { "dup-": { label: "Banner Z", sortOrder: 0 } },
+    });
+    setPrice("defaultPrices", { "dup-key": 10, "plakaty-y-2": 20 });
+
+    const products = getRenderableProducts("plakaty-a4-a3");
+
+    expect(products.map((p) => p.subgroupLabel)).toEqual(["Plakaty X", "Plakaty Y"]);
   });
 
   it("excludes variants belonging to a different (but also confirmed) category", () => {
@@ -628,5 +757,30 @@ describe("formatMaterialSizeOption", () => {
 
   it("trims whitespace-only values as empty, does not invent a label", () => {
     expect(formatMaterialSizeOption({ material: "  ", size: "  " })).toBe("");
+  });
+});
+
+describe("resolveProductCardTitle", () => {
+  it("returns null when the product label equals the subgroup label (typical interpolated case) — never duplicates the h2", () => {
+    expect(resolveProductCardTitle("Plakaty ekonomiczne A4", "Plakaty ekonomiczne A4")).toBeNull();
+  });
+
+  it("returns null for a blank/whitespace-only label", () => {
+    expect(resolveProductCardTitle("", "Grupa")).toBeNull();
+    expect(resolveProductCardTitle("   ", "Grupa")).toBeNull();
+  });
+
+  it("returns null when labels match only after trimming whitespace — still counts as duplicating the h2", () => {
+    expect(resolveProductCardTitle("  Grupa  ", "Grupa")).toBeNull();
+    expect(resolveProductCardTitle("Grupa", "  Grupa  ")).toBeNull();
+  });
+
+  it("two flat-per-unit siblings sharing one subgroup: both get their own distinct title", () => {
+    expect(resolveProductCardTitle("Teczka niebieska", "Teczki")).toBe("Teczka niebieska");
+    expect(resolveProductCardTitle("Teczka czerwona", "Teczki")).toBe("Teczka czerwona");
+  });
+
+  it("a product label that meaningfully differs from the subgroup label always gets a title, even alone in its subgroup", () => {
+    expect(resolveProductCardTitle("Wariant premium", "Grupa")).toBe("Wariant premium");
   });
 });
