@@ -49,13 +49,13 @@ import {
   VARIANTS_STORAGE_KEY,
   getVariantDefinitions,
   setVariantDefinitions,
-  variantsToPriceSubgroups,
   variantsToPriceLabels,
   getPriceSubgroups,
   setPriceSubgroups,
   getPriceLabels,
   setPriceLabels,
   setPrice,
+  mergeVariantSubgroupsIntoRegistry,
 } from "../services/priceService";
 import { PDFDocument, StandardFonts, rgb, PDFFont } from "pdf-lib";
 import fontkit from "@pdf-lib/fontkit";
@@ -67,6 +67,7 @@ import {
 } from "../core/customerValidation";
 import categories from "../../data/categories.json";
 import { runMigrationIfNeeded } from "../services/priceMigrator";
+import { runSubgroupOrderMigrationIfNeeded } from "../services/subgroupOrderMigration";
 import { warmPriceCache, hasCachedPrices } from "../core/compat";
 import { checkStartupConfig } from "../core/startGuard";
 import { categoryRegistry, eventBus } from "../bootstrap";
@@ -81,18 +82,9 @@ function syncVariantsToSubgroupsAtStartup(): void {
     const variants = getVariantDefinitions();
     if (!variants.length) return;
 
-    const fromVariants = variantsToPriceSubgroups(variants);
     const existing = getPriceSubgroups();
-    const needsSubgroupSync = Object.entries(fromVariants).some(([catId, prefixes]) =>
-      Object.keys(prefixes).some((prefix) => !existing[catId]?.[prefix])
-    );
-    if (needsSubgroupSync) {
-      const merged: Record<string, Record<string, string>> = {};
-      for (const [c, p] of Object.entries(existing)) merged[c] = { ...p };
-      for (const [c, p] of Object.entries(fromVariants)) {
-        if (!merged[c]) merged[c] = {};
-        Object.assign(merged[c], p);
-      }
+    const merged = mergeVariantSubgroupsIntoRegistry(existing, variants);
+    if (JSON.stringify(merged) !== JSON.stringify(existing)) {
       setPriceSubgroups(merged);
     }
 
@@ -2395,6 +2387,7 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 
   syncVariantsToSubgroupsAtStartup();
+  runSubgroupOrderMigrationIfNeeded();
   runMigrationIfNeeded()
     .then(() => warmPriceCache())
     .catch((err) => console.warn("[priceCache] startup error:", err));
@@ -2423,6 +2416,7 @@ document.addEventListener("DOMContentLoaded", () => {
         if (!hasLocalVariants) {
           setVariantDefinitions(remote.variants);
           syncVariantsToSubgroupsAtStartup();
+          runSubgroupOrderMigrationIfNeeded();
         }
       }
     } catch (err) {

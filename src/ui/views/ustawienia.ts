@@ -20,6 +20,11 @@ import {
   normalizePricePrefix,
 } from "../../core/variantKeys";
 import {
+  getCustomSubgroupDefinitions,
+  type PrefixOption,
+  type SubgroupRegistry,
+} from "../../core/subgroupOptions";
+import {
   getPrice,
   getPriceLabels,
   getPriceSubgroups,
@@ -37,9 +42,11 @@ import {
   setVariantDefinitions,
   upsertVariantDefinition,
   deleteVariantDefinition,
-  variantsToPriceSubgroups,
   variantsToPriceLabels,
   type VariantCalcScheme,
+  nextVariantSortOrderInSubgroup,
+  mergeVariantSubgroupsIntoRegistry,
+  createSubgroupRegistryEntry,
 } from "../../services/priceService";
 import {
   savePricesToAppsScript,
@@ -61,8 +68,7 @@ const STORAGE_KEY = PRICES_STORAGE_KEY;
 type PriceValue = number | null;
 type PriceMap = Record<string, PriceValue>;
 type PriceLabelMap = Record<string, string>;
-type PriceSubgroupMap = Record<string, Record<string, string>>;
-type PrefixOption = { value: string; label: string };
+type PriceSubgroupMap = SubgroupRegistry;
 
 const CUSTOM_PREFIX_VALUE = "__custom_prefix__";
 
@@ -346,11 +352,6 @@ let customPriceLabels: PriceLabelMap = Object.create(null);
 let customPriceSubgroups: PriceSubgroupMap = Object.create(null);
 let _draftVariantDefs: VariantDefinition[] = [];
 
-function getCustomSubgroupDefinitions(categoryId: string): PrefixOption[] {
-  const groups = customPriceSubgroups[categoryId] ?? Object.create(null);
-  return Object.entries(groups).map(([value, label]) => ({ value, label }));
-}
-
 /**
  * Live view over the module's in-memory state: custom subgroups in a category
  * that have no variants and no priced keys (see computeEmptySubgroupPrefixes
@@ -363,12 +364,14 @@ function getEmptyCustomSubgroups(categoryId: string, priceMap: PriceMap): Prefix
     .map((v) => v.subcategoryPrefix);
   const emptyPrefixes = new Set(
     computeEmptySubgroupPrefixes(
-      getCustomSubgroupDefinitions(categoryId).map((s) => s.value),
+      getCustomSubgroupDefinitions(categoryId, customPriceSubgroups).map((s) => s.value),
       variantPrefixes,
       Object.keys(priceMap)
     )
   );
-  return getCustomSubgroupDefinitions(categoryId).filter((s) => emptyPrefixes.has(s.value));
+  return getCustomSubgroupDefinitions(categoryId, customPriceSubgroups).filter((s) =>
+    emptyPrefixes.has(s.value)
+  );
 }
 
 /**
@@ -400,7 +403,7 @@ function getCustomSubgroupLabel(categoryId: string, key: string): string | null 
   const matches = Object.entries(groups)
     .filter(([prefix]) => key.startsWith(prefix))
     .sort((a, b) => b[0].length - a[0].length);
-  return matches[0]?.[1] ?? null;
+  return matches[0]?.[1]?.label ?? null;
 }
 
 function getCategorySectionTitle(category: PriceCategory, key: string): string {
@@ -752,7 +755,7 @@ function getAddablePrefixOptions(category: PriceCategory): PrefixOption[] {
   }
 
   if (categorySupportsCustomSubgroups(category.id)) {
-    options.push(...getCustomSubgroupDefinitions(category.id));
+    options.push(...getCustomSubgroupDefinitions(category.id, customPriceSubgroups));
     options.push({ value: CUSTOM_PREFIX_VALUE, label: "Nowa, niezależna podkategoria…" });
   }
   return options;
@@ -2549,16 +2552,8 @@ export const UstawieniaView: View = {
     const _legacyLabels = loadPriceLabels();
     const _legacySubgroups = getPriceSubgroups();
     const _variantLabels = variantsToPriceLabels(_storedVariants);
-    const _variantSubgroups = variantsToPriceSubgroups(_storedVariants);
     customPriceLabels = { ..._legacyLabels, ..._variantLabels };
-    customPriceSubgroups = Object.create(null) as typeof customPriceSubgroups;
-    for (const [catId, prefixes] of Object.entries(_legacySubgroups)) {
-      customPriceSubgroups[catId] = { ...prefixes };
-    }
-    for (const [catId, prefixes] of Object.entries(_variantSubgroups)) {
-      if (!customPriceSubgroups[catId]) customPriceSubgroups[catId] = Object.create(null);
-      Object.assign(customPriceSubgroups[catId], prefixes);
-    }
+    customPriceSubgroups = mergeVariantSubgroupsIntoRegistry(_legacySubgroups, _storedVariants);
 
     let renderedCategories = getRenderedCategories(prices);
     let activeCategory = renderedCategories[0]?.id ?? "druk-a4-a3";
@@ -3773,11 +3768,10 @@ export const UstawieniaView: View = {
           );
           if (!hasLocalVariants) {
             setVariantDefinitions(remote.variants);
-            const fromVariants = variantsToPriceSubgroups(remote.variants);
-            for (const [catId, prefixes] of Object.entries(fromVariants)) {
-              if (!customPriceSubgroups[catId]) customPriceSubgroups[catId] = Object.create(null);
-              Object.assign(customPriceSubgroups[catId], prefixes);
-            }
+            customPriceSubgroups = mergeVariantSubgroupsIntoRegistry(
+              customPriceSubgroups,
+              remote.variants
+            );
             Object.assign(customPriceLabels, variantsToPriceLabels(remote.variants));
             changed = true;
           }
@@ -4033,14 +4027,12 @@ export const UstawieniaView: View = {
           prices,
           customPriceSubgroups[chosenCategory.id] ?? {}
         );
-        const currentGroups = customPriceSubgroups[chosenCategory.id] ?? Object.create(null);
-        customPriceSubgroups = {
-          ...customPriceSubgroups,
-          [chosenCategory.id]: {
-            ...currentGroups,
-            [chosenPrefix]: subgroupName,
-          },
-        };
+        customPriceSubgroups = createSubgroupRegistryEntry(
+          chosenCategory.id,
+          chosenPrefix,
+          subgroupName,
+          customPriceSubgroups
+        );
       }
 
       const parsedPrice = priceValueRaw !== "" ? Number.parseFloat(priceValueRaw) : NaN;
@@ -4081,7 +4073,7 @@ export const UstawieniaView: View = {
         subgroupLabel:
           selectedPrefix === CUSTOM_PREFIX_VALUE
             ? subgroupName
-            : (customPriceSubgroups[chosenCategory.id]?.[chosenPrefix] ??
+            : (customPriceSubgroups[chosenCategory.id]?.[chosenPrefix]?.label ??
               existingDef?.subgroupLabel ??
               ""),
         label: resolveVariantLabel(
@@ -4095,7 +4087,11 @@ export const UstawieniaView: View = {
         visibleInSettings: true,
         visibleInCalculator: true,
         sortOrder:
-          existingDef?.sortOrder ?? getVariantDefinitions().length + _draftVariantDefs.length,
+          existingDef?.sortOrder ??
+          nextVariantSortOrderInSubgroup(chosenCategoryId, chosenPrefix, [
+            ...getVariantDefinitions(),
+            ..._draftVariantDefs,
+          ]),
         createdAt: existingDef?.createdAt ?? _now,
         updatedAt: _now,
         calcScheme: isGenericCustomSubgroupTier ? effectiveScheme : existingDef?.calcScheme,
@@ -4300,14 +4296,7 @@ export const UstawieniaView: View = {
       const _resetLegacyLabels = loadPriceLabels();
       const _resetLegacySubgroups = getPriceSubgroups();
       customPriceLabels = { ..._resetLegacyLabels, ...variantsToPriceLabels(_resetVariants) };
-      customPriceSubgroups = Object.create(null) as typeof customPriceSubgroups;
-      for (const [catId, prefixes] of Object.entries(_resetLegacySubgroups)) {
-        customPriceSubgroups[catId] = { ...prefixes };
-      }
-      for (const [catId, prefixes] of Object.entries(variantsToPriceSubgroups(_resetVariants))) {
-        if (!customPriceSubgroups[catId]) customPriceSubgroups[catId] = Object.create(null);
-        Object.assign(customPriceSubgroups[catId], prefixes);
-      }
+      customPriceSubgroups = mergeVariantSubgroupsIntoRegistry(_resetLegacySubgroups, _resetVariants);
       renderTabs();
       renderTable();
       syncAddCategorySelection();
@@ -4331,14 +4320,7 @@ export const UstawieniaView: View = {
       const _freshLegacyLabels = loadPriceLabels();
       const _freshLegacySubgroups = getPriceSubgroups();
       customPriceLabels = { ..._freshLegacyLabels, ...variantsToPriceLabels(_freshVariants) };
-      customPriceSubgroups = Object.create(null) as typeof customPriceSubgroups;
-      for (const [catId, prefixes] of Object.entries(_freshLegacySubgroups)) {
-        customPriceSubgroups[catId] = { ...prefixes };
-      }
-      for (const [catId, prefixes] of Object.entries(variantsToPriceSubgroups(_freshVariants))) {
-        if (!customPriceSubgroups[catId]) customPriceSubgroups[catId] = Object.create(null);
-        Object.assign(customPriceSubgroups[catId], prefixes);
-      }
+      customPriceSubgroups = mergeVariantSubgroupsIntoRegistry(_freshLegacySubgroups, _freshVariants);
       renderTabs();
       renderTable();
       syncAddCategorySelection();
