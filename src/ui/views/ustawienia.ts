@@ -47,6 +47,7 @@ import {
   nextVariantSortOrderInSubgroup,
   mergeVariantSubgroupsIntoRegistry,
   createSubgroupRegistryEntry,
+  updateSubgroupLabel,
 } from "../../services/priceService";
 import {
   savePricesToAppsScript,
