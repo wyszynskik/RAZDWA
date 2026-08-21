@@ -1445,6 +1445,24 @@ body:not(.home-compact-layout):not(.settings-pricing-layout) .app-grid {
   border-color: rgba(201, 42, 42, 0.5);
 }
 
+.settings-icon-btn {
+  width: 44px;
+  min-width: 44px;
+  height: 44px;
+  padding: 0;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text-primary);
+  font-size: 16px;
+  cursor: pointer;
+}
+
+.settings-icon-btn:hover {
+  border-color: var(--primary);
+  background: var(--surface-alt);
+}
+
 .settings-empty-state {
   padding: 28px 20px;
   text-align: center;

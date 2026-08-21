@@ -3637,8 +3637,8 @@ export const UstawieniaView: View = {
                   <span class="settings-action-label">Nowa nazwa podgrupy</span>
                   <div style="display:flex; gap:6px;">
                     <input id="rename-subgroup-input" type="text" class="settings-input" style="flex:1;">
-                    <button type="button" id="btn-rename-subgroup-save" class="btn-success">Zapisz nazwę</button>
-                    <button type="button" id="btn-rename-subgroup-cancel" class="btn-secondary">Anuluj</button>
+                    <button type="button" id="btn-rename-subgroup-save" class="btn-success settings-action-btn">Zapisz nazwę</button>
+                    <button type="button" id="btn-rename-subgroup-cancel" class="btn-secondary settings-action-btn">Anuluj</button>
                   </div>
                 </div>
 
@@ -3865,7 +3865,13 @@ export const UstawieniaView: View = {
         renderTable();
         syncAddCategorySelection();
       } catch (err) {
-        showStatus((err as Error)?.message || "⚠️ Nie udało się zapisać nazwy.", "error");
+        const raw = (err as Error)?.message ?? "";
+        const msg = raw.includes("cannot be empty")
+          ? "⚠️ Nazwa podgrupy nie może być pusta."
+          : raw.includes("does not exist")
+            ? "⚠️ Wybrana podgrupa już nie istnieje."
+            : "⚠️ Nie udało się zapisać nazwy.";
+        showStatus(msg, "error");
       }
     });
 
