@@ -349,5 +349,36 @@ describe("Price Persistence", () => {
         sortOrder: 0,
       });
     });
+
+    it("getPriceSubgroups() and setPriceSubgroups() never collide a fallback sortOrder with an explicit one in the same category", () => {
+      // getPriceSubgroups(): raw pre-migration data written directly to
+      // storage — "a-" has no sortOrder (legacy string), "b-" has an
+      // explicit sortOrder: 0. See subgroupOrder.test.ts for the underlying
+      // normalizeSubgroupEntries() unit coverage; this is the same
+      // scenario exercised end-to-end through the real public API.
+      storageData[PRICE_SUBGROUPS_STORAGE_KEY] = JSON.stringify({
+        plakaty: {
+          "a-": "Label A",
+          "b-": { label: "Label B", sortOrder: 0 },
+        },
+      });
+
+      const read = getPriceSubgroups();
+      expect(read.plakaty["b-"].sortOrder).toBe(0);
+      expect(read.plakaty["a-"].sortOrder).not.toBe(read.plakaty["b-"].sortOrder);
+
+      // setPriceSubgroups(): same mixed shape passed as a caller-supplied
+      // draft (not pre-existing storage) — must not collide either.
+      setPriceSubgroups({
+        plakaty: {
+          "a-": "Label A",
+          "b-": { label: "Label B", sortOrder: 0 },
+        },
+      });
+
+      const written = getPriceSubgroups();
+      expect(written.plakaty["b-"].sortOrder).toBe(0);
+      expect(written.plakaty["a-"].sortOrder).not.toBe(written.plakaty["b-"].sortOrder);
+    });
   });
 });

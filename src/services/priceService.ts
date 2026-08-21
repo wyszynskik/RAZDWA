@@ -7,7 +7,7 @@
 import _config from "../config/prices.json";
 import { initPriceRoot, priceSource, eventBus } from "../bootstrap";
 import {
-  normalizeSubgroupEntry,
+  normalizeSubgroupEntries,
   nextSortOrder,
   type SubgroupInfo,
   type SubgroupEntryInput,
@@ -223,6 +223,11 @@ function readRawSubgroupsJson(): Record<string, Record<string, unknown>> {
  * data that hasn't gone through subgroupOrderMigration.ts yet; the real,
  * alphabetical-preserving backfill lives there.
  */
+function hasBlankSubgroupLabel(entry: unknown): boolean {
+  const raw = typeof entry === "string" ? entry : (entry as { label?: unknown })?.label;
+  return typeof raw !== "string" || raw.trim() === "";
+}
+
 export function getPriceSubgroups(): PriceSubgroupsMap {
   const raw = readRawSubgroupsJson();
   const result: PriceSubgroupsMap = Object.create(null);
@@ -231,12 +236,12 @@ export function getPriceSubgroups(): PriceSubgroupsMap {
     if (!isSafePathSegment(categoryId)) continue;
     if (!prefixes || typeof prefixes !== "object" || Array.isArray(prefixes)) continue;
 
+    const validEntries = Object.entries(prefixes as Record<string, unknown>).filter(
+      ([prefix]) => isSafePathSegment(prefix)
+    );
+
     const nested = Object.create(null) as Record<string, SubgroupInfo>;
-    let fallbackIndex = 0;
-    for (const [prefix, entry] of Object.entries(prefixes as Record<string, unknown>)) {
-      if (!isSafePathSegment(prefix)) continue;
-      const info = normalizeSubgroupEntry(entry, fallbackIndex);
-      fallbackIndex++;
+    for (const [prefix, info] of normalizeSubgroupEntries(validEntries)) {
       const label = info.label.trim();
       if (!label) continue;
       nested[prefix] = { ...info, label };
@@ -266,15 +271,13 @@ export function setPriceSubgroups(groups: PriceSubgroupsInput): void {
     if (!isSafePathSegment(categoryId)) continue;
     if (!subgroups || typeof subgroups !== "object" || Array.isArray(subgroups)) continue;
 
+    const validEntries = Object.entries(subgroups).filter(
+      ([prefix, entry]) => isSafePathSegment(prefix) && !hasBlankSubgroupLabel(entry)
+    );
+
     const nested: Record<string, SubgroupInfo> = Object.create(null);
-    let runningNext = 0;
-    for (const [prefix, entry] of Object.entries(subgroups)) {
-      if (!isSafePathSegment(prefix)) continue;
-      const info = normalizeSubgroupEntry(entry, runningNext);
-      const label = info.label.trim();
-      if (!label) continue;
-      nested[prefix] = { ...info, label };
-      runningNext = Math.max(runningNext, info.sortOrder + 1);
+    for (const [prefix, info] of normalizeSubgroupEntries(validEntries)) {
+      nested[prefix] = { ...info, label: info.label.trim() };
     }
 
     if (Object.keys(nested).length > 0) {

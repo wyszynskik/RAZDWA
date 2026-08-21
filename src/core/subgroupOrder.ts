@@ -65,6 +65,46 @@ export function normalizeSubgroupEntry(entry: unknown, fallback: number): Subgro
   return { label: "", sortOrder: fallback };
 }
 
+function extractExplicitSortOrder(entry: unknown): number | null {
+  if (entry && typeof entry === "object" && !Array.isArray(entry)) {
+    const raw = (entry as Record<string, unknown>).sortOrder;
+    if (isValidSortOrder(raw)) return raw;
+  }
+  return null;
+}
+
+/**
+ * Normalizes every entry in one category in a single deterministic pass,
+ * replacing the two independent (and inconsistent) fallback-index schemes
+ * getPriceSubgroups()/setPriceSubgroups() used to each maintain on their
+ * own. First finds the true maximum explicit sortOrder across ALL entries
+ * (regardless of iteration order), then assigns fallback values starting
+ * strictly after it — so a fallback assigned to an early entry can never
+ * later collide with an explicit sortOrder discovered further down the
+ * list. When no entry has a valid explicit sortOrder, fallbacks start at 0
+ * and increment per entry in input order (same as today's plain-legacy
+ * case — see subgroupOrder.test.ts).
+ */
+export function normalizeSubgroupEntries(
+  entries: Iterable<[string, unknown]>
+): Array<[string, SubgroupInfo]> {
+  const list = Array.from(entries);
+
+  let maxExplicit = -1;
+  for (const [, entry] of list) {
+    const explicit = extractExplicitSortOrder(entry);
+    if (explicit !== null && explicit > maxExplicit) maxExplicit = explicit;
+  }
+
+  let nextFallback = maxExplicit + 1;
+  return list.map(([prefix, entry]) => {
+    const explicit = extractExplicitSortOrder(entry);
+    const fallback = explicit !== null ? explicit : nextFallback;
+    if (explicit === null) nextFallback++;
+    return [prefix, normalizeSubgroupEntry(entry, fallback)];
+  });
+}
+
 /**
  * Next position to append after the current maximum sortOrder in a scope
  * (empty scope => 0). This is the ONLY place a new subgroup/variant gets its

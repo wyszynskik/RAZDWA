@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   isValidSortOrder,
   normalizeSubgroupEntry,
+  normalizeSubgroupEntries,
   nextSortOrder,
   compareBySortOrder,
   type SubgroupInfo,
@@ -109,6 +110,38 @@ describe("nextSortOrder", () => {
 
   it("returns 0 when every entry has an invalid sortOrder", () => {
     expect(nextSortOrder([{ sortOrder: -1 }, { sortOrder: NaN }])).toBe(0);
+  });
+});
+
+describe("normalizeSubgroupEntries", () => {
+  it("all-legacy-string entries get fallback sortOrder 0,1,2 in input order (unchanged behavior)", () => {
+    const input: Array<[string, unknown]> = [
+      ["a-", "Label A"],
+      ["b-", "Label B"],
+      ["c-", "Label C"],
+    ];
+
+    const result = normalizeSubgroupEntries(input);
+
+    expect(result).toEqual([
+      ["a-", { label: "Label A", sortOrder: 0 }],
+      ["b-", { label: "Label B", sortOrder: 1 }],
+      ["c-", { label: "Label C", sortOrder: 2 }],
+    ]);
+  });
+
+  it("a fallback entry never collides with an explicit sortOrder appearing later in the same category", () => {
+    const input: Array<[string, unknown]> = [
+      ["a-", "Label A"],
+      ["b-", { label: "Label B", sortOrder: 0 }],
+    ];
+
+    const result = normalizeSubgroupEntries(input);
+    const a = result.find(([prefix]) => prefix === "a-")?.[1];
+    const b = result.find(([prefix]) => prefix === "b-")?.[1];
+
+    expect(b?.sortOrder).toBe(0);
+    expect(a?.sortOrder).not.toBe(b?.sortOrder);
   });
 });
 
