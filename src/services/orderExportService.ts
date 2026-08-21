@@ -163,7 +163,7 @@ function extractSidesFromItem(item: OrderExportPayload["items"][number]): string
   return "";
 }
 
-function buildProductLabel(item: OrderExportPayload["items"][number]): string {
+function buildOrderExportProductLabel(item: OrderExportPayload["items"][number]): string {
   const category = String(item.category ?? "").trim();
   const name = String(item.name ?? "").trim();
   const format = extractFormatFromItem(item);
@@ -204,7 +204,7 @@ function buildAppsScriptCompactRow(payload: OrderExportPayload): AppsScriptCompa
   const grouped = new Map<string, ExportLine>();
 
   payload.items.forEach((item) => {
-    const product = buildProductLabel(item);
+    const product = buildOrderExportProductLabel(item);
     const material = extractMaterialFromItem(item);
     const sides = extractSidesFromItem(item);
     const quantity = Math.max(0, Number(item.quantity || 0));
