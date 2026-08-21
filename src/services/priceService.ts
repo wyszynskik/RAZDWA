@@ -365,6 +365,42 @@ export function createSubgroupRegistryEntry(
 }
 
 /**
+ * Pure: returns a NEW registry with the label of exactly one existing
+ * subgroup changed — sortOrder and any metadata are preserved unchanged,
+ * every other entry (this category and every other one) is untouched.
+ * Throws if (categoryId, prefix) doesn't already exist in the registry
+ * (use createSubgroupRegistryEntry for that), or if the new label is empty
+ * after trim().
+ */
+export function updateSubgroupLabel(
+  categoryId: string,
+  prefix: string,
+  newLabel: string,
+  registry: PriceSubgroupsMap
+): PriceSubgroupsMap {
+  const existing = registry[categoryId]?.[prefix];
+  if (!existing) {
+    throw new Error(`Subgroup prefix does not exist: ${prefix}`);
+  }
+
+  const normalizedLabel = newLabel.trim();
+  if (!normalizedLabel) {
+    throw new Error("Subgroup label cannot be empty");
+  }
+
+  return {
+    ...registry,
+    [categoryId]: {
+      ...registry[categoryId],
+      [prefix]: {
+        ...existing,
+        label: normalizedLabel,
+      },
+    },
+  };
+}
+
+/**
  * Next sortOrder for a NEW variant/tier within (categoryId,
  * subcategoryPrefix) — always current max + 1 within that subgroup, never a
  * global count or length.

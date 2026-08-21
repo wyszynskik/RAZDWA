@@ -2732,6 +2732,19 @@ export const UstawieniaView: View = {
         : (prefixOptions[0]?.value ?? "");
       addPrefixSelect.value = nextPrefix;
 
+      const renameSubgroupBtn = container.querySelector<HTMLButtonElement>("#btn-rename-subgroup");
+      const renameSubgroupWrapper = container.querySelector<HTMLElement>("#rename-subgroup-wrapper");
+      if (renameSubgroupBtn) {
+        const chosenCatId = addCategorySelect.value;
+        const isExistingCustomSubgroup = Boolean(
+          customPriceSubgroups[chosenCatId]?.[addPrefixSelect.value]
+        );
+        renameSubgroupBtn.style.display = isExistingCustomSubgroup ? "" : "none";
+      }
+      if (renameSubgroupWrapper) {
+        renameSubgroupWrapper.style.display = "none";
+      }
+
       const subgroupWrapper = container.querySelector<HTMLElement>("#new-subgroup-wrapper");
       if (subgroupWrapper) {
         const isCustom = addPrefixSelect.value === CUSTOM_PREFIX_VALUE;
@@ -3614,8 +3627,20 @@ export const UstawieniaView: View = {
 
                 <label class="settings-field">
                   <span class="settings-action-label">2. Podgrupa</span>
-                  <select id="new-price-prefix" class="settings-input"></select>
+                  <div class="settings-prefix-row" style="display:flex; gap:6px; align-items:center;">
+                    <select id="new-price-prefix" class="settings-input" style="flex:1;"></select>
+                    <button type="button" id="btn-rename-subgroup" class="settings-icon-btn" title="Zmień nazwę podgrupy" style="display:none">✎</button>
+                  </div>
                 </label>
+
+                <div id="rename-subgroup-wrapper" class="settings-field" style="display:none">
+                  <span class="settings-action-label">Nowa nazwa podgrupy</span>
+                  <div style="display:flex; gap:6px;">
+                    <input id="rename-subgroup-input" type="text" class="settings-input" style="flex:1;">
+                    <button type="button" id="btn-rename-subgroup-save" class="btn-success">Zapisz nazwę</button>
+                    <button type="button" id="btn-rename-subgroup-cancel" class="btn-secondary">Anuluj</button>
+                  </div>
+                </div>
 
                 <div id="new-subgroup-wrapper" class="settings-field" style="display:none">
                   <span class="settings-action-label">Nazwa nowej podgrupy</span>
@@ -3799,6 +3824,50 @@ export const UstawieniaView: View = {
       container.querySelector<HTMLInputElement>("#new-subgroup-material");
     const addSubgroupSizeInput = container.querySelector<HTMLInputElement>("#new-subgroup-size");
     const addSchemeSelect = container.querySelector<HTMLSelectElement>("#new-subgroup-scheme");
+    const renameSubgroupBtn = container.querySelector<HTMLButtonElement>("#btn-rename-subgroup");
+    const renameSubgroupWrapper = container.querySelector<HTMLElement>("#rename-subgroup-wrapper");
+    const renameSubgroupInput = container.querySelector<HTMLInputElement>("#rename-subgroup-input");
+    const renameSubgroupSaveBtn = container.querySelector<HTMLButtonElement>(
+      "#btn-rename-subgroup-save"
+    );
+    const renameSubgroupCancelBtn = container.querySelector<HTMLButtonElement>(
+      "#btn-rename-subgroup-cancel"
+    );
+
+    renameSubgroupBtn?.addEventListener("click", () => {
+      const chosenCatId = addCategorySelect?.value || activeCategory;
+      const prefix = addPrefixSelect?.value ?? "";
+      const currentLabel = customPriceSubgroups[chosenCatId]?.[prefix]?.label ?? "";
+      if (renameSubgroupInput) renameSubgroupInput.value = currentLabel;
+      if (renameSubgroupWrapper) renameSubgroupWrapper.style.display = "";
+    });
+
+    renameSubgroupCancelBtn?.addEventListener("click", () => {
+      if (renameSubgroupWrapper) renameSubgroupWrapper.style.display = "none";
+      if (renameSubgroupInput) renameSubgroupInput.value = "";
+    });
+
+    renameSubgroupSaveBtn?.addEventListener("click", () => {
+      const chosenCatId = addCategorySelect?.value || activeCategory;
+      const prefix = addPrefixSelect?.value ?? "";
+      const newLabel = renameSubgroupInput?.value ?? "";
+      try {
+        customPriceSubgroups = updateSubgroupLabel(
+          chosenCatId,
+          prefix,
+          newLabel,
+          customPriceSubgroups
+        );
+        setPriceSubgroups(customPriceSubgroups);
+        if (renameSubgroupWrapper) renameSubgroupWrapper.style.display = "none";
+        showStatus("✓ Nazwa podgrupy zapisana.");
+        renderTabs();
+        renderTable();
+        syncAddCategorySelection();
+      } catch (err) {
+        showStatus((err as Error)?.message || "⚠️ Nie udało się zapisać nazwy.", "error");
+      }
+    });
 
     function updateKeyPreview(): void {
       const previewWrap = container.querySelector<HTMLElement>("#key-preview-wrap");

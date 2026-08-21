@@ -4,6 +4,7 @@ import {
   nextVariantSortOrderInSubgroup,
   mergeVariantSubgroupsIntoRegistry,
   createSubgroupRegistryEntry,
+  updateSubgroupLabel,
   type VariantDefinition,
   type PriceSubgroupsMap,
 } from "../src/services/priceService";
@@ -300,5 +301,77 @@ describe("createSubgroupRegistryEntry", () => {
     );
 
     expect(result.plakaty["plakaty-nowa-"].label).toBe("Nowa podgrupa");
+  });
+});
+
+describe("updateSubgroupLabel", () => {
+  it("rzuca blad, gdy prefix nie istnieje w rejestrze", () => {
+    const registry: PriceSubgroupsMap = {
+      plakaty: {
+        "plakaty-eko-": { label: "Plakaty ekonomiczne A4", sortOrder: 3 },
+      },
+    };
+
+    expect(() =>
+      updateSubgroupLabel("plakaty", "plakaty-brak-", "Nowa nazwa", registry)
+    ).toThrow("Subgroup prefix does not exist: plakaty-brak-");
+  });
+
+  it("rzuca blad, gdy nowy label jest pusty po trim()", () => {
+    const registry: PriceSubgroupsMap = {
+      plakaty: {
+        "plakaty-eko-": { label: "Plakaty ekonomiczne A4", sortOrder: 3 },
+      },
+    };
+
+    expect(() => updateSubgroupLabel("plakaty", "plakaty-eko-", "   ", registry)).toThrow(
+      "Subgroup label cannot be empty"
+    );
+  });
+
+  it("zmienia wylacznie label, zachowujac sortOrder i pozostale wpisy bez zmian", () => {
+    const registry: PriceSubgroupsMap = {
+      plakaty: {
+        "plakaty-eko-": { label: "Plakaty ekonomiczne A4", sortOrder: 3 },
+        "plakaty-premium-": { label: "Plakaty premium", sortOrder: 1 },
+      },
+      ulotki: {
+        "ulotki-standard-": { label: "Ulotki standardowe", sortOrder: 0 },
+      },
+    };
+
+    const result = updateSubgroupLabel("plakaty", "plakaty-eko-", "Plakaty eko A4", registry);
+
+    expect(result.plakaty["plakaty-eko-"]).toEqual({
+      label: "Plakaty eko A4",
+      sortOrder: 3,
+    });
+    expect(result.plakaty["plakaty-premium-"]).toEqual({
+      label: "Plakaty premium",
+      sortOrder: 1,
+    });
+    expect(result.ulotki["ulotki-standard-"]).toEqual({
+      label: "Ulotki standardowe",
+      sortOrder: 0,
+    });
+    expect(result).not.toBe(registry);
+    expect(registry.plakaty["plakaty-eko-"].label).toBe("Plakaty ekonomiczne A4");
+  });
+
+  it("zapisuje label po trim(), gdy ma otaczajace spacje", () => {
+    const registry: PriceSubgroupsMap = {
+      plakaty: {
+        "plakaty-eko-": { label: "Plakaty ekonomiczne A4", sortOrder: 3 },
+      },
+    };
+
+    const result = updateSubgroupLabel(
+      "plakaty",
+      "plakaty-eko-",
+      "  Plakaty eko A4  ",
+      registry
+    );
+
+    expect(result.plakaty["plakaty-eko-"].label).toBe("Plakaty eko A4");
   });
 });
