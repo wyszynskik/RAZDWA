@@ -321,6 +321,24 @@ export function resolveVariantLabel(
 }
 
 /**
+ * Maps a thrown Error's raw (English) message from
+ * priceService.ts::updateSubgroupLabel() to a localized, Polish,
+ * warning-prefixed status string. Falls back to a generic message for any
+ * error text this function doesn't recognize.
+ *
+ * Exported for unit tests only.
+ */
+export function resolveRenameSubgroupErrorMessage(rawMessage: string): string {
+  if (rawMessage.includes("cannot be empty")) {
+    return "⚠️ Nazwa podgrupy nie może być pusta.";
+  }
+  if (rawMessage.includes("does not exist")) {
+    return "⚠️ Wybrana podgrupa już nie istnieje.";
+  }
+  return "⚠️ Nie udało się zapisać nazwy.";
+}
+
+/**
  * Exported for unit tests only — not part of this module's public API for
  * other views, which should go through the add-subgroup-variant upsert flow.
  */
@@ -3865,13 +3883,7 @@ export const UstawieniaView: View = {
         renderTable();
         syncAddCategorySelection();
       } catch (err) {
-        const raw = (err as Error)?.message ?? "";
-        const msg = raw.includes("cannot be empty")
-          ? "⚠️ Nazwa podgrupy nie może być pusta."
-          : raw.includes("does not exist")
-            ? "⚠️ Wybrana podgrupa już nie istnieje."
-            : "⚠️ Nie udało się zapisać nazwy.";
-        showStatus(msg, "error");
+        showStatus(resolveRenameSubgroupErrorMessage((err as Error)?.message ?? ""), "error");
       }
     });
 
