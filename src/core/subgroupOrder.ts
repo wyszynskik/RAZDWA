@@ -30,10 +30,7 @@ export type SubgroupEntryInput = string | SubgroupInfo;
  */
 export function isValidSortOrder(value: unknown): value is number {
   return (
-    typeof value === "number" &&
-    Number.isFinite(value) &&
-    Number.isInteger(value) &&
-    value >= 0
+    typeof value === "number" && Number.isFinite(value) && Number.isInteger(value) && value >= 0
   );
 }
 

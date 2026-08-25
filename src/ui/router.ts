@@ -237,10 +237,13 @@ export class Router {
   }
 
   /**
-   * Mounts the generic custom-subgroup cards (form + tiered legend) at the
-   * bottom of the current category container. No-op for routes that aren't a
-   * price category (home, ustawienia, not-found) — those have no id in
-   * BASE_PRICE_CATEGORIES.
+   * Mounts the generic custom-subgroup cards (form + tiered legend) into the
+   * current category container. Placement is uniform across every category:
+   * if the view exposes a `#dyn-subgroups-slot` marker (placed right after its
+   * own forms, before any reference legend), the block is inserted there;
+   * otherwise it falls back to the bottom of the container. No-op for routes
+   * that aren't a price category (home, ustawienia, not-found) — those have no
+   * id in BASE_PRICE_CATEGORIES.
    */
   private mountDynamicSubgroupsFor(path: string): void {
     // artykuly/uslugi render their custom subgroups through their own
@@ -250,13 +253,14 @@ export class Router {
     const category = BASE_PRICE_CATEGORIES.find((c) => c.id === path);
     if (!category) return;
     try {
+      const slot = this.container.querySelector<HTMLElement>("#dyn-subgroups-slot");
       mountDynamicSubgroupContainers(
         this.container,
-        this.container,
+        slot ?? this.container,
         path,
         category.label,
         this.getCtx(),
-        "beforeend"
+        slot ? "beforebegin" : "beforeend"
       );
     } catch (err) {
       console.error("dynamic subgroups mount error:", err);

@@ -129,7 +129,8 @@ function sortProductsByOrder(
     const subgroupOrderB = resolveSubgroupSortOrder(b.subcategoryPrefix, freshSubgroups);
     if (subgroupOrderA !== subgroupOrderB) return subgroupOrderA - subgroupOrderB;
     return (
-      resolveProductSortOrder(a, variantsByIdentity) - resolveProductSortOrder(b, variantsByIdentity)
+      resolveProductSortOrder(a, variantsByIdentity) -
+      resolveProductSortOrder(b, variantsByIdentity)
     );
   });
 }

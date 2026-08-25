@@ -41,10 +41,7 @@ describe("buildProductLabel", () => {
 
   it("variantLabel also renders in customer context (it is the product's own identity, not a duplicate of the heading)", () => {
     expect(
-      buildProductLabel(
-        { subgroupLabel: "Teczki", variantLabel: "Teczka niebieska" },
-        "customer"
-      )
+      buildProductLabel({ subgroupLabel: "Teczki", variantLabel: "Teczka niebieska" }, "customer")
     ).toBe("Teczka niebieska");
   });
 

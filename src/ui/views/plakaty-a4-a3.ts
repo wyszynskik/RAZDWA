@@ -139,6 +139,15 @@ export const PlakatyA4A3View: View = {
         (paBreakdownBox ?? resultBox).insertAdjacentElement("afterend", legend);
       }
 
+      // Marker for the router's central custom-subgroup mount: custom subgroups
+      // belong directly under the Mały/Duży Canon forms and ABOVE the Canon
+      // reference legend, so anchor the slot just before that legend.
+      if (!container.querySelector("#dyn-subgroups-slot")) {
+        const slot = document.createElement("div");
+        slot.id = "dyn-subgroups-slot";
+        legend.insertAdjacentElement("beforebegin", slot);
+      }
+
       const findDuzyVariant = (variantId: string) =>
         (tableData.duzyCanon?.variants ?? []).find((variant: any) => variant.id === variantId);
 

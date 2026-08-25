@@ -236,8 +236,8 @@ export function getPriceSubgroups(): PriceSubgroupsMap {
     if (!isSafePathSegment(categoryId)) continue;
     if (!prefixes || typeof prefixes !== "object" || Array.isArray(prefixes)) continue;
 
-    const validEntries = Object.entries(prefixes as Record<string, unknown>).filter(
-      ([prefix]) => isSafePathSegment(prefix)
+    const validEntries = Object.entries(prefixes as Record<string, unknown>).filter(([prefix]) =>
+      isSafePathSegment(prefix)
     );
 
     const nested = Object.create(null) as Record<string, SubgroupInfo>;
