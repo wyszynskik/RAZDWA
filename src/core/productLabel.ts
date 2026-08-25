@@ -46,10 +46,7 @@ export interface ProductLabelParts {
  * extraParams array) are skipped entirely. Works unchanged for historical
  * data that has no material/size/qty range at all.
  */
-export function buildProductLabel(
-  parts: ProductLabelParts,
-  context: LabelContext
-): string {
+export function buildProductLabel(parts: ProductLabelParts, context: LabelContext): string {
   const segments: string[] = [];
 
   if (context === "admin") {

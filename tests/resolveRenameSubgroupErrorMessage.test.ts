@@ -3,9 +3,9 @@ import { resolveRenameSubgroupErrorMessage } from "../src/ui/views/ustawienia";
 
 describe("resolveRenameSubgroupErrorMessage", () => {
   it('maps "Subgroup prefix does not exist: ..." to a localized Polish message', () => {
-    expect(
-      resolveRenameSubgroupErrorMessage("Subgroup prefix does not exist: plakaty-brak-")
-    ).toBe("⚠️ Wybrana podgrupa już nie istnieje.");
+    expect(resolveRenameSubgroupErrorMessage("Subgroup prefix does not exist: plakaty-brak-")).toBe(
+      "⚠️ Wybrana podgrupa już nie istnieje."
+    );
   });
 
   it('maps "Subgroup label cannot be empty" to a localized Polish message', () => {

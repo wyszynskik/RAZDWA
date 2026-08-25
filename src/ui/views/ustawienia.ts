@@ -2751,7 +2751,9 @@ export const UstawieniaView: View = {
       addPrefixSelect.value = nextPrefix;
 
       const renameSubgroupBtn = container.querySelector<HTMLButtonElement>("#btn-rename-subgroup");
-      const renameSubgroupWrapper = container.querySelector<HTMLElement>("#rename-subgroup-wrapper");
+      const renameSubgroupWrapper = container.querySelector<HTMLElement>(
+        "#rename-subgroup-wrapper"
+      );
       if (renameSubgroupBtn) {
         const chosenCatId = addCategorySelect.value;
         const isExistingCustomSubgroup = Boolean(
@@ -4384,7 +4386,10 @@ export const UstawieniaView: View = {
       const _resetLegacyLabels = loadPriceLabels();
       const _resetLegacySubgroups = getPriceSubgroups();
       customPriceLabels = { ..._resetLegacyLabels, ...variantsToPriceLabels(_resetVariants) };
-      customPriceSubgroups = mergeVariantSubgroupsIntoRegistry(_resetLegacySubgroups, _resetVariants);
+      customPriceSubgroups = mergeVariantSubgroupsIntoRegistry(
+        _resetLegacySubgroups,
+        _resetVariants
+      );
       renderTabs();
       renderTable();
       syncAddCategorySelection();
@@ -4408,7 +4413,10 @@ export const UstawieniaView: View = {
       const _freshLegacyLabels = loadPriceLabels();
       const _freshLegacySubgroups = getPriceSubgroups();
       customPriceLabels = { ..._freshLegacyLabels, ...variantsToPriceLabels(_freshVariants) };
-      customPriceSubgroups = mergeVariantSubgroupsIntoRegistry(_freshLegacySubgroups, _freshVariants);
+      customPriceSubgroups = mergeVariantSubgroupsIntoRegistry(
+        _freshLegacySubgroups,
+        _freshVariants
+      );
       renderTabs();
       renderTable();
       syncAddCategorySelection();

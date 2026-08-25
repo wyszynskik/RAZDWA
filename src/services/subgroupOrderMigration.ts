@@ -49,7 +49,8 @@ function readStatus(): MigrationStatus | null {
     if (!raw) return null;
     const parsed = JSON.parse(raw);
     if (!parsed || typeof parsed !== "object") return null;
-    if (parsed.version !== SUBGROUP_ORDER_MIGRATION_VERSION || parsed.status !== "completed") return null;
+    if (parsed.version !== SUBGROUP_ORDER_MIGRATION_VERSION || parsed.status !== "completed")
+      return null;
     return parsed as MigrationStatus;
   } catch {
     return null;

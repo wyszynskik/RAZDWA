@@ -293,12 +293,7 @@ describe("createSubgroupRegistryEntry", () => {
   });
 
   it("zapisuje label po trim(), gdy ma otaczajace spacje", () => {
-    const result = createSubgroupRegistryEntry(
-      "plakaty",
-      "plakaty-nowa-",
-      "  Nowa podgrupa  ",
-      {}
-    );
+    const result = createSubgroupRegistryEntry("plakaty", "plakaty-nowa-", "  Nowa podgrupa  ", {});
 
     expect(result.plakaty["plakaty-nowa-"].label).toBe("Nowa podgrupa");
   });
@@ -312,9 +307,9 @@ describe("updateSubgroupLabel", () => {
       },
     };
 
-    expect(() =>
-      updateSubgroupLabel("plakaty", "plakaty-brak-", "Nowa nazwa", registry)
-    ).toThrow("Subgroup prefix does not exist: plakaty-brak-");
+    expect(() => updateSubgroupLabel("plakaty", "plakaty-brak-", "Nowa nazwa", registry)).toThrow(
+      "Subgroup prefix does not exist: plakaty-brak-"
+    );
   });
 
   it("rzuca blad, gdy nowy label jest pusty po trim()", () => {
@@ -365,12 +360,7 @@ describe("updateSubgroupLabel", () => {
       },
     };
 
-    const result = updateSubgroupLabel(
-      "plakaty",
-      "plakaty-eko-",
-      "  Plakaty eko A4  ",
-      registry
-    );
+    const result = updateSubgroupLabel("plakaty", "plakaty-eko-", "  Plakaty eko A4  ", registry);
 
     expect(result.plakaty["plakaty-eko-"].label).toBe("Plakaty eko A4");
   });
