@@ -9,9 +9,11 @@ import { initPriceRoot, priceSource, eventBus } from "../bootstrap";
 import {
   normalizeSubgroupEntries,
   nextSortOrder,
+  isValidSortOrder,
   type SubgroupInfo,
   type SubgroupEntryInput,
 } from "../core/subgroupOrder";
+import { markConfigDirty } from "./configSyncState";
 
 export type { SubgroupInfo, SubgroupEntryInput } from "../core/subgroupOrder";
 
@@ -167,6 +169,7 @@ export function setPrice(path: string, value: any): void {
       // ignore
     }
 
+    markConfigDirty();
     notifyPricesUpdated(path);
   }
 }
@@ -190,12 +193,14 @@ export function setPriceLabels(labels: Record<string, string>): void {
   }
 
   writeStoredJsonMap(PRICE_LABELS_STORAGE_KEY, cleaned);
+  markConfigDirty();
 }
 
 export function deletePriceLabel(key: string): void {
   const labels = readStoredJsonMap(PRICE_LABELS_STORAGE_KEY);
   delete labels[key];
   writeStoredJsonMap(PRICE_LABELS_STORAGE_KEY, labels);
+  markConfigDirty();
 }
 
 export type PriceSubgroupsMap = Record<string, Record<string, SubgroupInfo>>;
@@ -292,6 +297,8 @@ export function setPriceSubgroups(groups: PriceSubgroupsInput): void {
   } catch {
     // ignore
   }
+
+  markConfigDirty();
 }
 
 export function deletePriceSubgroup(categoryId: string, prefix: string): void {
@@ -421,35 +428,97 @@ export function nextVariantSortOrderInSubgroup(
 
 /**
  * Adds any subgroup referenced by `variants` but missing from `existing` —
- * assigning it the next sortOrder within its category — without ever
- * overwriting an entry `existing` already has (label OR sortOrder). This is
- * the shared repair step used at startup and after a remote (GAS) sync to
- * make sure every subcategoryPrefix that has priced variants also has a
- * registry entry, replacing four previously ad hoc Object.assign merges
- * that risked clobbering a SubgroupInfo object with a bare label string.
+ * without ever overwriting an entry `existing` already has (label OR
+ * sortOrder). This is the shared repair step used at startup and after a
+ * remote (GAS) sync to make sure every subcategoryPrefix that has priced
+ * variants also has a registry entry.
+ *
+ * sortOrder for an added entry comes from variant.subgroupSortOrder whenever
+ * that is a valid position — this is what makes subgroup ORDER survive a
+ * cleared localStorage / a new origin, since the registry itself never
+ * reaches the spreadsheet. Entries carrying an explicit position are placed
+ * FIRST, so a fallback assigned to a legacy entry can never steal a slot an
+ * explicit value is about to claim (same two-pass rule as
+ * normalizeSubgroupEntries). Legacy variants without the field keep the
+ * historical "append in order of appearance" behaviour.
  */
 export function mergeVariantSubgroupsIntoRegistry(
   existing: PriceSubgroupsMap,
   variants: VariantDefinition[]
 ): PriceSubgroupsMap {
-  const fromVariants = variantsToPriceSubgroups(variants);
+  const fromVariants = variantsToSubgroupRegistry(variants);
   const result: PriceSubgroupsMap = Object.create(null);
   for (const [categoryId, prefixes] of Object.entries(existing)) {
     result[categoryId] = { ...prefixes };
   }
 
-  for (const [categoryId, labelMap] of Object.entries(fromVariants)) {
+  for (const [categoryId, entries] of Object.entries(fromVariants)) {
     if (!result[categoryId]) result[categoryId] = Object.create(null);
-    for (const [prefix, label] of Object.entries(labelMap)) {
-      if (result[categoryId][prefix]) continue;
+
+    const missing = Object.entries(entries).filter(([prefix]) => !result[categoryId][prefix]);
+    const explicit = missing.filter(([, entry]) => isValidSortOrder(entry.sortOrder));
+    const withoutOrder = missing.filter(([, entry]) => !isValidSortOrder(entry.sortOrder));
+
+    for (const [prefix, entry] of explicit) {
+      result[categoryId][prefix] = { label: entry.label, sortOrder: entry.sortOrder as number };
+    }
+    for (const [prefix, entry] of withoutOrder) {
       result[categoryId][prefix] = {
-        label,
+        label: entry.label,
         sortOrder: nextSortOrder(Object.values(result[categoryId])),
       };
     }
   }
 
   return result;
+}
+
+/**
+ * Pure: returns a NEW variants array in which every variant belonging to
+ * (categoryId, subcategoryPrefix) carries the patched subgroup-level fields.
+ * Both fields are denormalized across every tier of a subgroup, so a partial
+ * update would make variantsToSubgroupRegistry()'s result depend on array
+ * order — hence "all tiers or nothing".
+ *
+ * NEVER touches VariantDefinition.sortOrder (tier order within the subgroup)
+ * and never touches variants of any other subgroup or category. `updatedAt`
+ * is refreshed only on variants that actually changed, so the function stays
+ * idempotent: re-running it with the same patch returns equal data.
+ */
+export function applySubgroupToVariants(
+  categoryId: string,
+  subcategoryPrefix: string,
+  patch: { label?: string; subgroupSortOrder?: number },
+  variants: VariantDefinition[],
+  now: string = new Date().toISOString()
+): VariantDefinition[] {
+  const nextLabel = typeof patch.label === "string" ? patch.label.trim() : undefined;
+  if (patch.label !== undefined && !nextLabel) {
+    throw new Error("Subgroup label cannot be empty");
+  }
+  if (patch.subgroupSortOrder !== undefined && !isValidSortOrder(patch.subgroupSortOrder)) {
+    throw new Error(`Invalid subgroupSortOrder: ${String(patch.subgroupSortOrder)}`);
+  }
+
+  return variants.map((variant) => {
+    if (variant.categoryId !== categoryId || variant.subcategoryPrefix !== subcategoryPrefix) {
+      return variant;
+    }
+
+    const labelChanged = nextLabel !== undefined && variant.subgroupLabel !== nextLabel;
+    const orderChanged =
+      patch.subgroupSortOrder !== undefined &&
+      variant.subgroupSortOrder !== patch.subgroupSortOrder;
+
+    if (!labelChanged && !orderChanged) return variant;
+
+    return {
+      ...variant,
+      ...(labelChanged ? { subgroupLabel: nextLabel } : {}),
+      ...(orderChanged ? { subgroupSortOrder: patch.subgroupSortOrder } : {}),
+      updatedAt: now,
+    };
+  });
 }
 
 export const VARIANTS_STORAGE_KEY = "razdwa_variants";
@@ -501,6 +570,25 @@ export interface VariantDefinition {
    * historical category-identity rule.
    */
   calcScheme?: VariantCalcScheme;
+  /**
+   * Optional: position of the WHOLE SUBGROUP within its category
+   * (denormalized across all tiers sharing a subcategoryPrefix, same pattern
+   * as subgroupLabel). Deliberately distinct from `sortOrder`, which orders
+   * tiers WITHIN one subgroup — the two must never be conflated.
+   *
+   * Reason this field exists: razdwa_price_subgroups (the SubgroupInfo
+   * registry that owns subgroup ordering) is localStorage-only — it is never
+   * sent to Apps Script. VariantDefinition[] IS round-tripped through GAS
+   * verbatim, so denormalizing the subgroup's position onto its variants is
+   * what makes that position survive a new origin / cleared localStorage,
+   * with no Code.gs change required.
+   *
+   * Absent on variants created before this field existed; consumers fall back
+   * to the historical "position of appearance" rule (see
+   * mergeVariantSubgroupsIntoRegistry). The one-off admin backfill in
+   * subgroupBackfill.ts fills it for existing data.
+   */
+  subgroupSortOrder?: number;
 }
 
 export function getVariantDefinitions(): VariantDefinition[] {
@@ -526,6 +614,7 @@ export function setVariantDefinitions(variants: VariantDefinition[]): void {
   } catch {
     // ignore
   }
+  markConfigDirty();
   notifyPricesUpdated("variants");
 }
 
@@ -553,6 +642,40 @@ export function variantsToPriceSubgroups(
     if (!result[v.categoryId]) result[v.categoryId] = Object.create(null);
     result[v.categoryId][v.subcategoryPrefix] = v.subgroupLabel;
   }
+  return result;
+}
+
+export interface VariantSubgroupEntry {
+  label: string;
+  /** null when no variant of this subgroup carries a valid subgroupSortOrder. */
+  sortOrder: number | null;
+}
+
+/**
+ * Subgroup registry rebuilt purely from VariantDefinition[] — the shape that
+ * survives a GAS round-trip. Label follows the existing "last variant wins"
+ * rule (same as variantsToPriceSubgroups); sortOrder is only ever overwritten
+ * by a VALID subgroupSortOrder, so one legacy tier without the field can't
+ * wipe a position another tier of the same subgroup does carry.
+ */
+export function variantsToSubgroupRegistry(
+  variants: VariantDefinition[]
+): Record<string, Record<string, VariantSubgroupEntry>> {
+  const result: Record<string, Record<string, VariantSubgroupEntry>> = Object.create(null);
+
+  for (const v of variants) {
+    if (!v.subgroupLabel || !v.subcategoryPrefix) continue;
+    if (!result[v.categoryId]) result[v.categoryId] = Object.create(null);
+
+    const current = result[v.categoryId][v.subcategoryPrefix];
+    result[v.categoryId][v.subcategoryPrefix] = {
+      label: v.subgroupLabel,
+      sortOrder: isValidSortOrder(v.subgroupSortOrder)
+        ? v.subgroupSortOrder
+        : (current?.sortOrder ?? null),
+    };
+  }
+
   return result;
 }
 

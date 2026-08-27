@@ -67,6 +67,7 @@ import {
 } from "../core/customerValidation";
 import categories from "../../data/categories.json";
 import { runMigrationIfNeeded } from "../services/priceMigrator";
+import { withConfigDirtySuppressed } from "../services/configSyncState";
 import { runSubgroupOrderMigrationIfNeeded } from "../services/subgroupOrderMigration";
 import { warmPriceCache, hasCachedPrices } from "../core/compat";
 import { checkStartupConfig } from "../core/startGuard";
@@ -2386,8 +2387,13 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   });
 
-  syncVariantsToSubgroupsAtStartup();
-  runSubgroupOrderMigrationIfNeeded();
+  // Odbudowa rejestru i backfill migracyjny to odtworzenie stanu, który już jest
+  // (lokalnie albo w arkuszu) — nie zmiana użytkowniczki, więc nie mogą zapalać
+  // znacznika "niezsynchronizowane".
+  withConfigDirtySuppressed(() => {
+    syncVariantsToSubgroupsAtStartup();
+    runSubgroupOrderMigrationIfNeeded();
+  });
   runMigrationIfNeeded()
     .then(() => warmPriceCache())
     .catch((err) => console.warn("[priceCache] startup error:", err));
@@ -2402,23 +2408,27 @@ document.addEventListener("DOMContentLoaded", () => {
       const remote = await fetchStateFromAppsScript();
       if (!remote) return;
 
-      if (Object.keys(remote.prices).length > 0) {
-        const hasLocalPrices = Boolean(localStorage.getItem(PRICES_STORAGE_KEY));
-        if (!hasLocalPrices) {
-          setPrice("defaultPrices", remote.prices as Record<string, number | null>);
+      // Dane przyszły z arkusza — zapisujemy je lokalnie jako cache, więc
+      // znacznik dirty musi pozostać nietknięty (nie ma czego wysyłać z powrotem).
+      withConfigDirtySuppressed(() => {
+        if (Object.keys(remote.prices).length > 0) {
+          const hasLocalPrices = Boolean(localStorage.getItem(PRICES_STORAGE_KEY));
+          if (!hasLocalPrices) {
+            setPrice("defaultPrices", remote.prices as Record<string, number | null>);
+          }
+          localStorage.setItem("razdwa_prices_ts", String(Date.now()));
         }
-        localStorage.setItem("razdwa_prices_ts", String(Date.now()));
-      }
-      if (remote.variants.length > 0) {
-        const hasLocalVariants = Boolean(
-          typeof localStorage !== "undefined" && localStorage.getItem(VARIANTS_STORAGE_KEY)
-        );
-        if (!hasLocalVariants) {
-          setVariantDefinitions(remote.variants);
-          syncVariantsToSubgroupsAtStartup();
-          runSubgroupOrderMigrationIfNeeded();
+        if (remote.variants.length > 0) {
+          const hasLocalVariants = Boolean(
+            typeof localStorage !== "undefined" && localStorage.getItem(VARIANTS_STORAGE_KEY)
+          );
+          if (!hasLocalVariants) {
+            setVariantDefinitions(remote.variants);
+            syncVariantsToSubgroupsAtStartup();
+            runSubgroupOrderMigrationIfNeeded();
+          }
         }
-      }
+      });
     } catch (err) {
       console.warn("[startupSync] fetchStateFromAppsScript failed:", err);
     }
