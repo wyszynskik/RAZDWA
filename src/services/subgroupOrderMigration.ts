@@ -22,6 +22,7 @@
  * Must run before the first render — see main.ts, called just after
  * syncVariantsToSubgroupsAtStartup() and before router.start().
  */
+import { isValidSortOrder } from "../core/subgroupOrder";
 import {
   getPriceSubgroups,
   setPriceSubgroups,
@@ -93,6 +94,26 @@ export function rebuildSubgroupSortOrder(subgroups: PriceSubgroupsMap): PriceSub
 }
 
 /**
+ * Does this data already carry a trustworthy, user-chosen ordering?
+ *
+ * The alphabetical rebuild below is a LEGACY backfill: it exists only for data
+ * that predates sortOrder and therefore has no order worth keeping. Applying
+ * it to data that DOES carry an order is destructive — and that is exactly the
+ * situation on a fresh origin, where the empty-data gate leaves the migration
+ * "not yet run" and variants then arrive from Apps Script carrying their real
+ * positions (see main.ts). Without this check, the very first startup on the
+ * client's new domain would silently re-alphabetize every subgroup and tier
+ * that had ever been arranged by hand.
+ *
+ * A single variant carrying subgroupSortOrder is enough to prove the data has
+ * been through the current write path, since that field is denormalized onto
+ * every tier of a subgroup by applySubgroupToVariants()/the admin backfill.
+ */
+export function hasPersistedOrdering(variants: VariantDefinition[]): boolean {
+  return variants.some((variant) => isValidSortOrder(variant.subgroupSortOrder));
+}
+
+/**
  * Exported for unit tests only. Rebuilds variant.sortOrder scoped to each
  * (categoryId, subcategoryPrefix) cluster, ordering today's variants
  * alphabetically (pl) by their display label (falling back to key when a
@@ -135,6 +156,14 @@ export function runSubgroupOrderMigrationIfNeeded(): void {
     const hasVariants = variants.length > 0;
 
     if (!hasSubgroups && !hasVariants) {
+      return;
+    }
+
+    // Dane niosą już trwałą kolejność (własną lub przyniesioną z arkusza) —
+    // alfabetyczny backfill by ją zniszczył. Zamykamy bramkę na stałe, żeby
+    // migracja nie czekała na kolejny start z innym stanem danych.
+    if (hasPersistedOrdering(variants)) {
+      writeStatus();
       return;
     }
 

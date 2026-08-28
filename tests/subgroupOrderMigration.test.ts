@@ -9,6 +9,7 @@ import {
   setPriceSubgroups,
   getVariantDefinitions,
   setVariantDefinitions,
+  mergeVariantSubgroupsIntoRegistry,
   type VariantDefinition,
 } from "../src/services/priceService";
 
@@ -104,5 +105,102 @@ describe("runSubgroupOrderMigrationIfNeeded - brama na pustych danych", () => {
     runSubgroupOrderMigrationIfNeeded();
 
     expect(mockStorage[SUBGROUP_ORDER_MIGRATION_STATUS_KEY]).toBeUndefined();
+  });
+});
+
+describe("runSubgroupOrderMigrationIfNeeded - ochrona kolejnosci przyniesionej z GAS", () => {
+  const mockStorage: Record<string, string> = {};
+
+  beforeEach(() => {
+    Object.keys(mockStorage).forEach((k) => delete mockStorage[k]);
+    (globalThis as any).localStorage = {
+      getItem: (k: string) => mockStorage[k] ?? null,
+      setItem: (k: string, v: string) => {
+        mockStorage[k] = v;
+      },
+      removeItem: (k: string) => {
+        delete mockStorage[k];
+      },
+    };
+  });
+
+  afterEach(() => {
+    delete (globalThis as any).localStorage;
+  });
+
+  it("scenariusz migracji: czysty origin + dane z arkusza z subgroupSortOrder nie sa przetasowane alfabetycznie", () => {
+    // 1. Pierwszy start na nowej domenie: pusty localStorage, bramka nie zapala statusu.
+    runSubgroupOrderMigrationIfNeeded();
+    expect(mockStorage[SUBGROUP_ORDER_MIGRATION_STATUS_KEY]).toBeUndefined();
+
+    // 2. Warianty przychodza z GAS. "Zeta" ma byc PIERWSZA - tak ustawila to klientka,
+    //    wbrew kolejnosci alfabetycznej.
+    setVariantDefinitions([
+      makeVariant({
+        key: "plakaty-z-10",
+        categoryId: "plakaty",
+        subcategoryPrefix: "plakaty-z-",
+        subgroupLabel: "Zeta",
+        sortOrder: 0,
+        subgroupSortOrder: 0,
+      }),
+      makeVariant({
+        key: "plakaty-z-20",
+        categoryId: "plakaty",
+        subcategoryPrefix: "plakaty-z-",
+        subgroupLabel: "Zeta",
+        sortOrder: 1,
+        subgroupSortOrder: 0,
+      }),
+      makeVariant({
+        key: "plakaty-a-10",
+        categoryId: "plakaty",
+        subcategoryPrefix: "plakaty-a-",
+        subgroupLabel: "Alfa",
+        sortOrder: 0,
+        subgroupSortOrder: 1,
+      }),
+    ]);
+    setPriceSubgroups(
+      mergeVariantSubgroupsIntoRegistry(getPriceSubgroups(), getVariantDefinitions())
+    );
+
+    // 3. Migracja odpala sie po dociagnieciu danych - i musi je zostawic w spokoju.
+    runSubgroupOrderMigrationIfNeeded();
+
+    const subgroups = getPriceSubgroups();
+    expect(subgroups.plakaty["plakaty-z-"].sortOrder).toBe(0);
+    expect(subgroups.plakaty["plakaty-a-"].sortOrder).toBe(1);
+
+    const variants = getVariantDefinitions();
+    expect(variants.find((v) => v.key === "plakaty-z-10")?.sortOrder).toBe(0);
+    expect(variants.find((v) => v.key === "plakaty-z-20")?.sortOrder).toBe(1);
+    expect(variants.every((v) => v.subgroupLabel !== "")).toBe(true);
+
+    // 4. Bramka zostaje zamknieta na stale - kolejny start nic nie przelicza.
+    expect(mockStorage[SUBGROUP_ORDER_MIGRATION_STATUS_KEY]).toBeDefined();
+  });
+
+  it("dane legacy (bez subgroupSortOrder) nadal przechodza backfill alfabetyczny", () => {
+    setPriceSubgroups({
+      plakaty: {
+        "plakaty-z-": { label: "Zeta", sortOrder: 40 },
+        "plakaty-a-": { label: "Alfa", sortOrder: 41 },
+      },
+    });
+    setVariantDefinitions([
+      makeVariant({
+        key: "plakaty-z-10",
+        categoryId: "plakaty",
+        subcategoryPrefix: "plakaty-z-",
+        subgroupLabel: "Zeta",
+      }),
+    ]);
+
+    runSubgroupOrderMigrationIfNeeded();
+
+    const subgroups = getPriceSubgroups();
+    expect(subgroups.plakaty["plakaty-a-"].sortOrder).toBe(0);
+    expect(subgroups.plakaty["plakaty-z-"].sortOrder).toBe(1);
   });
 });

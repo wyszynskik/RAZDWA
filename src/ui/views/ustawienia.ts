@@ -48,7 +48,26 @@ import {
   mergeVariantSubgroupsIntoRegistry,
   createSubgroupRegistryEntry,
   updateSubgroupLabel,
+  applySubgroupToVariants,
 } from "../../services/priceService";
+import {
+  markConfigDirty,
+  readConfigDirtyAt,
+  clearConfigDirty,
+  withConfigDirtySuppressed,
+} from "../../services/configSyncState";
+import {
+  buildConfigExport,
+  serializeConfigExport,
+  buildConfigExportFilename,
+  parseConfigImport,
+  describeConfigImport,
+} from "../../services/configBackup";
+import {
+  planSubgroupSortOrderBackfill,
+  applySubgroupSortOrderBackfill,
+  describeSubgroupBackfillPlan,
+} from "../../services/subgroupBackfill";
 import {
   savePricesToAppsScript,
   saveVariantsToAppsScript,
@@ -370,6 +389,9 @@ let _lastAddedKey: string | null = null;
 let customPriceLabels: PriceLabelMap = Object.create(null);
 let customPriceSubgroups: PriceSubgroupMap = Object.create(null);
 let _draftVariantDefs: VariantDefinition[] = [];
+/** Ustawiane przez backfill, czyszczone po udanym zapisie do GAS — steruje
+ *  dodatkowym potwierdzeniem, że kolejność podgrup trafiła do arkusza. */
+let _subgroupOrderBackfillPending = false;
 
 /**
  * Live view over the module's in-memory state: custom subgroups in a category
@@ -2601,9 +2623,36 @@ export const UstawieniaView: View = {
       }
     }
 
+    /**
+     * Dokłada warianty wskazanej podgrupy do istniejącej listy draftów, żeby
+     * licznik "niezsynchronizowane" i tak samo jak dotąd "Zapisz cennik"
+     * obejmowały zmiany zrobione poza formularzem "Dodaj wariant"
+     * (rename podgrupy, backfill, import). Nie tworzy drugiego mechanizmu —
+     * korzysta z tego samego _draftVariantDefs.
+     */
+    function markDraftFromVariants(
+      variants: VariantDefinition[],
+      categoryId: string,
+      subcategoryPrefix: string
+    ): void {
+      const touched = variants.filter(
+        (v) => v.categoryId === categoryId && v.subcategoryPrefix === subcategoryPrefix
+      );
+      if (!touched.length) return;
+      const touchedKeys = new Set(touched.map((v) => v.key));
+      _draftVariantDefs = _draftVariantDefs.filter((d) => !touchedKeys.has(d.key)).concat(touched);
+    }
+
+    function markAllVariantsAsDraft(variants: VariantDefinition[]): void {
+      const keys = new Set(variants.map((v) => v.key));
+      _draftVariantDefs = _draftVariantDefs.filter((d) => !keys.has(d.key)).concat(variants);
+    }
+
     function updateDraftIndicator(): void {
       const el = container.querySelector<HTMLElement>("#draft-indicator");
-      if (el) el.style.display = _draftVariantDefs.length > 0 ? "" : "none";
+      if (el)
+        el.style.display =
+          _draftVariantDefs.length > 0 || readConfigDirtyAt() !== null ? "" : "none";
       updateSyncStatusBlock();
     }
 
@@ -2611,22 +2660,31 @@ export const UstawieniaView: View = {
       const root = container.querySelector<HTMLElement>("#sync-status-block");
       if (!root) return;
       const pending = _draftVariantDefs.length;
+      // Draft w pamięci ginie po F5; trwały znacznik razdwa_config_dirty_at nie —
+      // dopiero suma obu mówi prawdę o tym, czy arkusz zna bieżący stan.
+      const dirtyAt = readConfigDirtyAt();
+      const isDirty = pending > 0 || dirtyAt !== null;
       const syncedAt = readPricesSyncedAt();
       const lastSync = syncedAt
         ? new Date(syncedAt).toLocaleTimeString("pl-PL", { hour: "2-digit", minute: "2-digit" })
         : "—";
-      root.classList.toggle("settings-sync-status--dirty", pending > 0);
-      root.classList.toggle("settings-sync-status--synced", pending === 0);
+      root.classList.toggle("settings-sync-status--dirty", isDirty);
+      root.classList.toggle("settings-sync-status--synced", !isDirty);
       const headline = root.querySelector<HTMLElement>(".settings-sync-status-headline");
       const meta = root.querySelector<HTMLElement>(".settings-sync-status-meta");
       const detail = root.querySelector<HTMLElement>(".settings-sync-status-detail");
       if (headline)
-        headline.textContent =
-          pending > 0 ? "Cennik niezsynchronizowany" : "Cennik zsynchronizowany";
+        headline.textContent = isDirty ? "Cennik niezsynchronizowany" : "Cennik zsynchronizowany";
       if (meta) meta.textContent = `Ostatnia synchronizacja: ${lastSync}`;
-      if (detail)
-        detail.textContent =
-          pending > 0 ? `Niezsynchronizowane: ${pending}` : "Brak nowych zmian z GAS";
+      if (detail) {
+        if (pending > 0) {
+          detail.textContent = `Niezsynchronizowane: ${pending}`;
+        } else if (dirtyAt) {
+          detail.textContent = `Zmiany lokalne od ${new Date(dirtyAt).toLocaleString("pl-PL")} — użyj „Zapisz cennik”`;
+        } else {
+          detail.textContent = "Brak nowych zmian z GAS";
+        }
+      }
     }
 
     const PRICES_SYNCED_AT_KEY = "razdwa_prices_gas_synced_at";
@@ -3726,6 +3784,17 @@ export const UstawieniaView: View = {
 
               <div id="draft-indicator" class="draft-indicator" style="display:none">● Niezapisane zmiany — kliknij „Zapisz cennik", aby utrwalić</div>
 
+              <hr class="settings-divider">
+
+              <div class="settings-backup-group">
+                <div class="settings-action-label">Kopia zapasowa i konserwacja</div>
+                <button id="btn-config-export" type="button" class="btn-secondary settings-action-btn">⬇ Pobierz kopię konfiguracji</button>
+                <button id="btn-config-import" type="button" class="btn-secondary settings-action-btn">⬆ Wczytaj kopię konfiguracji</button>
+                <button id="btn-subgroup-backfill" type="button" class="btn-secondary settings-action-btn">↕ Uzupełnij kolejność podgrup</button>
+                <input id="config-import-file" type="file" accept="application/json,.json" style="display:none">
+                <p class="settings-action-hint">Kopia zawiera wyłącznie cennik, warianty i podgrupy — bez PIN-u, tokenów i zamówień. Wczytanie kopii zapisuje dane lokalnie; do arkusza trafiają dopiero po „Zapisz cennik”.</p>
+              </div>
+
               <div id="prices-sync" class="prices-sync" style="display:none">
                 <div class="prices-sync-state"><span class="prices-sync-icon"></span><span class="prices-sync-label"></span></div>
                 <div class="prices-sync-meta">Ostatnia aktualizacja: <strong class="prices-sync-time"></strong></div>
@@ -3796,7 +3865,9 @@ export const UstawieniaView: View = {
               typeof localStorage !== "undefined" && localStorage.getItem(PRICES_STORAGE_KEY)
             );
             if (!hasLocalPrices) {
-              setPrice("defaultPrices", remote.prices as Record<string, number | null>);
+              withConfigDirtySuppressed(() =>
+                setPrice("defaultPrices", remote.prices as Record<string, number | null>)
+              );
               prices = loadPrices();
               changed = true;
             }
@@ -3813,7 +3884,8 @@ export const UstawieniaView: View = {
             typeof localStorage !== "undefined" && localStorage.getItem(VARIANTS_STORAGE_KEY)
           );
           if (!hasLocalVariants) {
-            setVariantDefinitions(remote.variants);
+            // Zapis danych POCHODZĄCYCH z arkusza — bez zapalania znacznika dirty.
+            withConfigDirtySuppressed(() => setVariantDefinitions(remote.variants));
             customPriceSubgroups = mergeVariantSubgroupsIntoRegistry(
               customPriceSubgroups,
               remote.variants
@@ -3879,11 +3951,28 @@ export const UstawieniaView: View = {
           customPriceSubgroups
         );
         setPriceSubgroups(customPriceSubgroups);
+
+        // Sam rejestr podgrup nigdy nie trafia do arkusza — nazwa przeżyje czyste
+        // localStorage tylko wtedy, gdy wejdzie na KAŻDY próg tej podgrupy
+        // (subgroupLabel jest zdenormalizowany). Bez tego rename ginął przy
+        // odtworzeniu konfiguracji z danych GAS.
+        const updatedVariants = applySubgroupToVariants(
+          chosenCatId,
+          prefix,
+          { label: newLabel },
+          getVariantDefinitions()
+        );
+        setVariantDefinitions(updatedVariants);
+        markDraftFromVariants(updatedVariants, chosenCatId, prefix);
+
         if (renameSubgroupWrapper) renameSubgroupWrapper.style.display = "none";
-        showStatus("✓ Nazwa podgrupy zapisana.");
+        showStatus(
+          "✓ Nazwa podgrupy zapisana lokalnie. Kliknij „Zapisz cennik”, aby zsynchronizować z arkuszem."
+        );
         renderTabs();
         renderTable();
         syncAddCategorySelection();
+        updateDraftIndicator();
       } catch (err) {
         showStatus(resolveRenameSubgroupErrorMessage((err as Error)?.message ?? ""), "error");
       }
@@ -4185,6 +4274,13 @@ export const UstawieniaView: View = {
         createdAt: existingDef?.createdAt ?? _now,
         updatedAt: _now,
         calcScheme: isGenericCustomSubgroupTier ? effectiveScheme : existingDef?.calcScheme,
+        // Pozycja CAŁEJ podgrupy w kategorii, zdenormalizowana na progu — jedyna
+        // droga, którą kolejność podgrup dojeżdża do arkusza (rejestr podgrup
+        // zostaje wyłącznie lokalny). Bierzemy ją z rejestru, żeby nowy próg
+        // dołożony do istniejącej podgrupy nie zmienił jej miejsca.
+        subgroupSortOrder:
+          customPriceSubgroups[chosenCategory.id]?.[chosenPrefix]?.sortOrder ??
+          existingDef?.subgroupSortOrder,
         materialSizeOptions: isGenericCustomSubgroupTier
           ? buildMaterialSizeOptionsFromInputs(
               addSubgroupMaterialInput?.value ?? "",
@@ -4351,6 +4447,9 @@ export const UstawieniaView: View = {
         errorDetail = (err as Error)?.message ?? errorDetail;
       }
 
+      // Znacznik dirty wolno zdjąć WYŁĄCZNIE po pełnym sukcesie obu zapisów.
+      // Częściowy sukces zostawia stan lokalny i znacznik nietknięte — inaczej UI
+      // twierdziłoby, że arkusz zna dane, których nie dostał.
       if (pricesOk && variantsOk) {
         try {
           localStorage.setItem(PRICES_SYNCED_AT_KEY, new Date().toISOString());
@@ -4358,16 +4457,191 @@ export const UstawieniaView: View = {
         } catch {
           /* localStorage niedostępny — pomijamy */
         }
+        clearConfigDirty();
         renderPricesSync("synced");
-        updateSyncStatusBlock();
         _draftVariantDefs = [];
+        const backfillNote = _subgroupOrderBackfillPending
+          ? " Kolejność podgrup została zapisana w arkuszu."
+          : "";
+        _subgroupOrderBackfillPending = false;
         updateDraftIndicator();
-        showStatus("✓ Zapisano cennik i warianty.");
+        showStatus(
+          `✓ Konfiguracja została zapisana i zsynchronizowana z arkuszem.${backfillNote}`,
+          "success",
+          true
+        );
       } else {
-        const msg = !pricesOk ? "✗ Błąd zapisu cennika do GAS." : "✗ Błąd zapisu wariantów do GAS.";
         renderPricesSync("error", errorDetail);
-        showStatus(msg, "error");
+        updateDraftIndicator();
+        showStatus(
+          "Zmiany zapisano lokalnie, ale nie zostały zsynchronizowane z arkuszem. " +
+            "Sprawdź połączenie i użyj „Zapisz cennik” ponownie.",
+          "error",
+          true
+        );
       }
+    });
+
+    function collectConfigExportData() {
+      return {
+        prices: Object.entries(prices).reduce<Record<string, number | null>>((acc, [k, v]) => {
+          acc[k] = typeof v === "number" && Number.isFinite(v) ? v : null;
+          return acc;
+        }, {}),
+        priceLabels: { ...customPriceLabels },
+        subgroups: getPriceSubgroups(),
+        variants: getVariantDefinitions(),
+      };
+    }
+
+    function downloadConfigFile(json: string, filename: string): void {
+      const blob = new Blob([json], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 0);
+    }
+
+    function exportConfiguration(suffix = ""): void {
+      const file = buildConfigExport(collectConfigExportData());
+      downloadConfigFile(
+        serializeConfigExport(file),
+        buildConfigExportFilename(new Date(), suffix)
+      );
+    }
+
+    container.querySelector("#btn-config-export")?.addEventListener("click", () => {
+      try {
+        exportConfiguration();
+        showStatus("✓ Pobrano kopię konfiguracji.");
+      } catch (err) {
+        showStatus(`✗ Nie udało się pobrać kopii: ${(err as Error)?.message ?? "błąd"}.`, "error");
+      }
+    });
+
+    const configImportInput = container.querySelector<HTMLInputElement>("#config-import-file");
+
+    container.querySelector("#btn-config-import")?.addEventListener("click", () => {
+      configImportInput?.click();
+    });
+
+    configImportInput?.addEventListener("change", async () => {
+      const file = configImportInput.files?.[0];
+      configImportInput.value = "";
+      if (!file) return;
+
+      let raw: string;
+      try {
+        raw = await file.text();
+      } catch {
+        showStatus("✗ Nie udało się odczytać pliku.", "error");
+        return;
+      }
+
+      // Walidacja PRZED jakąkolwiek zmianą stanu — uszkodzony plik nie może
+      // zostawić konfiguracji w połowie nadpisanej.
+      const parsed = parseConfigImport(raw);
+      if (!parsed.ok) {
+        showStatus(`✗ ${parsed.error}`, "error", true);
+        return;
+      }
+
+      const confirmed = confirm(
+        "Wczytać kopię konfiguracji?\n\n" +
+          `${describeConfigImport(parsed.file)}\n\n` +
+          "Bieżąca konfiguracja lokalna (ceny, warianty, podgrupy, etykiety) zostanie zastąpiona.\n" +
+          "Import NIE dotyczy zamówień ani PIN-u.\n" +
+          "Przed nadpisaniem pobrana zostanie automatyczna kopia obecnego stanu.\n\n" +
+          "Dane trafią do arkusza dopiero po kliknięciu „Zapisz cennik”."
+      );
+      if (!confirmed) return;
+
+      try {
+        exportConfiguration("-przed-importem");
+      } catch {
+        if (
+          !confirm(
+            "Nie udało się pobrać automatycznej kopii bezpieczeństwa.\n" +
+              "Kontynuować import mimo to?"
+          )
+        ) {
+          return;
+        }
+      }
+
+      const imported = parsed.file.data;
+      try {
+        setPrice("defaultPrices", imported.prices);
+        setPriceLabels(imported.priceLabels);
+        setPriceSubgroups(mergeVariantSubgroupsIntoRegistry(imported.subgroups, imported.variants));
+        setVariantDefinitions(imported.variants);
+        markConfigDirty();
+
+        prices = loadPrices();
+        customPriceLabels = { ...loadPriceLabels(), ...variantsToPriceLabels(imported.variants) };
+        customPriceSubgroups = mergeVariantSubgroupsIntoRegistry(
+          getPriceSubgroups(),
+          imported.variants
+        );
+        markAllVariantsAsDraft(imported.variants);
+
+        renderTabs();
+        renderTable();
+        syncAddCategorySelection();
+        updateDraftIndicator();
+        ctx?.emit?.("prices-updated", { timestamp: Date.now() });
+        showStatus(
+          "✓ Konfiguracja wczytana lokalnie. Aby trwale zapisać zaimportowaną konfigurację w arkuszu, użyj „Zapisz cennik”.",
+          "success",
+          true
+        );
+      } catch (err) {
+        showStatus(
+          `✗ Import nie powiódł się: ${(err as Error)?.message ?? "błąd"}.`,
+          "error",
+          true
+        );
+      }
+    });
+
+    container.querySelector("#btn-subgroup-backfill")?.addEventListener("click", () => {
+      const currentVariants = getVariantDefinitions();
+      const plan = planSubgroupSortOrderBackfill(getPriceSubgroups(), currentVariants);
+
+      if (plan.subgroupsAffected === 0) {
+        showStatus(`✓ ${describeSubgroupBackfillPlan(plan)}`, "success", true);
+        return;
+      }
+
+      const confirmed = confirm(
+        "Uzupełnić kolejność podgrup w definicjach wariantów?\n\n" +
+          `${describeSubgroupBackfillPlan(plan)}\n\n` +
+          "Kolejność progów wewnątrz podgrup NIE zostanie zmieniona.\n" +
+          "Zmiana jest lokalna — do arkusza trafi po kliknięciu „Zapisz cennik”."
+      );
+      if (!confirmed) return;
+
+      const updated = applySubgroupSortOrderBackfill(plan, currentVariants);
+      setVariantDefinitions(updated);
+      _subgroupOrderBackfillPending = true;
+      markAllVariantsAsDraft(
+        updated.filter((v) =>
+          plan.targets.some(
+            (t) => t.categoryId === v.categoryId && t.subcategoryPrefix === v.subcategoryPrefix
+          )
+        )
+      );
+      updateDraftIndicator();
+      showStatus(
+        `✓ Uzupełniono kolejność ${plan.subgroupsAffected} podgrup (${plan.variantsToUpdate} wariantów). ` +
+          "Kliknij „Zapisz cennik”, aby zapisać kolejność w arkuszu.",
+        "success",
+        true
+      );
     });
 
     container.querySelector("#btn-reset")?.addEventListener("click", () => {
