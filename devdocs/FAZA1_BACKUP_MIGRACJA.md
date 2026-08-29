@@ -76,6 +76,16 @@ przy starcie na nowym originie jest arkusz.
    przed nadpisaniem nowszych danych starszym backupem.
 4. Zweryfikuj nazwy i kolejność, dopiero potem kliknij **„Zapisz cennik”**.
 
+## Ostrzeżenie: import starszej kopii
+
+Import kopii konfiguracji zastępuje lokalną konfigurację w całości.
+Przed importem sprawdź datę pliku backupu i upewnij się, że po jego utworzeniu
+nie zapisano nowszych cen, wariantów ani podgrup w arkuszu Google.
+
+Nie używaj starego backupu do nadpisania aktualnej konfiguracji bez świadomego
+porównania zmian. Po imporcie dane trafią do arkusza dopiero po ręcznym
+kliknięciu „Zapisz cennik”.
+
 Import nie dotyczy zamówień, PIN-u ani konfiguracji połączenia z GAS. Eksport nie
 zawiera PIN-u, tokenów sesji, URL-a Apps Script, `razdwa_order_export_config` ani
 danych osobowych.

@@ -3967,7 +3967,9 @@ export const UstawieniaView: View = {
 
         if (renameSubgroupWrapper) renameSubgroupWrapper.style.display = "none";
         showStatus(
-          "✓ Nazwa podgrupy zapisana lokalnie. Kliknij „Zapisz cennik”, aby zsynchronizować z arkuszem."
+          "✓ Nazwa podgrupy zapisana lokalnie. Kliknij „Zapisz cennik”, aby zsynchronizować z arkuszem.",
+          "success",
+          true
         );
         renderTabs();
         renderTable();

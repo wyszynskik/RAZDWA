@@ -23,6 +23,31 @@ async function seedAdminSession(page: Page): Promise<void> {
   });
 }
 
+/**
+ * docs/init.js rejestruje prawdziwy Service Worker i wywołuje reload przy
+ * 'controllerchange'; docs/cache-buster.js niezależnie wywołuje
+ * window.location.reload(true) przy każdym świeżym localStorage. Oba mogą
+ * odpalić się w trakcie wieloetapowego testu i zerwać w toku akcję
+ * Playwrighta. Neutralizujemy tylko punkt wejścia (register + reload) —
+ * bez dotykania plików produkcyjnych PWA.
+ */
+async function neutralizeReloadTriggers(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    if ("serviceWorker" in navigator) {
+      navigator.serviceWorker.register = () =>
+        Promise.resolve({
+          installing: null,
+          waiting: null,
+          active: null,
+          addEventListener() {},
+          removeEventListener() {},
+          unregister: () => Promise.resolve(true),
+        } as unknown as ServiceWorkerRegistration);
+    }
+    window.location.reload = () => {};
+  });
+}
+
 async function stubAppsScript(page: Page): Promise<void> {
   await page.route(/script\.google\.com/, (route) =>
     route.fulfill({
@@ -59,6 +84,7 @@ function readVariants(page: Page) {
 
 test.describe("trwałość konfiguracji podgrup", () => {
   test.beforeEach(async ({ page }) => {
+    await neutralizeReloadTriggers(page);
     await seedAdminSession(page);
     await stubAppsScript(page);
   });
