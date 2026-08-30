@@ -3793,6 +3793,7 @@ export const UstawieniaView: View = {
                 <button id="btn-subgroup-backfill" type="button" class="btn-secondary settings-action-btn">↕ Uzupełnij kolejność podgrup</button>
                 <input id="config-import-file" type="file" accept="application/json,.json" style="display:none">
                 <p class="settings-action-hint">Kopia zawiera wyłącznie cennik, warianty i podgrupy — bez PIN-u, tokenów i zamówień. Wczytanie kopii zapisuje dane lokalnie; do arkusza trafiają dopiero po „Zapisz cennik”.</p>
+                <p class="settings-action-hint">Do importu wskaż wcześniej pobrany plik kopii konfiguracji. Po potwierdzeniu aplikacja automatycznie pobierze dodatkową kopię bezpieczeństwa bieżącego stanu z dopiskiem „-przed-importem” — nie musisz jej wybierać ani porównywać z importowanym plikiem; służy wyłącznie do ewentualnego cofnięcia tego importu w przyszłości.</p>
               </div>
 
               <div id="prices-sync" class="prices-sync" style="display:none">
@@ -4597,7 +4598,7 @@ export const UstawieniaView: View = {
         updateDraftIndicator();
         ctx?.emit?.("prices-updated", { timestamp: Date.now() });
         showStatus(
-          "✓ Konfiguracja wczytana lokalnie. Aby trwale zapisać zaimportowaną konfigurację w arkuszu, użyj „Zapisz cennik”.",
+          "✓ Konfiguracja wczytana lokalnie — utworzono także kopię bezpieczeństwa stanu sprzed importu z dopiskiem „-przed-importem”. Aby trwale zapisać zaimportowaną konfigurację w arkuszu, użyj „Zapisz cennik”.",
           "success",
           true
         );

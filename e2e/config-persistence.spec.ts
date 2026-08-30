@@ -182,6 +182,11 @@ test.describe("trwałość konfiguracji podgrup", () => {
     await page.setInputFiles("#config-import-file", exportPath);
     await backupDownload;
 
+    // Komunikat po imporcie musi potwierdzać lokalny zapis, wspominać
+    // automatyczną kopię "-przed-importem" i wskazywać "Zapisz cennik" jako
+    // jedyną drogę do trwałej synchronizacji z arkuszem (Faza 1.2).
+    await expect(page.locator("#save-msg")).toContainText("wczytana lokalnie");
+    await expect(page.locator("#save-msg")).toContainText("-przed-importem");
     await expect(page.locator("#save-msg")).toContainText("Zapisz cennik");
 
     const restored = await readVariants(page);
