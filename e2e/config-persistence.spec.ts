@@ -137,8 +137,9 @@ test.describe("trwałość konfiguracji podgrup", () => {
     expect(persisted.every((v: any) => v.subgroupLabel === RENAMED)).toBe(true);
     expect(persisted[0].subgroupSortOrder).toBe(created.subgroupSortOrder);
 
-    // Status "oczekuje na zapis" przeżywa F5 — to sedno P-1.
-    await expect(page.locator("#sync-status-block")).toContainText("niezsynchronizowany");
+    // Status "oczekuje na zapis" przeżywa F5 — to sedno P-1. Tekst nie sugeruje
+    // porównania z GAS (Niezsynchronizowane: N) — tylko lokalny stan draftu.
+    await expect(page.locator("#sync-status-block")).toContainText("Niezapisane zmiany cennika");
   });
 
   test("odtworzenie konfiguracji z eksportu na czystym stanie lokalnym", async ({ page }) => {
@@ -183,10 +184,14 @@ test.describe("trwałość konfiguracji podgrup", () => {
     await backupDownload;
 
     // Komunikat po imporcie musi potwierdzać lokalny zapis, wspominać
-    // automatyczną kopię "-przed-importem" i wskazywać "Zapisz cennik" jako
-    // jedyną drogę do trwałej synchronizacji z arkuszem (Faza 1.2).
+    // automatyczną kopię "-przed-importem", jawnie zaprzeczać automatycznemu
+    // porównaniu z arkuszem i wskazywać "Zapisz cennik" jako jedyną drogę do
+    // trwałej synchronizacji (Faza 1.2 + korekta UX niezapisanych zmian).
     await expect(page.locator("#save-msg")).toContainText("wczytana lokalnie");
     await expect(page.locator("#save-msg")).toContainText("-przed-importem");
+    await expect(page.locator("#save-msg")).toContainText(
+      "Import nie porównuje automatycznie danych z arkuszem"
+    );
     await expect(page.locator("#save-msg")).toContainText("Zapisz cennik");
 
     const restored = await readVariants(page);
@@ -196,7 +201,9 @@ test.describe("trwałość konfiguracji podgrup", () => {
     expect(restoredVariant.sortOrder).toBe(created.sortOrder);
     expect(restoredVariant.key).toBe(created.key);
 
-    await expect(page.locator("#sync-status-block")).toContainText("niezsynchronizowany");
+    // Stan "niezapisane zmiany" po imporcie — ten sam sens co po F5 (test wyżej),
+    // bez sugerowania liczby/diffu z GAS.
+    await expect(page.locator("#sync-status-block")).toContainText("Niezapisane zmiany cennika");
 
     if (existsSync(exportPath)) rmSync(exportPath);
   });

@@ -2674,16 +2674,15 @@ export const UstawieniaView: View = {
       const meta = root.querySelector<HTMLElement>(".settings-sync-status-meta");
       const detail = root.querySelector<HTMLElement>(".settings-sync-status-detail");
       if (headline)
-        headline.textContent = isDirty ? "Cennik niezsynchronizowany" : "Cennik zsynchronizowany";
+        headline.textContent = isDirty ? "Niezapisane zmiany cennika" : "Cennik zsynchronizowany";
       if (meta) meta.textContent = `Ostatnia synchronizacja: ${lastSync}`;
       if (detail) {
-        if (pending > 0) {
-          detail.textContent = `Niezsynchronizowane: ${pending}`;
-        } else if (dirtyAt) {
-          detail.textContent = `Zmiany lokalne od ${new Date(dirtyAt).toLocaleString("pl-PL")} — użyj „Zapisz cennik”`;
-        } else {
-          detail.textContent = "Brak nowych zmian z GAS";
-        }
+        // Ten sam sens niezależnie od tego, czy stan pochodzi z draftu w pamięci
+        // (pending > 0), czy wyłącznie z trwałego znacznika po F5 (dirtyAt) —
+        // to nie jest wynik porównania z GAS, więc tekst nie sugeruje diffu.
+        detail.textContent = isDirty
+          ? "Zmiany zostały wprowadzone lokalnie. Aby zapisać je w arkuszu, kliknij „Zapisz cennik”."
+          : "Brak nowych zmian z GAS";
       }
     }
 
@@ -4598,7 +4597,7 @@ export const UstawieniaView: View = {
         updateDraftIndicator();
         ctx?.emit?.("prices-updated", { timestamp: Date.now() });
         showStatus(
-          "✓ Konfiguracja wczytana lokalnie — utworzono także kopię bezpieczeństwa stanu sprzed importu z dopiskiem „-przed-importem”. Aby trwale zapisać zaimportowaną konfigurację w arkuszu, użyj „Zapisz cennik”.",
+          "✓ Konfiguracja wczytana lokalnie — utworzono także kopię bezpieczeństwa stanu sprzed importu z dopiskiem „-przed-importem”. Import nie porównuje automatycznie danych z arkuszem. Aby trwale zapisać zaimportowaną konfigurację w arkuszu, użyj „Zapisz cennik”.",
           "success",
           true
         );
