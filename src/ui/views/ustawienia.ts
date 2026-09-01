@@ -72,9 +72,12 @@ import {
   savePricesToAppsScript,
   saveVariantsToAppsScript,
   fetchStateFromAppsScript,
+  saveCatalogToAppsScript,
 } from "../../services/orderExportService";
 import { priceStore } from "../../services/priceStore";
 import { reconcilePriceStore, syncRecordToDefaultPrices } from "../../services/priceStoreSync";
+import { checkCatalogRevision } from "../../services/catalogSync";
+import { writeAppliedRevision } from "../../services/catalogRevision";
 import { warmPriceCache, getZeroPriceLabels, getZeroPriceDefaults } from "../../core/compat";
 import type { PriceRecord } from "../../types/price-schema";
 import {
@@ -4428,37 +4431,112 @@ export const UstawieniaView: View = {
       renderPricesSync("saving");
 
       let pricesOk = false;
+      let variantsOk = false;
       let errorDetail: string | undefined;
 
-      try {
-        const flatPrices = buildFlatPrices(persisted);
-        const result = await savePricesToAppsScript(flatPrices);
-        if (result.noToken) {
-          clearAdminSession();
-          window.location.hash = "#/";
-          return;
-        }
-        pricesOk = result.ok;
-        if (!result.ok) errorDetail = result.message;
-      } catch (err) {
-        console.error("Błąd wysyłki cennika do Apps Script:", err);
-        errorDetail = (err as Error)?.message;
+      const allVariants = collectAllVariants();
+      const flatPrices = buildFlatPrices(persisted);
+
+      // Przed zapisem sprawdzamy rewizję arkusza. Gdy ktoś zapisał w
+      // międzyczasie, NIE wysyłamy nic — inaczej nadpisalibyśmy cudzą pracę
+      // pełnym starym cennikiem. Zmiany zostają lokalnie ze znacznikiem dirty.
+      const revisionStatus = await checkCatalogRevision();
+
+      if (revisionStatus.state === "behind") {
+        renderPricesSync("error", "Arkusz ma nowszą wersję cennika.");
+        updateDraftIndicator();
+        showStatus(
+          "Nie zapisano: cennik w arkuszu został w międzyczasie zmieniony na innym stanowisku " +
+            `(wersja ${revisionStatus.remoteRevision ?? "?"}). Twoje zmiany zostały zachowane lokalnie. ` +
+            "Użyj „Odśwież ceny” w komunikacie na dole ekranu, sprawdź swoje zmiany i zapisz ponownie.",
+          "error",
+          true
+        );
+        return;
       }
 
-      let variantsOk = false;
-      try {
-        const allVariants = collectAllVariants();
-        const variantsResult = await saveVariantsToAppsScript(allVariants);
-        if (variantsResult.noToken) {
-          clearAdminSession();
-          window.location.hash = "#/";
-          return;
+      // Rewizja nieznana, choć stanowisko już kiedyś ją znało → GAS chwilowo
+      // nieosiągalny albo odpowiedział błędem. NIE schodzimy wtedy do starej,
+      // niechronionej ścieżki zapisu: ślepe wysłanie pełnego cennika mogłoby
+      // nadpisać cudzy nowszy katalog.
+      if (revisionStatus.state === "unknown" && revisionStatus.appliedRevision !== null) {
+        renderPricesSync("error", "Nie potwierdzono wersji cennika w arkuszu.");
+        updateDraftIndicator();
+        showStatus(
+          "Nie zapisano: nie udało się potwierdzić wersji cennika w arkuszu. " +
+            "Twoje zmiany są zachowane lokalnie — sprawdź połączenie i spróbuj ponownie.",
+          "error",
+          true
+        );
+        return;
+      }
+
+      if (revisionStatus.state === "current" && revisionStatus.remoteRevision !== null) {
+        // Ścieżka z kontrolą rewizji: ceny i warianty jednym atomowym zapisem.
+        try {
+          const result = await saveCatalogToAppsScript({
+            prices: flatPrices,
+            variants: allVariants,
+            baseRevision: revisionStatus.remoteRevision,
+          });
+
+          if (result.noToken) {
+            clearAdminSession();
+            window.location.hash = "#/";
+            return;
+          }
+
+          if (result.ok) {
+            pricesOk = true;
+            variantsOk = true;
+            if (result.catalogRevision !== null) writeAppliedRevision(result.catalogRevision);
+          } else if (result.conflict) {
+            renderPricesSync("error", "Arkusz ma nowszą wersję cennika.");
+            updateDraftIndicator();
+            showStatus(
+              "Nie zapisano: ktoś zapisał cennik w tej samej chwili " +
+                `(wersja ${result.catalogRevision ?? "?"}). Nic nie zostało nadpisane, ` +
+                "Twoje zmiany są nadal lokalne. Odśwież ceny i zapisz ponownie.",
+              "error",
+              true
+            );
+            return;
+          } else {
+            errorDetail = result.message;
+          }
+        } catch (err) {
+          console.error("Błąd zapisu katalogu do Apps Script:", err);
+          errorDetail = (err as Error)?.message;
         }
-        variantsOk = variantsResult.ok;
-        if (!variantsResult.ok) errorDetail = variantsResult.message ?? errorDetail;
-      } catch (err) {
-        console.error("Błąd wysyłki wariantów do Apps Script:", err);
-        errorDetail = (err as Error)?.message ?? errorDetail;
+      } else {
+        // Stary Code.gs bez catalogRevision — zapis dwoma starymi endpointami.
+        try {
+          const result = await savePricesToAppsScript(flatPrices);
+          if (result.noToken) {
+            clearAdminSession();
+            window.location.hash = "#/";
+            return;
+          }
+          pricesOk = result.ok;
+          if (!result.ok) errorDetail = result.message;
+        } catch (err) {
+          console.error("Błąd wysyłki cennika do Apps Script:", err);
+          errorDetail = (err as Error)?.message;
+        }
+
+        try {
+          const variantsResult = await saveVariantsToAppsScript(allVariants);
+          if (variantsResult.noToken) {
+            clearAdminSession();
+            window.location.hash = "#/";
+            return;
+          }
+          variantsOk = variantsResult.ok;
+          if (!variantsResult.ok) errorDetail = variantsResult.message ?? errorDetail;
+        } catch (err) {
+          console.error("Błąd wysyłki wariantów do Apps Script:", err);
+          errorDetail = (err as Error)?.message ?? errorDetail;
+        }
       }
 
       // Znacznik dirty wolno zdjąć WYŁĄCZNIE po pełnym sukcesie obu zapisów.

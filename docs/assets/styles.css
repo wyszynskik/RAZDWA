@@ -4238,3 +4238,99 @@ a.employee-mode-btn {
 #orderSummary textarea {
   border: 1.5px solid #b8cad9 !important;
 }
+
+/* ── Przypomnienie o nowszym cenniku w arkuszu (Faza 2: catalogRevision) ──── */
+.catalog-banner {
+  position: fixed;
+  left: 50%;
+  bottom: 16px;
+  transform: translateX(-50%);
+  z-index: 9999;
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  flex-wrap: wrap;
+  max-width: min(680px, calc(100vw - 24px));
+  padding: 14px 18px;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: #1f2937;
+  color: #f9fafb;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.28);
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.catalog-banner__text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1 1 260px;
+  min-width: 0;
+}
+
+.catalog-banner__title {
+  font-weight: 600;
+}
+
+.catalog-banner__hint {
+  opacity: 0.78;
+  font-size: 13px;
+}
+
+.catalog-banner__actions {
+  display: flex;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+
+.catalog-banner__btn {
+  padding: 9px 16px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    background 0.15s ease,
+    opacity 0.15s ease;
+}
+
+.catalog-banner__btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.catalog-banner__btn--primary {
+  background: #22c55e;
+  border-color: #22c55e;
+  color: #0b1220;
+}
+
+.catalog-banner__btn--primary:hover:not(:disabled) {
+  background: #16a34a;
+  border-color: #16a34a;
+}
+
+.catalog-banner__btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+@media (max-width: 560px) {
+  .catalog-banner {
+    left: 12px;
+    right: 12px;
+    transform: none;
+    max-width: none;
+  }
+
+  .catalog-banner__actions {
+    width: 100%;
+  }
+
+  .catalog-banner__btn {
+    flex: 1 1 auto;
+  }
+}

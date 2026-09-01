@@ -957,3 +957,198 @@ W sekcji _Manage deployments_ sprawdź, który deployment ma status _Active_ i s
 2. W edytorze Apps Script otwórz **Executions** — sprawdź czy wywołanie się pojawiło i nie zgłosiło błędu.
 3. Sprawdź arkusz `Zamówienia` — nowy wiersz powinien mieć wypełnioną kolumnę S (`orderId`, format `RZ-XXXXXXXX`) i T (`RequestID`, UUID).
 4. Wyślij to samo zamówienie ponownie (bez zmiany `RequestID`) — arkusz powinien mieć nadal jeden wiersz, odpowiedź powinna zawierać ten sam `orderId`.
+
+---
+
+## 8) catalogRevision — synchronizacja cennika między stanowiskami (Faza 2)
+
+Kontrakt API: [`API_CATALOG_REVISION.md`](API_CATALOG_REVISION.md).
+
+Patch jest **dopisywany**. Nie modyfikuje `writeCennik`, `writeVariants`,
+`readCennik`, `readVariants`, obsługi zamówień ani `verifyPin`. Jedyne zmiany w
+istniejącym kodzie to dwie wstawki opisane w 8.3 i 8.4.
+
+### 8.1 Stałe — dopisz na górze pliku
+
+```javascript
+const CATALOG_REVISION_PROP = "CATALOG_REVISION";
+const CATALOG_UPDATED_AT_PROP = "CATALOG_UPDATED_AT";
+const CATALOG_LOCK_TIMEOUT_MS = 20000;
+```
+
+### 8.2 Helpery rewizji — dopisz obok helperów cennika
+
+```javascript
+function catalogJson(payload) {
+  return ContentService.createTextOutput(JSON.stringify(payload)).setMimeType(
+    ContentService.MimeType.JSON
+  );
+}
+
+function readCatalogRevision() {
+  var raw = PropertiesService.getScriptProperties().getProperty(CATALOG_REVISION_PROP);
+  var n = parseInt(raw, 10);
+  return isNaN(n) || n < 0 ? 0 : n;
+}
+
+function readCatalogUpdatedAt() {
+  return PropertiesService.getScriptProperties().getProperty(CATALOG_UPDATED_AT_PROP) || "";
+}
+
+function bumpCatalogRevision() {
+  var props = PropertiesService.getScriptProperties();
+  var next = readCatalogRevision() + 1;
+  props.setProperty(CATALOG_REVISION_PROP, String(next));
+  props.setProperty(CATALOG_UPDATED_AT_PROP, new Date().toISOString());
+  return next;
+}
+
+function isAuthorizedCatalogWrite(body) {
+  var adminPin = PropertiesService.getScriptProperties().getProperty("ADMIN_PIN");
+  if (!adminPin) return true;
+  return !!(body.token && CacheService.getScriptCache().get("adminToken_" + body.token));
+}
+
+function handleCatalogSave(body) {
+  if (!isAuthorizedCatalogWrite(body)) {
+    return catalogJson({
+      ok: false,
+      error: "unauthorized",
+      message: "Nieważny lub wygasły token sesji.",
+    });
+  }
+  if (!body.prices || typeof body.prices !== "object") {
+    return catalogJson({ ok: false, error: "bad_request", message: "Brak pola prices." });
+  }
+  if (!Array.isArray(body.variants)) {
+    return catalogJson({ ok: false, error: "bad_request", message: "Brak pola variants." });
+  }
+
+  var baseRevision = parseInt(body.baseRevision, 10);
+  if (isNaN(baseRevision) || baseRevision < 0) {
+    return catalogJson({
+      ok: false,
+      error: "missing_base_revision",
+      catalogRevision: readCatalogRevision(),
+      message: "Zapis wymaga pola baseRevision.",
+    });
+  }
+
+  var lock = LockService.getScriptLock();
+  if (!lock.tryLock(CATALOG_LOCK_TIMEOUT_MS)) {
+    return catalogJson({
+      ok: false,
+      error: "locked",
+      catalogRevision: readCatalogRevision(),
+      message: "Inny zapis cennika jest w toku. Spróbuj ponownie za chwilę.",
+    });
+  }
+
+  try {
+    var current = readCatalogRevision();
+    if (baseRevision !== current) {
+      Logger.log("catalog.save CONFLICT base=" + baseRevision + " current=" + current);
+      return catalogJson({
+        ok: false,
+        error: "revision_conflict",
+        catalogRevision: current,
+        catalogUpdatedAt: readCatalogUpdatedAt(),
+        message:
+          "Arkusz zawiera nowszą wersję cennika (rev " + current + "). Nic nie zostało zapisane.",
+      });
+    }
+
+    writeCennik(body.prices);
+    writeVariants(body.variants);
+    var next = bumpCatalogRevision();
+    Logger.log("catalog.save OK rev=" + next);
+
+    return catalogJson({
+      ok: true,
+      catalogRevision: next,
+      catalogUpdatedAt: readCatalogUpdatedAt(),
+      savedAt: new Date().toISOString(),
+    });
+  } catch (err) {
+    return catalogJson({ ok: false, error: "server_error", message: String(err) });
+  } finally {
+    lock.releaseLock();
+  }
+}
+```
+
+### 8.3 doGet — dopisz dwie rzeczy w istniejącej funkcji
+
+Nowy `action=getRevision` (tani endpoint do odpytywania) oraz dwa dodatkowe pola
+w odpowiedzi `getState`. Reszta `doGet` bez zmian.
+
+```javascript
+// dopisz jako pierwszy warunek obok istniejących:
+if (action === "getRevision") {
+  return catalogJson({
+    ok: true,
+    catalogRevision: readCatalogRevision(),
+    catalogUpdatedAt: readCatalogUpdatedAt(),
+  });
+}
+
+// istniejący blok getState — podmień treść odpowiedzi na:
+if (action === "getState") {
+  Logger.log("GET getState");
+  return catalogJson({
+    prices: readCennik(),
+    variants: readVariants(),
+    catalogRevision: readCatalogRevision(),
+    catalogUpdatedAt: readCatalogUpdatedAt(),
+  });
+}
+```
+
+### 8.4 doPost — routing i podbicie rewizji przez stare endpointy
+
+```javascript
+// ── zapis całego katalogu z kontrolą rewizji ─────────────────────────────────
+// Dopisz PRZED blokami prices_update / variants_update.
+if (body.type === "catalog.save") {
+  Logger.log("POST catalog.save base=" + body.baseRevision);
+  return handleCatalogSave(body);
+}
+```
+
+Dodatkowo w istniejących blokach `prices_update` i `variants_update` dopisz
+podbicie licznika tuż po zapisie, żeby starszy klient nie rozjechał rewizji:
+
+```javascript
+// w bloku prices_update, po writeCennik(body.prices):
+bumpCatalogRevision();
+
+// w bloku variants_update, po writeVariants(body.variants):
+bumpCatalogRevision();
+```
+
+### 8.5 Weryfikacja po wdrożeniu
+
+1. **Deploy → Manage deployments → edytuj → New version** (URL bez zmian).
+2. W przeglądarce otwórz `<URL>?action=getRevision` — powinno zwrócić
+   `{"ok":true,"catalogRevision":0,...}` (albo aktualną liczbę).
+3. Zapisz cennik z aplikacji → ponownie `?action=getRevision` — liczba wzrosła o 1.
+4. Test konfliktu z konsoli przeglądarki (podstaw swój URL i token):
+
+```javascript
+await (
+  await fetch(GAS, {
+    method: "POST",
+    headers: { "Content-Type": "text/plain" },
+    body: JSON.stringify({
+      type: "catalog.save",
+      token: TOKEN,
+      baseRevision: 0,
+      prices: {},
+      variants: [],
+    }),
+  })
+).json();
+```
+
+Przy rewizji różnej od 0 odpowiedź musi mieć `error: "revision_conflict"`, a
+arkusz musi pozostać nietknięty.

@@ -71,6 +71,13 @@ import { withConfigDirtySuppressed } from "../services/configSyncState";
 import { runSubgroupOrderMigrationIfNeeded } from "../services/subgroupOrderMigration";
 import { warmPriceCache, hasCachedPrices } from "../core/compat";
 import { reconcilePriceStore } from "../services/priceStoreSync";
+import {
+  startCatalogWatcher,
+  applyRemoteCatalog,
+  snoozeCatalogReminder,
+  type CatalogStatus,
+} from "../services/catalogSync";
+import { writeAppliedRevision } from "../services/catalogRevision";
 import { checkStartupConfig } from "../core/startGuard";
 import { categoryRegistry, eventBus } from "../bootstrap";
 import { registerBuiltinCategories } from "../domain/registerBuiltinCategories";
@@ -472,6 +479,83 @@ class SimpleEventEmitter {
       }
     });
   }
+}
+
+const CATALOG_BANNER_ID = "catalogUpdateBanner";
+
+function hideCatalogBanner(): void {
+  document.getElementById(CATALOG_BANNER_ID)?.remove();
+}
+
+/**
+ * Przypomnienie o nowszym cenniku w arkuszu.
+ *
+ * Świadomie NIE przeładowuje strony i nie renderuje od nowa otwartego widoku —
+ * "Odśwież ceny" wymienia wyłącznie warstwę cen, więc wpisane wartości, wybrane
+ * opcje i koszyk zostają nietknięte. "Za chwilę" chowa banner na 5 minut, po
+ * czym przypomnienie wraca, żeby nikt nie został na starych cenach.
+ */
+function showCatalogBanner(status: CatalogStatus): void {
+  hideCatalogBanner();
+
+  const banner = document.createElement("div");
+  banner.id = CATALOG_BANNER_ID;
+  banner.className = "catalog-banner";
+  banner.setAttribute("role", "status");
+  banner.setAttribute("aria-live", "polite");
+
+  const message = status.dirty
+    ? "Cennik w arkuszu jest nowszy, a Ty masz lokalne niezapisane zmiany. Pobranie nadpisze Twoje zmiany."
+    : "Ceny zostały zmienione na innym stanowisku.";
+  const hint = status.dirty
+    ? "Najpierw zapisz swoje zmiany albo świadomie pobierz wersję z arkusza."
+    : "Odświeżenie nie kasuje wpisanych danych ani koszyka.";
+
+  banner.innerHTML = `
+    <div class="catalog-banner__text">
+      <strong class="catalog-banner__title">${escapeHtml(message)}</strong>
+      <span class="catalog-banner__hint">${escapeHtml(hint)}</span>
+    </div>
+    <div class="catalog-banner__actions">
+      <button type="button" class="catalog-banner__btn catalog-banner__btn--primary" data-action="apply">Odśwież ceny</button>
+      <button type="button" class="catalog-banner__btn" data-action="snooze">Za chwilę</button>
+    </div>
+  `;
+
+  const applyBtn = banner.querySelector<HTMLButtonElement>('[data-action="apply"]');
+  applyBtn?.addEventListener("click", async () => {
+    if (
+      status.dirty &&
+      !confirm(
+        "Masz niezapisane zmiany w cenniku. Pobranie wersji z arkusza je nadpisze.\n\nKontynuować?"
+      )
+    ) {
+      return;
+    }
+
+    applyBtn.disabled = true;
+    applyBtn.textContent = "Pobieram…";
+
+    const result = await applyRemoteCatalog(status.dirty);
+    if (result.ok) {
+      hideCatalogBanner();
+      showToast("Ceny zaktualizowane z arkusza", "success");
+      return;
+    }
+
+    applyBtn.disabled = false;
+    applyBtn.textContent = "Odśwież ceny";
+    showToast(result.message ?? "Nie udało się pobrać cennika", "error");
+  });
+
+  banner
+    .querySelector<HTMLButtonElement>('[data-action="snooze"]')
+    ?.addEventListener("click", () => {
+      snoozeCatalogReminder(status.remoteRevision);
+      hideCatalogBanner();
+    });
+
+  document.body.appendChild(banner);
 }
 
 const eventEmitter = new SimpleEventEmitter();
@@ -2403,6 +2487,13 @@ document.addEventListener("DOMContentLoaded", () => {
     .catch((err) => console.warn("[priceCache] startup error:", err));
   router.start();
 
+  // Wykrywanie nowszego cennika w arkuszu: start, powrót do karty, powrót
+  // online, co 90 s przy widocznej karcie oraz komunikaty z innych kart.
+  startCatalogWatcher({
+    onBehind: showCatalogBanner,
+    onCurrent: hideCatalogBanner,
+  });
+
   (async () => {
     const STARTUP_SYNC_TTL_MS = 4 * 60 * 60 * 1000;
     const lastSyncTs = Number(localStorage.getItem("razdwa_prices_ts") ?? "0");
@@ -2422,6 +2513,9 @@ document.addEventListener("DOMContentLoaded", () => {
           if (!hasLocalPrices) {
             setPrice("defaultPrices", remote.prices as Record<string, number | null>);
             pricesFromRemoteApplied = true;
+            // Bootstrap zna rewizję arkusza — bez tego watcher od razu zgłosiłby
+            // "cennik nieaktualny" dla świeżo pobranych danych.
+            if (remote.catalogRevision !== null) writeAppliedRevision(remote.catalogRevision);
           }
           localStorage.setItem("razdwa_prices_ts", String(Date.now()));
         }
