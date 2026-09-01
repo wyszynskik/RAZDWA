@@ -71,8 +71,10 @@ Serwer wykonuje pod `LockService.getScriptLock()`, atomowo:
 1. `current = readCatalogRevision()`
 2. `baseRevision !== current` → **CONFLICT, nic nie zapisuje**
 3. w przeciwnym razie, w jednej sekcji transakcyjnej: zapis cennika, zapis
-   wariantów, `revision += 1`, `flush`
+   wariantów, `flush`, `revision += 1`
 
+Rewizja rośnie dopiero po `flush`, czyli po potwierdzonym utrwaleniu obu
+arkuszy — nigdy nie wskazuje na dane, których arkusz jeszcze nie przyjął.
 Błąd na dowolnym z czterech kroków cofa wszystkie: przywracane są poprzednie
 ceny, poprzednie warianty, poprzednia `CATALOG_REVISION` i poprzedni
 `CATALOG_UPDATED_AT`. Odpowiedź nigdy nie jest wtedy sukcesem — `server_error`,

@@ -1323,14 +1323,15 @@ function handleCatalogSave(data) {
     var variantsCount = 0;
     var next = current;
 
-    // Zapis cen, zapis wariantów, podbicie rewizji i flush to JEDNA sekcja:
-    // błąd na dowolnym kroku cofa wszystkie cztery. Gdyby bump albo flush stał
-    // poza tym blokiem, arkusz mógłby zostać z rewizją bez pokrycia w danych.
+    // Zapis cen, zapis wariantów, flush i podbicie rewizji to JEDNA sekcja:
+    // błąd na dowolnym kroku cofa wszystkie cztery. Rewizja rośnie DOPIERO po
+    // flushu, czyli po potwierdzonym utrwaleniu obu arkuszy — nigdy nie wskazuje
+    // na dane, których arkusz jeszcze nie przyjął.
     try {
       pricesCount = _writeCennikRows(data.prices);
       variantsCount = _writeVariantRows(data.variants);
-      next = bumpCatalogRevision();
       SpreadsheetApp.flush();
+      next = bumpCatalogRevision();
     } catch (writeErr) {
       Logger.log("catalog.save BŁĄD ZAPISU: " + writeErr + " — przywracam stan sprzed zapisu");
 

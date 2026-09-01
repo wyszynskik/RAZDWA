@@ -69,8 +69,10 @@ class FakeGas {
    * w środku catalog.save, po udanym zapisie cen.
    */
   failVariantsWrite = false;
-  /** Awaria na ostatnim kroku transakcji, już po podbiciu rewizji. */
+  /** Awaria flusha — po zapisach, przed podbiciem rewizji. */
   failFlush = false;
+  /** Awaria samego podbicia rewizji, już po udanym flushu. */
+  failBump = false;
   /** Awaria także przy próbie odtworzenia stanu sprzed zapisu. */
   failRollback = false;
   rollbackAttempted = false;
@@ -105,9 +107,11 @@ class FakeGas {
         this.prices = { ...req.prices };
         if (this.failVariantsWrite) throw new Error("Exceeded maximum execution time");
         this.variants = [...req.variants];
+        // flush przed bumpem: rewizja rośnie dopiero po utrwaleniu obu arkuszy
+        if (this.failFlush) throw new Error("Service Spreadsheets timed out");
         this.revision += 1;
         this.updatedAt = "2026-09-01T13:00:00.000Z";
-        if (this.failFlush) throw new Error("Service Spreadsheets timed out");
+        if (this.failBump) throw new Error("Properties service failed");
       } catch {
         this.rollbackAttempted = true;
         if (this.failRollback) {
@@ -433,7 +437,7 @@ describe("rollback przy nieudanym zapisie wariantów", () => {
 });
 
 describe("rewizja jest częścią transakcji", () => {
-  it("błąd flusha PO podbiciu rewizji cofa rewizję i znacznik czasu", () => {
+  it("błąd flusha przed podbiciem rewizji zostawia rewizję nietkniętą", () => {
     const gas = new FakeGas();
     gas.failFlush = true;
 
@@ -449,6 +453,25 @@ describe("rewizja jest częścią transakcji", () => {
     expect(gas.revision).toBe(42);
     expect(gas.updatedAt).toBe("2026-08-30T09:00:00.000Z");
     expect(gas.prices["druk-cad-kolor-fmt-a2"]).toBe(8.5);
+  });
+
+  it("awaria samego podbicia rewizji, już po flushu, też cofa wszystko", () => {
+    const gas = new FakeGas();
+    gas.failBump = true;
+
+    const response = gas.save({
+      baseRevision: 42,
+      prices: { "druk-cad-kolor-fmt-a2": 9.5 },
+      variants: [{ key: "druk-cad-kolor-fmt-a2" }],
+    });
+
+    expect(response.ok).toBe(false);
+    if (!response.ok) expect(response.error).toBe("server_error");
+
+    expect(gas.revision).toBe(42);
+    expect(gas.updatedAt).toBe("2026-08-30T09:00:00.000Z");
+    expect(gas.prices["druk-cad-kolor-fmt-a2"]).toBe(8.5);
+    expect(gas.variants).toEqual([{ key: "druk-cad-kolor-fmt-a2" }]);
   });
 
   it("udany zapis podbija rewizję i znacznik czasu razem", () => {
