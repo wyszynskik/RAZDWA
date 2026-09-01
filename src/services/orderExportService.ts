@@ -766,10 +766,16 @@ export async function fetchStateFromAppsScript(
     if (!response.ok) return null;
 
     const data = (await response.json()) as {
+      ok?: unknown;
       prices?: unknown;
       variants?: unknown;
       catalogRevision?: unknown;
     };
+
+    // getState czyta katalog pod tym samym lockiem co zapis, więc trafiony
+    // w środku zapisu odpowiada { ok: false, error: "locked" } zamiast danych.
+    // Traktujemy to jak brak odpowiedzi — wołający ponowi próbę.
+    if (data.ok === false) return null;
 
     const prices: Record<string, number | null> =
       data.prices && typeof data.prices === "object" && !Array.isArray(data.prices)

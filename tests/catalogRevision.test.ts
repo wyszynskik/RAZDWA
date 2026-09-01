@@ -47,6 +47,7 @@ type LegacyResponse = { ok: false; error: "client_update_required"; catalogRevis
 
 class FakeGas {
   revision = 42;
+  updatedAt = "2026-08-30T09:00:00.000Z";
   prices: Record<string, number | null> = { "druk-cad-kolor-fmt-a2": 8.5 };
   variants: { key: string }[] = [{ key: "druk-cad-kolor-fmt-a2" }];
   private locked = false;
@@ -68,6 +69,8 @@ class FakeGas {
    * w środku catalog.save, po udanym zapisie cen.
    */
   failVariantsWrite = false;
+  /** Awaria na ostatnim kroku transakcji, już po podbiciu rewizji. */
+  failFlush = false;
   /** Awaria także przy próbie odtworzenia stanu sprzed zapisu. */
   failRollback = false;
   rollbackAttempted = false;
@@ -91,13 +94,20 @@ class FakeGas {
         return { ok: false, error: "revision_conflict", catalogRevision: this.revision };
       }
 
+      // Snapshot obejmuje też licznik rewizji i jego znacznik czasu — bump
+      // należy do tej samej transakcji co zapisy.
       const previousPrices = { ...this.prices };
       const previousVariants = [...this.variants];
+      const previousRevision = this.revision;
+      const previousUpdatedAt = this.updatedAt;
 
       try {
         this.prices = { ...req.prices };
         if (this.failVariantsWrite) throw new Error("Exceeded maximum execution time");
         this.variants = [...req.variants];
+        this.revision += 1;
+        this.updatedAt = "2026-09-01T13:00:00.000Z";
+        if (this.failFlush) throw new Error("Service Spreadsheets timed out");
       } catch {
         this.rollbackAttempted = true;
         if (this.failRollback) {
@@ -105,10 +115,11 @@ class FakeGas {
         }
         this.prices = previousPrices;
         this.variants = previousVariants;
+        this.revision = previousRevision;
+        this.updatedAt = previousUpdatedAt;
         return { ok: false, error: "server_error", catalogRevision: this.revision };
       }
 
-      this.revision += 1;
       return { ok: true, catalogRevision: this.revision };
     } finally {
       this.locked = false;
@@ -418,5 +429,47 @@ describe("rollback przy nieudanym zapisie wariantów", () => {
     expect(response.ok).toBe(true);
     expect(gas.rollbackAttempted).toBe(false);
     expect(gas.revision).toBe(43);
+  });
+});
+
+describe("rewizja jest częścią transakcji", () => {
+  it("błąd flusha PO podbiciu rewizji cofa rewizję i znacznik czasu", () => {
+    const gas = new FakeGas();
+    gas.failFlush = true;
+
+    const response = gas.save({
+      baseRevision: 42,
+      prices: { "druk-cad-kolor-fmt-a2": 9.5 },
+      variants: [{ key: "druk-cad-kolor-fmt-a2" }],
+    });
+
+    expect(response.ok).toBe(false);
+    if (!response.ok) expect(response.error).toBe("server_error");
+
+    expect(gas.revision).toBe(42);
+    expect(gas.updatedAt).toBe("2026-08-30T09:00:00.000Z");
+    expect(gas.prices["druk-cad-kolor-fmt-a2"]).toBe(8.5);
+  });
+
+  it("udany zapis podbija rewizję i znacznik czasu razem", () => {
+    const gas = new FakeGas();
+
+    const response = gas.save({
+      baseRevision: 42,
+      prices: { "druk-cad-kolor-fmt-a2": 9.5 },
+      variants: [{ key: "druk-cad-kolor-fmt-a2" }],
+    });
+
+    expect(response.ok).toBe(true);
+    expect(gas.revision).toBe(43);
+    expect(gas.updatedAt).toBe("2026-09-01T13:00:00.000Z");
+  });
+
+  it("po cofniętej rewizji klient nadal widzi swoją wersję jako aktualną", () => {
+    const gas = new FakeGas();
+    gas.failFlush = true;
+    gas.save({ baseRevision: 42, prices: { x: 1 }, variants: [] });
+
+    expect(compareRevision(42, gas.getRevision())).toBe("current");
   });
 });

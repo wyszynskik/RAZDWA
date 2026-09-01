@@ -1039,6 +1039,37 @@ function bumpCatalogRevision() {
   return next;
 }
 
+// Odczyt całego katalogu pod TYM SAMYM lockiem, którego używa catalog.save.
+// Bez tego getState trafiony w środku zapisu mógłby zwrócić nowe ceny i stare
+// warianty albo rewizję bez pokrycia w danych — czyli katalog, który nigdy nie
+// istniał. Lock trzymamy wyłącznie na czas odczytu.
+function readCatalogStateLocked() {
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(CATALOG_LOCK_TIMEOUT_MS)) {
+    return null;
+  }
+  try {
+    return {
+      prices: readCennikAsObject(),
+      variants: readVariants(),
+      catalogRevision: readCatalogRevision(),
+      catalogUpdatedAt: readCatalogUpdatedAt(),
+    };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function _restoreCatalogRevision(revision, updatedAt) {
+  var props = _getProps();
+  props.setProperty(CATALOG_REVISION_PROP, String(revision));
+  if (updatedAt) {
+    props.setProperty(CATALOG_UPDATED_AT_PROP, updatedAt);
+  } else {
+    props.deleteProperty(CATALOG_UPDATED_AT_PROP);
+  }
+}
+
 function parseMaterialSizeOptions(raw) {
   var s = String(raw || "").trim();
   if (!s) return null;
@@ -1281,16 +1312,24 @@ function handleCatalogSave(data) {
       });
     }
 
-    // Snapshot do rollbacku — czytany PRZED jakimkolwiek zapisem.
+    // Snapshot do rollbacku — czytany PRZED jakimkolwiek zapisem. Obejmuje też
+    // licznik rewizji i jego znacznik czasu, bo bump należy do tej samej
+    // transakcji i przy błędzie musi zostać cofnięty.
     const previousPrices = readCennikAsObject();
     const previousVariants = readVariants();
+    const previousUpdatedAt = readCatalogUpdatedAt();
 
     var pricesCount = 0;
     var variantsCount = 0;
+    var next = current;
 
+    // Zapis cen, zapis wariantów, podbicie rewizji i flush to JEDNA sekcja:
+    // błąd na dowolnym kroku cofa wszystkie cztery. Gdyby bump albo flush stał
+    // poza tym blokiem, arkusz mógłby zostać z rewizją bez pokrycia w danych.
     try {
       pricesCount = _writeCennikRows(data.prices);
       variantsCount = _writeVariantRows(data.variants);
+      next = bumpCatalogRevision();
       SpreadsheetApp.flush();
     } catch (writeErr) {
       Logger.log("catalog.save BŁĄD ZAPISU: " + writeErr + " — przywracam stan sprzed zapisu");
@@ -1298,6 +1337,7 @@ function handleCatalogSave(data) {
       try {
         _writeCennikRows(previousPrices);
         _writeVariantRows(previousVariants);
+        _restoreCatalogRevision(current, previousUpdatedAt);
         SpreadsheetApp.flush();
       } catch (rollbackErr) {
         Logger.log(
@@ -1305,7 +1345,7 @@ function handleCatalogSave(data) {
             rollbackErr +
             " | pierwotny błąd: " +
             writeErr +
-            " | rev pozostaje " +
+            " | rev przywracana do " +
             current +
             " | pozycji w snapshocie: ceny=" +
             Object.keys(previousPrices).length +
@@ -1334,7 +1374,6 @@ function handleCatalogSave(data) {
       });
     }
 
-    const next = bumpCatalogRevision();
     Logger.log(
       "catalog.save OK rev=" + next + " prices=" + pricesCount + " variants=" + variantsCount
     );
@@ -1360,7 +1399,14 @@ i nikt nie dostanie fałszywego „są nowe ceny".
 
 ### 8.6 `doGet` — dopisz `getRevision` i rozszerz `getState`
 
-W istniejącym `doGet`, obok pozostałych `if (action === ...)`:
+W istniejącym `doGet`, obok pozostałych `if (action === ...)`.
+
+`getState` czyta wszystkie cztery pola pod tym samym `ScriptLock`, którego używa
+`catalog.save`, więc nigdy nie zwróci nowych cen ze starymi wariantami.
+`getRevision` locka nie bierze celowo — rewizja jest podbijana jednym zapisem
+właściwości na końcu udanej transakcji, więc odczyt zwraca albo starą, albo nową
+wartość, nigdy stan pośredni. Dzięki temu odpytywanie co 90 s nie konkuruje
+o lock z zapisem.
 
 ```javascript
 if (action === "getRevision") {
@@ -1373,14 +1419,18 @@ if (action === "getRevision") {
 
 if (action === "getState") {
   Logger.log("GET getState");
-  return ContentService.createTextOutput(
-    JSON.stringify({
-      prices: readCennikAsObject(),
-      variants: readVariants(),
+  const state = readCatalogStateLocked();
+  if (!state) {
+    return _json({
+      ok: false,
+      error: "locked",
       catalogRevision: readCatalogRevision(),
-      catalogUpdatedAt: readCatalogUpdatedAt(),
-    })
-  ).setMimeType(ContentService.MimeType.JSON);
+      message: "Trwa zapis cennika. Spróbuj ponownie za chwilę.",
+    });
+  }
+  return ContentService.createTextOutput(JSON.stringify(state)).setMimeType(
+    ContentService.MimeType.JSON
+  );
 }
 ```
 

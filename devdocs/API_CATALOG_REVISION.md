@@ -32,6 +32,14 @@ Tani endpoint do odpytywania (nie zwraca katalogu).
 Rozszerzenie istniejącego endpointu o dwa pola. Kształt `prices` i `variants`
 bez zmian — starsze wersje aplikacji działają dalej, po prostu ignorują nowe pola.
 
+Wszystkie cztery pola są czytane pod **tym samym `ScriptLock`**, którego używa
+`catalog.save`, więc odczyt trafiony w środku zapisu nigdy nie zwróci nowych cen
+ze starymi wariantami ani rewizji bez pokrycia w danych. Gdy lock jest zajęty
+dłużej niż limit, endpoint zwraca `{ "ok": false, "error": "locked" }` zamiast
+katalogu; klient traktuje to jak brak odpowiedzi i ponawia przy następnym
+sprawdzeniu. `getRevision` locka nie bierze — rewizja zmienia się jednym zapisem
+właściwości na końcu udanej transakcji, więc nie ma stanu pośredniego.
+
 ```json
 {
   "prices": { "druk-bw-a4-1-5": 0.5 },
@@ -62,7 +70,13 @@ Serwer wykonuje pod `LockService.getScriptLock()`, atomowo:
 
 1. `current = readCatalogRevision()`
 2. `baseRevision !== current` → **CONFLICT, nic nie zapisuje**
-3. w przeciwnym razie: zapis cennika, zapis wariantów, `revision += 1`
+3. w przeciwnym razie, w jednej sekcji transakcyjnej: zapis cennika, zapis
+   wariantów, `revision += 1`, `flush`
+
+Błąd na dowolnym z czterech kroków cofa wszystkie: przywracane są poprzednie
+ceny, poprzednie warianty, poprzednia `CATALOG_REVISION` i poprzedni
+`CATALOG_UPDATED_AT`. Odpowiedź nigdy nie jest wtedy sukcesem — `server_error`,
+albo `rollback_failed`, gdy nie udało się nawet przywrócić stanu.
 
 ### Odpowiedzi
 
@@ -136,8 +150,10 @@ Autoryzacja zapisu korzysta z istniejącego `_verifyAdminSessionToken(data)`
 
 ## Znane ograniczenie
 
-`catalog.save` zapisuje cennik i warianty jako dwie operacje na arkuszu pod
-jednym lockiem. Rewizja rośnie dopiero po obu zapisach, więc przerwanie skryptu
-między nimi zostawia arkusz z nowymi cenami i starymi wariantami przy
-niezmienionej rewizji. Kolejny udany zapis to naprawia. Pełna atomowość
+`catalog.save` zapisuje cennik i warianty jako dwie operacje na arkuszu, objęte
+wspólnym lockiem i wspólnym rollbackiem. Jedyny scenariusz, którego rollback nie
+domyka, to twarde przerwanie wykonania Apps Script (limit czasu, awaria) w
+momencie między zapisami — wtedy nie wykona się także kod przywracający. Rewizja
+pozostaje wtedy stara, więc klienci nie dostają fałszywego „są nowe ceny", a
+sytuację sygnalizuje `rollback_failed` albo brak odpowiedzi. Pełna odporność
 wymagałaby zapisu przez staging sheet — poza zakresem tej fazy.
