@@ -74,6 +74,7 @@ import {
   fetchStateFromAppsScript,
 } from "../../services/orderExportService";
 import { priceStore } from "../../services/priceStore";
+import { reconcilePriceStore, syncRecordToDefaultPrices } from "../../services/priceStoreSync";
 import { warmPriceCache, getZeroPriceLabels, getZeroPriceDefaults } from "../../core/compat";
 import type { PriceRecord } from "../../types/price-schema";
 import {
@@ -3484,6 +3485,11 @@ export const UstawieniaView: View = {
               updatedAt: new Date().toISOString(),
               _dirty: true,
             });
+            // Panel IDB pisze do cache’u odczytu; cennik (localStorage +
+            // arkusz) jest źródłem prawdy, więc zmiana musi trafić także tam —
+            // inaczej cofnęłoby ją najbliższe „Zapisz cennik”.
+            syncRecordToDefaultPrices(rec.label, newPrice, activeCheckbox?.checked ?? rec.isActive);
+            prices = loadPrices();
             await warmPriceCache();
             showIdbStatus("✓ Zapisano");
             await renderIdbPanel();
@@ -4407,6 +4413,12 @@ export const UstawieniaView: View = {
       setPriceSubgroups(customPriceSubgroups);
       customPriceLabels = persistedLabels;
       prices = loadPrices();
+
+      // Kalkulator i legendy czytają przez resolveStoredPrice(), które pyta
+      // NAJPIERW cache IndexedDB. Bez tego kroku nowa cena zostaje wyłącznie
+      // w localStorage i nigdzie poza panelem nie obowiązuje.
+      await reconcilePriceStore(persisted);
+
       renderTabs();
       renderTable();
       syncAddCategorySelection();
@@ -4591,6 +4603,10 @@ export const UstawieniaView: View = {
         );
         markAllVariantsAsDraft(imported.variants);
 
+        // Zaimportowane ceny muszą natychmiast obowiązywać w kalkulatorze,
+        // nie dopiero po „Zapisz cennik”.
+        await reconcilePriceStore(loadPrices());
+
         renderTabs();
         renderTable();
         syncAddCategorySelection();
@@ -4658,6 +4674,8 @@ export const UstawieniaView: View = {
       _draftVariantDefs = [];
       resetPrices();
       prices = loadPrices();
+      // Odrzucenie niezapisanych zmian też musi dojść do cache’u odczytu.
+      void reconcilePriceStore(prices);
       const _resetVariants = getVariantDefinitions();
       const _resetLegacyLabels = loadPriceLabels();
       const _resetLegacySubgroups = getPriceSubgroups();

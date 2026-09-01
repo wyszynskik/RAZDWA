@@ -58,6 +58,26 @@ export const priceStore = {
     await req(db.transaction("prices", "readwrite").objectStore("prices").put(record));
   },
 
+  /**
+   * Zapis wielu rekordów w JEDNEJ transakcji — uzgodnienie cennika potrafi
+   * dotknąć setek pozycji naraz, a osobna transakcja na rekord blokowałaby
+   * zapis cennika na kilka sekund.
+   */
+  async putMany(records: PriceRecord[]): Promise<void> {
+    if (records.length === 0) return;
+    const db = await openDB();
+    await new Promise<void>((resolve, reject) => {
+      const txn = db.transaction("prices", "readwrite");
+      const store = txn.objectStore("prices");
+      txn.oncomplete = () => resolve();
+      txn.onerror = () => reject(txn.error);
+      txn.onabort = () => reject(txn.error);
+      for (const record of records) {
+        store.put(record);
+      }
+    });
+  },
+
   async softDelete(id: string): Promise<void> {
     const db = await openDB();
     await new Promise<void>((resolve, reject) => {

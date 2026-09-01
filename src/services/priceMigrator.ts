@@ -1,6 +1,7 @@
 import { getDefaultPricesMap, readStoredPrices } from "../core/compat";
 import { priceStore } from "./priceStore";
 import type { PriceRecord } from "../types/price-schema";
+import { parseLegacyKey, inferUnit } from "../core/legacyPriceKey";
 
 const IS_DEV =
   typeof location !== "undefined" &&
@@ -104,73 +105,9 @@ function writeMigrationStatus(s: MigrationStatus): void {
 //   "druk-cad-kolor-fmt-a1" → category="druk", subcategory="cad-kolor-fmt-a1"
 //   W obecnym modelu CAD trafia pod kategorię "druk". Konsolowe ostrzeżenie przy imporcie.
 //   Do poprawy w Etapie 3 przez edycję w panelu admina.
+//
+// Implementacja reguł: core/legacyPriceKey.ts (współdzielona z priceStoreSync).
 // ---------------------------------------------------------------------------
-
-interface ParsedKey {
-  category: string;
-  subcategory: string;
-  qtyFrom: number;
-  qtyTo: number | null;
-  isModifier: boolean;
-}
-
-function splitPrefix(prefix: string): { category: string; subcategory: string } {
-  const [category, ...rest] = prefix.split("-");
-  return { category, subcategory: rest.join("-") };
-}
-
-function parseLegacyKey(key: string): ParsedKey {
-  // R1 — globalny modyfikator (tylko klucze zaczynające się od "modifier-")
-  if (key.startsWith("modifier-")) {
-    return { category: "", subcategory: "", qtyFrom: 1, qtyTo: null, isModifier: true };
-  }
-
-  // R2 — zakres ilości N-M
-  const rangeMatch = key.match(/^(.+)-(\d+)-(\d+)$/);
-  if (rangeMatch) {
-    const [, prefix, from, to] = rangeMatch;
-    return {
-      ...splitPrefix(prefix),
-      qtyFrom: parseInt(from, 10),
-      qtyTo: parseInt(to, 10),
-      isModifier: false,
-    };
-  }
-
-  // R3 — open-ended N+
-  const openMatch = key.match(/^(.+)-(\d+)\+$/);
-  if (openMatch) {
-    const [, prefix, from] = openMatch;
-    return { ...splitPrefix(prefix), qtyFrom: parseInt(from, 10), qtyTo: null, isModifier: false };
-  }
-
-  // R4 — dokładna ilość Nszt (wizytówki)
-  const sztMatch = key.match(/^(.+)-(\d+)szt$/);
-  if (sztMatch) {
-    const [, prefix, qty] = sztMatch;
-    const n = parseInt(qty, 10);
-    return { ...splitPrefix(prefix), qtyFrom: n, qtyTo: n, isModifier: false };
-  }
-
-  // R5 — pojedyncza cena bez zakresu
-  return { ...splitPrefix(key), qtyFrom: 1, qtyTo: null, isModifier: false };
-}
-
-// ---------------------------------------------------------------------------
-// Jednostki — heurystyka z kluczy legacy.
-// Domyślna jednostka to "szt". Wyjątki poniżej są wyczerpującą listą znanych przypadków.
-// ---------------------------------------------------------------------------
-function inferUnit(key: string): string {
-  if (key === "cad-skanowanie") return "cm";
-  if (/-mb-/.test(key)) return "mb";
-  if (
-    /^banner-(?!oczkowanie)/.test(key) ||
-    /^folia-szroniona-wydruk/.test(key) ||
-    /^wlepki-(obrys|polipropylen|standard)-/.test(key)
-  )
-    return "m2";
-  return "szt";
-}
 
 // ---------------------------------------------------------------------------
 // Obsługa pominiętych modifier-* kluczy
