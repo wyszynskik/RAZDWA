@@ -37,7 +37,13 @@ interface CatalogSaveRequest {
 
 type CatalogSaveResponse =
   | { ok: true; catalogRevision: number }
-  | { ok: false; error: "revision_conflict" | "locked"; catalogRevision: number };
+  | {
+      ok: false;
+      error: "revision_conflict" | "locked" | "server_error" | "rollback_failed";
+      catalogRevision: number;
+    };
+
+type LegacyResponse = { ok: false; error: "client_update_required"; catalogRevision: number };
 
 class FakeGas {
   revision = 42;
@@ -57,6 +63,24 @@ class FakeGas {
     };
   }
 
+  /**
+   * Wstrzyknięcie awarii zapisu wariantów — odwzorowuje wyjątek arkusza
+   * w środku catalog.save, po udanym zapisie cen.
+   */
+  failVariantsWrite = false;
+  /** Awaria także przy próbie odtworzenia stanu sprzed zapisu. */
+  failRollback = false;
+  rollbackAttempted = false;
+
+  /** Stare endpointy nie zapisują już niczego — zapis idzie tylko catalog.save. */
+  pricesUpdate(): LegacyResponse {
+    return { ok: false, error: "client_update_required", catalogRevision: this.revision };
+  }
+
+  variantsUpdate(): LegacyResponse {
+    return { ok: false, error: "client_update_required", catalogRevision: this.revision };
+  }
+
   save(req: CatalogSaveRequest): CatalogSaveResponse {
     if (this.locked) {
       return { ok: false, error: "locked", catalogRevision: this.revision };
@@ -66,8 +90,24 @@ class FakeGas {
       if (req.baseRevision !== this.revision) {
         return { ok: false, error: "revision_conflict", catalogRevision: this.revision };
       }
-      this.prices = { ...req.prices };
-      this.variants = [...req.variants];
+
+      const previousPrices = { ...this.prices };
+      const previousVariants = [...this.variants];
+
+      try {
+        this.prices = { ...req.prices };
+        if (this.failVariantsWrite) throw new Error("Exceeded maximum execution time");
+        this.variants = [...req.variants];
+      } catch {
+        this.rollbackAttempted = true;
+        if (this.failRollback) {
+          return { ok: false, error: "rollback_failed", catalogRevision: this.revision };
+        }
+        this.prices = previousPrices;
+        this.variants = previousVariants;
+        return { ok: false, error: "server_error", catalogRevision: this.revision };
+      }
+
       this.revision += 1;
       return { ok: true, catalogRevision: this.revision };
     } finally {
@@ -281,5 +321,102 @@ describe("dwóch klientów: A zapisuje 43, B ma 42", () => {
   it("rewizja klienta jest trzymana pod znanym kluczem localStorage", () => {
     withClient(clientA, () => writeAppliedRevision(43));
     expect(clientA.getItem(CATALOG_REVISION_STORAGE_KEY)).toBe("43");
+  });
+});
+
+describe("stare endpointy zapisu są wyłączone", () => {
+  it("prices_update odmawia i nie rusza rewizji", () => {
+    const gas = new FakeGas();
+    const response = gas.pricesUpdate();
+
+    expect(response.ok).toBe(false);
+    expect(response.error).toBe("client_update_required");
+    expect(gas.revision).toBe(42);
+    expect(gas.prices["druk-cad-kolor-fmt-a2"]).toBe(8.5);
+  });
+
+  it("variants_update odmawia i nie rusza rewizji", () => {
+    const gas = new FakeGas();
+    const response = gas.variantsUpdate();
+
+    expect(response.ok).toBe(false);
+    expect(response.error).toBe("client_update_required");
+    expect(gas.revision).toBe(42);
+  });
+
+  it("po odmowie catalog.save nadal działa — zapis ma jedną ścieżkę", () => {
+    const gas = new FakeGas();
+    gas.pricesUpdate();
+
+    const saved = gas.save({
+      baseRevision: 42,
+      prices: { "druk-cad-kolor-fmt-a2": 9.5 },
+      variants: [{ key: "druk-cad-kolor-fmt-a2" }],
+    });
+
+    expect(saved.ok).toBe(true);
+    expect(gas.revision).toBe(43);
+  });
+});
+
+describe("rollback przy nieudanym zapisie wariantów", () => {
+  it("przywraca poprzednie ceny i NIE podbija rewizji", () => {
+    const gas = new FakeGas();
+    gas.failVariantsWrite = true;
+
+    const response = gas.save({
+      baseRevision: 42,
+      prices: { "druk-cad-kolor-fmt-a2": 9.5 },
+      variants: [{ key: "nowy-wariant" }],
+    });
+
+    expect(response.ok).toBe(false);
+    if (!response.ok) expect(response.error).toBe("server_error");
+
+    expect(gas.rollbackAttempted).toBe(true);
+    expect(gas.revision).toBe(42);
+    expect(gas.prices["druk-cad-kolor-fmt-a2"]).toBe(8.5);
+    expect(gas.variants).toEqual([{ key: "druk-cad-kolor-fmt-a2" }]);
+  });
+
+  it("klient zostaje na swojej rewizji, więc nie dostaje fałszywego „są nowe ceny”", () => {
+    const gas = new FakeGas();
+    gas.failVariantsWrite = true;
+    gas.save({
+      baseRevision: 42,
+      prices: { "druk-cad-kolor-fmt-a2": 9.5 },
+      variants: [],
+    });
+
+    expect(compareRevision(42, gas.getRevision())).toBe("current");
+  });
+
+  it("nieudany rollback zwraca rollback_failed i też nie podbija rewizji", () => {
+    const gas = new FakeGas();
+    gas.failVariantsWrite = true;
+    gas.failRollback = true;
+
+    const response = gas.save({
+      baseRevision: 42,
+      prices: { "druk-cad-kolor-fmt-a2": 9.5 },
+      variants: [],
+    });
+
+    expect(response.ok).toBe(false);
+    if (!response.ok) expect(response.error).toBe("rollback_failed");
+    expect(gas.revision).toBe(42);
+  });
+
+  it("po udanym zapisie rollback nie jest w ogóle próbowany", () => {
+    const gas = new FakeGas();
+    const response = gas.save({
+      baseRevision: 42,
+      prices: { "druk-cad-kolor-fmt-a2": 9.5 },
+      variants: [{ key: "druk-cad-kolor-fmt-a2" }],
+    });
+
+    expect(response.ok).toBe(true);
+    expect(gas.rollbackAttempted).toBe(false);
+    expect(gas.revision).toBe(43);
   });
 });

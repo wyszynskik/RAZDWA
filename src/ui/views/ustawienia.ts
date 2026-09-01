@@ -69,14 +69,12 @@ import {
   describeSubgroupBackfillPlan,
 } from "../../services/subgroupBackfill";
 import {
-  savePricesToAppsScript,
-  saveVariantsToAppsScript,
   fetchStateFromAppsScript,
   saveCatalogToAppsScript,
 } from "../../services/orderExportService";
 import { priceStore } from "../../services/priceStore";
 import { reconcilePriceStore, syncRecordToDefaultPrices } from "../../services/priceStoreSync";
-import { checkCatalogRevision } from "../../services/catalogSync";
+import { checkCatalogRevision, ensureAppliedRevision } from "../../services/catalogSync";
 import { writeAppliedRevision } from "../../services/catalogRevision";
 import { warmPriceCache, getZeroPriceLabels, getZeroPriceDefaults } from "../../core/compat";
 import type { PriceRecord } from "../../types/price-schema";
@@ -4442,6 +4440,38 @@ export const UstawieniaView: View = {
       // pełnym starym cennikiem. Zmiany zostają lokalnie ze znacznikiem dirty.
       const revisionStatus = await checkCatalogRevision();
 
+      // Bez znanej rewizji nie wolno wysłać nic: baseRevision byłby zgadywany,
+      // a zgadnięty baseRevision to nadpisanie cudzej pracy. ensureAppliedRevision
+      // ustala rewizję (pobierając katalog, gdy nie ma lokalnych zmian) i zawsze
+      // blokuje TEN zapis — wysłać można dopiero ze znanej wersji.
+      if (revisionStatus.appliedRevision === null) {
+        const ensured = await ensureAppliedRevision();
+        renderPricesSync("error", "Nieznana wersja cennika w arkuszu.");
+        updateDraftIndicator();
+
+        if (ensured.applied) {
+          prices = loadPrices();
+          customPriceLabels = {
+            ...loadPriceLabels(),
+            ...variantsToPriceLabels(getVariantDefinitions()),
+          };
+          customPriceSubgroups = mergeVariantSubgroupsIntoRegistry(
+            getPriceSubgroups(),
+            getVariantDefinitions()
+          );
+          renderTabs();
+          renderTable();
+          syncAddCategorySelection();
+        }
+
+        showStatus(
+          `Nie zapisano. ${ensured.message ?? "Nie udało się ustalić wersji cennika w arkuszu."}`,
+          "error",
+          true
+        );
+        return;
+      }
+
       if (revisionStatus.state === "behind") {
         renderPricesSync("error", "Arkusz ma nowszą wersję cennika.");
         updateDraftIndicator();
@@ -4455,11 +4485,10 @@ export const UstawieniaView: View = {
         return;
       }
 
-      // Rewizja nieznana, choć stanowisko już kiedyś ją znało → GAS chwilowo
-      // nieosiągalny albo odpowiedział błędem. NIE schodzimy wtedy do starej,
-      // niechronionej ścieżki zapisu: ślepe wysłanie pełnego cennika mogłoby
-      // nadpisać cudzy nowszy katalog.
-      if (revisionStatus.state === "unknown" && revisionStatus.appliedRevision !== null) {
+      // Rewizja nieznana po stronie arkusza, choć stanowisko już ją znało → GAS
+      // chwilowo nieosiągalny albo odpowiedział błędem. Nie wysyłamy nic:
+      // ślepy zapis pełnego cennika mógłby nadpisać cudzy nowszy katalog.
+      if (revisionStatus.state === "unknown") {
         renderPricesSync("error", "Nie potwierdzono wersji cennika w arkuszu.");
         updateDraftIndicator();
         showStatus(
@@ -4471,72 +4500,54 @@ export const UstawieniaView: View = {
         return;
       }
 
-      if (revisionStatus.state === "current" && revisionStatus.remoteRevision !== null) {
-        // Ścieżka z kontrolą rewizji: ceny i warianty jednym atomowym zapisem.
-        try {
-          const result = await saveCatalogToAppsScript({
-            prices: flatPrices,
-            variants: allVariants,
-            baseRevision: revisionStatus.remoteRevision,
-          });
+      if (revisionStatus.remoteRevision === null) {
+        renderPricesSync("error", "Arkusz nie zwraca wersji cennika.");
+        updateDraftIndicator();
+        showStatus(
+          "Nie zapisano: arkusz nie zwraca wersji cennika. Wymagana aktualizacja Apps Script " +
+            "(sekcja 8 instrukcji GAS). Twoje zmiany są zachowane lokalnie.",
+          "error",
+          true
+        );
+        return;
+      }
 
-          if (result.noToken) {
-            clearAdminSession();
-            window.location.hash = "#/";
-            return;
-          }
+      // Jedyna ścieżka zapisu: catalog.save z baseRevision. Stare prices_update /
+      // variants_update zapisywały katalog bez kontroli wersji i są wyłączone.
+      try {
+        const result = await saveCatalogToAppsScript({
+          prices: flatPrices,
+          variants: allVariants,
+          baseRevision: revisionStatus.remoteRevision,
+        });
 
-          if (result.ok) {
-            pricesOk = true;
-            variantsOk = true;
-            if (result.catalogRevision !== null) writeAppliedRevision(result.catalogRevision);
-          } else if (result.conflict) {
-            renderPricesSync("error", "Arkusz ma nowszą wersję cennika.");
-            updateDraftIndicator();
-            showStatus(
-              "Nie zapisano: ktoś zapisał cennik w tej samej chwili " +
-                `(wersja ${result.catalogRevision ?? "?"}). Nic nie zostało nadpisane, ` +
-                "Twoje zmiany są nadal lokalne. Odśwież ceny i zapisz ponownie.",
-              "error",
-              true
-            );
-            return;
-          } else {
-            errorDetail = result.message;
-          }
-        } catch (err) {
-          console.error("Błąd zapisu katalogu do Apps Script:", err);
-          errorDetail = (err as Error)?.message;
-        }
-      } else {
-        // Stary Code.gs bez catalogRevision — zapis dwoma starymi endpointami.
-        try {
-          const result = await savePricesToAppsScript(flatPrices);
-          if (result.noToken) {
-            clearAdminSession();
-            window.location.hash = "#/";
-            return;
-          }
-          pricesOk = result.ok;
-          if (!result.ok) errorDetail = result.message;
-        } catch (err) {
-          console.error("Błąd wysyłki cennika do Apps Script:", err);
-          errorDetail = (err as Error)?.message;
+        if (result.noToken) {
+          clearAdminSession();
+          window.location.hash = "#/";
+          return;
         }
 
-        try {
-          const variantsResult = await saveVariantsToAppsScript(allVariants);
-          if (variantsResult.noToken) {
-            clearAdminSession();
-            window.location.hash = "#/";
-            return;
-          }
-          variantsOk = variantsResult.ok;
-          if (!variantsResult.ok) errorDetail = variantsResult.message ?? errorDetail;
-        } catch (err) {
-          console.error("Błąd wysyłki wariantów do Apps Script:", err);
-          errorDetail = (err as Error)?.message ?? errorDetail;
+        if (result.ok) {
+          pricesOk = true;
+          variantsOk = true;
+          if (result.catalogRevision !== null) writeAppliedRevision(result.catalogRevision);
+        } else if (result.conflict) {
+          renderPricesSync("error", "Arkusz ma nowszą wersję cennika.");
+          updateDraftIndicator();
+          showStatus(
+            "Nie zapisano: ktoś zapisał cennik w tej samej chwili " +
+              `(wersja ${result.catalogRevision ?? "?"}). Nic nie zostało nadpisane, ` +
+              "Twoje zmiany są nadal lokalne. Odśwież ceny i zapisz ponownie.",
+            "error",
+            true
+          );
+          return;
+        } else {
+          errorDetail = result.message;
         }
+      } catch (err) {
+        console.error("Błąd zapisu katalogu do Apps Script:", err);
+        errorDetail = (err as Error)?.message;
       }
 
       // Znacznik dirty wolno zdjąć WYŁĄCZNIE po pełnym sukcesie obu zapisów.

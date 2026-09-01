@@ -1181,48 +1181,51 @@ function readVariants() {
 
 ### 8.4 `handlePricesUpdate` i `handleVariantsUpdate` — podmień w całości
 
-Zachowanie i odpowiedzi bez zmian; dochodzi podbicie rewizji i wspólne helpery
-zapisu, żeby `catalog.save` nie duplikował logiki.
+Stare endpointy przestają zapisywać cokolwiek. Zapisywały katalog **bez
+`baseRevision`**, więc były furtką, którą starszy klient mógł nadpisać nowszy
+cennik — dokładnie to, co ten patch ma wykluczyć. Od teraz jedyną ścieżką zapisu
+cen i wariantów jest `catalog.save`.
+
+Odpowiedź `client_update_required` mówi wprost, co zrobić: zaktualizować
+aplikację (odświeżyć kartę). Nic nie jest zapisywane, `catalogRevision` nie rusza.
 
 ```javascript
-function handlePricesUpdate(prices) {
-  return withScriptLock(function () {
-    Logger.log("POST prices_update");
-
-    const count = _writeCennikRows(prices || {});
-    const revision = bumpCatalogRevision();
-    SpreadsheetApp.flush();
-
-    return respond(true, {
-      message: "Prices saved",
-      count: count,
-      catalogRevision: revision,
-    });
+function _clientUpdateRequired(what) {
+  Logger.log("ODRZUCONO " + what + " — wymagana aktualizacja klienta");
+  return _json({
+    ok: false,
+    error: "client_update_required",
+    catalogRevision: readCatalogRevision(),
+    message:
+      "Ta wersja aplikacji zapisuje cennik bez kontroli wersji i została wyłączona. " +
+      "Odśwież stronę (Ctrl+Shift+R), aby wczytać aktualną wersję, i zapisz ponownie.",
   });
+}
+
+function handlePricesUpdate(prices) {
+  return _clientUpdateRequired("prices_update");
 }
 
 function handleVariantsUpdate(variants) {
-  return withScriptLock(function () {
-    Logger.log("POST variants_update");
-
-    if (!Array.isArray(variants)) {
-      return respond(false, { message: "variants musi być tablicą." });
-    }
-
-    const count = _writeVariantRows(variants);
-    const revision = bumpCatalogRevision();
-    SpreadsheetApp.flush();
-
-    return respond(true, {
-      message: "Variants saved",
-      count: count,
-      catalogRevision: revision,
-    });
-  });
+  return _clientUpdateRequired("variants_update");
 }
 ```
 
+> Parametry `prices` / `variants` zostają w sygnaturach, żeby routing w `doPost`
+> nie wymagał zmian.
+
+**Zależność wdrożeniowa:** po wklejeniu tego patcha starsze karty aplikacji
+(otwarte przed wdrożeniem frontendu) nie zapiszą cennika — dostaną powyższy
+komunikat. To zamierzone: alternatywą jest ciche nadpisanie nowszego katalogu.
+
 ### 8.5 `handleCatalogSave` — dopisz jako nową funkcję
+
+Zapis cennika i wariantów to dwie operacje na arkuszu. Jeśli druga padnie,
+funkcja przywraca stan sprzed zapisu i **nie podbija rewizji** — arkusz nigdy nie
+zostaje z nowymi cenami i starymi wariantami przy niezmienionej rewizji.
+
+Stan poprzedni czytamy PRZED wejściem w zapis, `readVariants()` po zmianie z 8.3
+zwraca komplet pól, więc odtworzenie jest bezstratne.
 
 ```javascript
 function handleCatalogSave(data) {
@@ -1278,11 +1281,60 @@ function handleCatalogSave(data) {
       });
     }
 
-    const pricesCount = _writeCennikRows(data.prices);
-    const variantsCount = _writeVariantRows(data.variants);
-    const next = bumpCatalogRevision();
-    SpreadsheetApp.flush();
+    // Snapshot do rollbacku — czytany PRZED jakimkolwiek zapisem.
+    const previousPrices = readCennikAsObject();
+    const previousVariants = readVariants();
 
+    var pricesCount = 0;
+    var variantsCount = 0;
+
+    try {
+      pricesCount = _writeCennikRows(data.prices);
+      variantsCount = _writeVariantRows(data.variants);
+      SpreadsheetApp.flush();
+    } catch (writeErr) {
+      Logger.log("catalog.save BŁĄD ZAPISU: " + writeErr + " — przywracam stan sprzed zapisu");
+
+      try {
+        _writeCennikRows(previousPrices);
+        _writeVariantRows(previousVariants);
+        SpreadsheetApp.flush();
+      } catch (rollbackErr) {
+        Logger.log(
+          "catalog.save ROLLBACK NIEUDANY: " +
+            rollbackErr +
+            " | pierwotny błąd: " +
+            writeErr +
+            " | rev pozostaje " +
+            current +
+            " | pozycji w snapshocie: ceny=" +
+            Object.keys(previousPrices).length +
+            ", warianty=" +
+            previousVariants.length
+        );
+
+        return _json({
+          ok: false,
+          error: "rollback_failed",
+          catalogRevision: current,
+          message:
+            "Zapis nie powiódł się i nie udało się przywrócić poprzedniego cennika. " +
+            "Arkusz może być w stanie niespójnym — sprawdź API_CENNIK i API_VARIANTS " +
+            "przed kolejnym zapisem. Wersja katalogu pozostała " +
+            current +
+            ".",
+        });
+      }
+
+      return _json({
+        ok: false,
+        error: "server_error",
+        catalogRevision: current,
+        message: "Zapis nie powiódł się, przywrócono poprzedni cennik. Szczegóły: " + writeErr,
+      });
+    }
+
+    const next = bumpCatalogRevision();
     Logger.log(
       "catalog.save OK rev=" + next + " prices=" + pricesCount + " variants=" + variantsCount
     );
@@ -1301,6 +1353,10 @@ function handleCatalogSave(data) {
   }
 }
 ```
+
+Rewizja rośnie **wyłącznie** po udanym zapisie obu arkuszy. Nieudany zapis
+zostawia rewizję bez zmian, więc klienci nadal widzą tę samą wersję katalogu
+i nikt nie dostanie fałszywego „są nowe ceny".
 
 ### 8.6 `doGet` — dopisz `getRevision` i rozszerz `getState`
 

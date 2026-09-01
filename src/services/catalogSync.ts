@@ -170,6 +170,83 @@ export async function applyCatalogState(remote: RemoteCatalogState): Promise<App
   return { ok: true, revision: remote.catalogRevision ?? undefined };
 }
 
+export interface EnsureRevisionResult {
+  /** true = rewizja znana, zapis może iść dalej. */
+  ok: boolean;
+  revision: number | null;
+  /** true = w ramach ustalania rewizji pobrano i zastosowano katalog z arkusza. */
+  applied: boolean;
+  message?: string;
+}
+
+/**
+ * Gwarantuje, że klient zna rewizję, na której opiera swój katalog — bez tego
+ * nie wolno wysłać catalog.save, bo baseRevision byłby zgadywany, a zgadnięty
+ * baseRevision to nadpisanie cudzej pracy.
+ *
+ * Gdy rewizji brak (pierwszy zapis po wdrożeniu, wyczyszczony localStorage):
+ *  - bez lokalnych niezapisanych zmian → pobiera getState i stosuje go, więc
+ *    kolejny zapis wystartuje ze znanego, prawdziwego stanu arkusza,
+ *  - z lokalnymi niezapisanymi zmianami → NIE dotyka danych, bo skasowałoby
+ *    pracę użytkowniczki.
+ *
+ * W obu przypadkach ten zapis jest blokowany (ok: false). To celowe: dopiero
+ * świadome "Odśwież ceny" albo ponowne kliknięcie "Zapisz cennik" na znanej
+ * rewizji może coś wysłać.
+ */
+export async function ensureAppliedRevision(): Promise<EnsureRevisionResult> {
+  const applied = readAppliedRevision();
+  if (applied !== null) {
+    return { ok: true, revision: applied, applied: false };
+  }
+
+  const remote = await fetchStateFromAppsScript();
+  if (!remote) {
+    return {
+      ok: false,
+      revision: null,
+      applied: false,
+      message: "Nie udało się połączyć z arkuszem, żeby ustalić wersję cennika.",
+    };
+  }
+
+  if (remote.catalogRevision === null) {
+    return {
+      ok: false,
+      revision: null,
+      applied: false,
+      message: "Arkusz nie zwraca wersji cennika — wymagana aktualizacja Apps Script.",
+    };
+  }
+
+  if (isConfigDirty()) {
+    return {
+      ok: false,
+      revision: remote.catalogRevision,
+      applied: false,
+      message:
+        "To stanowisko nie zna jeszcze wersji cennika z arkusza, a ma lokalne niezapisane zmiany. " +
+        "Nic nie zostało wysłane ani nadpisane. Pobierz kopię konfiguracji, potem użyj „Odśwież ceny”.",
+    };
+  }
+
+  const result = await applyCatalogState(remote);
+  if (!result.ok) {
+    return { ok: false, revision: remote.catalogRevision, applied: false, message: result.message };
+  }
+
+  broadcastCatalog({ type: "catalog-applied", revision: result.revision ?? null });
+
+  return {
+    ok: false,
+    revision: remote.catalogRevision,
+    applied: true,
+    message:
+      `Pobrano aktualny cennik z arkusza (wersja ${remote.catalogRevision}). ` +
+      "Sprawdź swoje zmiany i kliknij „Zapisz cennik” ponownie.",
+  };
+}
+
 /**
  * Pełne "Odśwież ceny": pobiera katalog z GAS i stosuje go lokalnie.
  *
