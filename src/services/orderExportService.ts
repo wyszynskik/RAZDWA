@@ -3,6 +3,7 @@ import type { VariantDefinition } from "./priceService";
 import { normalizePhoneDigits } from "../core/customerValidation";
 import { GAS_URL, APP_ENV } from "../core/env";
 import { getAdminToken } from "../core/adminSession";
+import { parseRevision } from "./catalogRevision";
 
 export const ORDER_EXPORT_CONFIG_KEY = "razdwa_order_export_config";
 
@@ -739,9 +740,16 @@ export async function saveVariantsToAppsScript(
   }
 }
 
+export interface RemoteCatalogState {
+  prices: Record<string, number | null>;
+  variants: VariantDefinition[];
+  /** null gdy GAS nie obsługuje jeszcze catalogRevision (stary Code.gs). */
+  catalogRevision: number | null;
+}
+
 export async function fetchStateFromAppsScript(
   config: OrderExportConfig = getOrderExportConfig()
-): Promise<{ prices: Record<string, number | null>; variants: VariantDefinition[] } | null> {
+): Promise<RemoteCatalogState | null> {
   if (!config.enabled || !config.appsScriptUrl) return null;
 
   const controller = new AbortController();
@@ -757,7 +765,17 @@ export async function fetchStateFromAppsScript(
 
     if (!response.ok) return null;
 
-    const data = (await response.json()) as { prices?: unknown; variants?: unknown };
+    const data = (await response.json()) as {
+      ok?: unknown;
+      prices?: unknown;
+      variants?: unknown;
+      catalogRevision?: unknown;
+    };
+
+    // getState czyta katalog pod tym samym lockiem co zapis, więc trafiony
+    // w środku zapisu odpowiada { ok: false, error: "locked" } zamiast danych.
+    // Traktujemy to jak brak odpowiedzi — wołający ponowi próbę.
+    if (data.ok === false) return null;
 
     const prices: Record<string, number | null> =
       data.prices && typeof data.prices === "object" && !Array.isArray(data.prices)
@@ -771,9 +789,148 @@ export async function fetchStateFromAppsScript(
         )
       : [];
 
-    return { prices, variants };
+    return { prices, variants, catalogRevision: parseRevision(data.catalogRevision) };
   } catch {
     return null;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+/**
+ * Tani odczyt samej rewizji — używany przez odpytywanie (co 90 s, na
+ * visibilitychange, online i przed zapisem). Nie ściąga całego katalogu.
+ *
+ * Zwraca null, gdy GAS jest niedostępny ALBO nie obsługuje jeszcze
+ * catalogRevision; rozróżnienie tych dwóch przypadków nie zmienia zachowania
+ * klienta — w obu nie ma czego porównywać.
+ */
+export async function fetchCatalogRevision(
+  config: OrderExportConfig = getOrderExportConfig()
+): Promise<number | null> {
+  if (!config.enabled || !config.appsScriptUrl) return null;
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), config.timeoutMs);
+
+  try {
+    const url = `${config.appsScriptUrl}?action=getRevision&t=${Date.now()}`;
+    const response = await fetchWithRetry(url, {
+      method: "GET",
+      mode: "cors",
+      signal: controller.signal,
+    });
+    if (!response.ok) return null;
+
+    const data = (await response.json()) as { catalogRevision?: unknown };
+    return parseRevision(data.catalogRevision);
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+export interface CatalogSaveResult {
+  ok: boolean;
+  /** Rewizja po zapisie (ok) albo aktualna rewizja arkusza (konflikt). */
+  catalogRevision: number | null;
+  conflict?: boolean;
+  noToken?: boolean;
+  /** GAS nie zna typu catalog.save — wołający ma użyć starej ścieżki zapisu. */
+  unsupported?: boolean;
+  message?: string;
+}
+
+/**
+ * Zapis całego katalogu (ceny + warianty) z kontrolą rewizji. GAS pod lockiem
+ * porównuje baseRevision z aktualną rewizją i albo zapisuje całość, albo
+ * zwraca revision_conflict NIC nie zapisując.
+ *
+ * Świadomie BEZ fallbacku no-cors: przy opaque odpowiedzi nie znamy nowej
+ * rewizji, a ślepe ponowienie pełnego cennika mogłoby nadpisać cudzy nowszy
+ * zapis. Błąd sieci zostawia zmiany lokalnie i wymaga ponownego "Zapisz cennik".
+ */
+export async function saveCatalogToAppsScript(
+  payload: {
+    prices: Record<string, number | null>;
+    variants: VariantDefinition[];
+    baseRevision: number;
+  },
+  config: OrderExportConfig = getOrderExportConfig()
+): Promise<CatalogSaveResult> {
+  if (!config.enabled || !config.appsScriptUrl) {
+    return { ok: false, catalogRevision: null, message: "Brak URL Apps Script Web App." };
+  }
+
+  if (config.dryRun) {
+    return {
+      ok: true,
+      catalogRevision: payload.baseRevision + 1,
+      message: "dry-run: katalog nie został wysłany.",
+    };
+  }
+
+  const token = getAdminToken();
+  if (!token) {
+    return {
+      ok: false,
+      catalogRevision: null,
+      noToken: true,
+      message: "Brak tokenu sesji. Zaloguj się ponownie do panelu ustawień.",
+    };
+  }
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), config.timeoutMs);
+
+  try {
+    const response = await fetchWithRetry(config.appsScriptUrl, {
+      method: "POST",
+      mode: "cors",
+      headers: { "Content-Type": "text/plain" },
+      body: JSON.stringify({
+        type: "catalog.save",
+        token,
+        baseRevision: payload.baseRevision,
+        prices: payload.prices,
+        variants: payload.variants,
+      }),
+      signal: controller.signal,
+    });
+
+    const body = (await readAppsScriptBody(response)) as Record<string, unknown> | null;
+    const revision = parseRevision(body?.catalogRevision);
+    const error = typeof body?.error === "string" ? body.error : "";
+    const message = typeof body?.message === "string" ? body.message : "";
+
+    if (body?.ok === true) {
+      return { ok: true, catalogRevision: revision, message };
+    }
+
+    if (error === "revision_conflict") {
+      return { ok: false, catalogRevision: revision, conflict: true, message };
+    }
+
+    if (error === "unauthorized") {
+      return { ok: false, catalogRevision: revision, noToken: true, message };
+    }
+
+    return {
+      ok: false,
+      catalogRevision: revision,
+      unsupported: !body || (!("ok" in body) && !error),
+      message: message || `GAS odrzucił zapis katalogu (HTTP ${response.status}).`,
+    };
+  } catch (err) {
+    const isAbort = err instanceof Error && err.name === "AbortError";
+    return {
+      ok: false,
+      catalogRevision: null,
+      message: isAbort
+        ? "Przekroczono limit czasu zapisu katalogu."
+        : `Nie udało się zapisać katalogu: ${(err as Error)?.message ?? "nieznany błąd"}.`,
+    };
   } finally {
     clearTimeout(timeout);
   }

@@ -69,12 +69,13 @@ import {
   describeSubgroupBackfillPlan,
 } from "../../services/subgroupBackfill";
 import {
-  savePricesToAppsScript,
-  saveVariantsToAppsScript,
   fetchStateFromAppsScript,
+  saveCatalogToAppsScript,
 } from "../../services/orderExportService";
 import { priceStore } from "../../services/priceStore";
 import { reconcilePriceStore, syncRecordToDefaultPrices } from "../../services/priceStoreSync";
+import { checkCatalogRevision, ensureAppliedRevision } from "../../services/catalogSync";
+import { writeAppliedRevision } from "../../services/catalogRevision";
 import { warmPriceCache, getZeroPriceLabels, getZeroPriceDefaults } from "../../core/compat";
 import type { PriceRecord } from "../../types/price-schema";
 import {
@@ -4428,37 +4429,125 @@ export const UstawieniaView: View = {
       renderPricesSync("saving");
 
       let pricesOk = false;
+      let variantsOk = false;
       let errorDetail: string | undefined;
 
+      const allVariants = collectAllVariants();
+      const flatPrices = buildFlatPrices(persisted);
+
+      // Przed zapisem sprawdzamy rewizję arkusza. Gdy ktoś zapisał w
+      // międzyczasie, NIE wysyłamy nic — inaczej nadpisalibyśmy cudzą pracę
+      // pełnym starym cennikiem. Zmiany zostają lokalnie ze znacznikiem dirty.
+      const revisionStatus = await checkCatalogRevision();
+
+      // Bez znanej rewizji nie wolno wysłać nic: baseRevision byłby zgadywany,
+      // a zgadnięty baseRevision to nadpisanie cudzej pracy. ensureAppliedRevision
+      // ustala rewizję (pobierając katalog, gdy nie ma lokalnych zmian) i zawsze
+      // blokuje TEN zapis — wysłać można dopiero ze znanej wersji.
+      if (revisionStatus.appliedRevision === null) {
+        const ensured = await ensureAppliedRevision();
+        renderPricesSync("error", "Nieznana wersja cennika w arkuszu.");
+        updateDraftIndicator();
+
+        if (ensured.applied) {
+          prices = loadPrices();
+          customPriceLabels = {
+            ...loadPriceLabels(),
+            ...variantsToPriceLabels(getVariantDefinitions()),
+          };
+          customPriceSubgroups = mergeVariantSubgroupsIntoRegistry(
+            getPriceSubgroups(),
+            getVariantDefinitions()
+          );
+          renderTabs();
+          renderTable();
+          syncAddCategorySelection();
+        }
+
+        showStatus(
+          `Nie zapisano. ${ensured.message ?? "Nie udało się ustalić wersji cennika w arkuszu."}`,
+          "error",
+          true
+        );
+        return;
+      }
+
+      if (revisionStatus.state === "behind") {
+        renderPricesSync("error", "Arkusz ma nowszą wersję cennika.");
+        updateDraftIndicator();
+        showStatus(
+          "Nie zapisano: cennik w arkuszu został w międzyczasie zmieniony na innym stanowisku " +
+            `(wersja ${revisionStatus.remoteRevision ?? "?"}). Twoje zmiany zostały zachowane lokalnie. ` +
+            "Użyj „Odśwież ceny” w komunikacie na dole ekranu, sprawdź swoje zmiany i zapisz ponownie.",
+          "error",
+          true
+        );
+        return;
+      }
+
+      // Rewizja nieznana po stronie arkusza, choć stanowisko już ją znało → GAS
+      // chwilowo nieosiągalny albo odpowiedział błędem. Nie wysyłamy nic:
+      // ślepy zapis pełnego cennika mógłby nadpisać cudzy nowszy katalog.
+      if (revisionStatus.state === "unknown") {
+        renderPricesSync("error", "Nie potwierdzono wersji cennika w arkuszu.");
+        updateDraftIndicator();
+        showStatus(
+          "Nie zapisano: nie udało się potwierdzić wersji cennika w arkuszu. " +
+            "Twoje zmiany są zachowane lokalnie — sprawdź połączenie i spróbuj ponownie.",
+          "error",
+          true
+        );
+        return;
+      }
+
+      if (revisionStatus.remoteRevision === null) {
+        renderPricesSync("error", "Arkusz nie zwraca wersji cennika.");
+        updateDraftIndicator();
+        showStatus(
+          "Nie zapisano: arkusz nie zwraca wersji cennika. Wymagana aktualizacja Apps Script " +
+            "(sekcja 8 instrukcji GAS). Twoje zmiany są zachowane lokalnie.",
+          "error",
+          true
+        );
+        return;
+      }
+
+      // Jedyna ścieżka zapisu: catalog.save z baseRevision. Stare prices_update /
+      // variants_update zapisywały katalog bez kontroli wersji i są wyłączone.
       try {
-        const flatPrices = buildFlatPrices(persisted);
-        const result = await savePricesToAppsScript(flatPrices);
+        const result = await saveCatalogToAppsScript({
+          prices: flatPrices,
+          variants: allVariants,
+          baseRevision: revisionStatus.remoteRevision,
+        });
+
         if (result.noToken) {
           clearAdminSession();
           window.location.hash = "#/";
           return;
         }
-        pricesOk = result.ok;
-        if (!result.ok) errorDetail = result.message;
-      } catch (err) {
-        console.error("Błąd wysyłki cennika do Apps Script:", err);
-        errorDetail = (err as Error)?.message;
-      }
 
-      let variantsOk = false;
-      try {
-        const allVariants = collectAllVariants();
-        const variantsResult = await saveVariantsToAppsScript(allVariants);
-        if (variantsResult.noToken) {
-          clearAdminSession();
-          window.location.hash = "#/";
+        if (result.ok) {
+          pricesOk = true;
+          variantsOk = true;
+          if (result.catalogRevision !== null) writeAppliedRevision(result.catalogRevision);
+        } else if (result.conflict) {
+          renderPricesSync("error", "Arkusz ma nowszą wersję cennika.");
+          updateDraftIndicator();
+          showStatus(
+            "Nie zapisano: ktoś zapisał cennik w tej samej chwili " +
+              `(wersja ${result.catalogRevision ?? "?"}). Nic nie zostało nadpisane, ` +
+              "Twoje zmiany są nadal lokalne. Odśwież ceny i zapisz ponownie.",
+            "error",
+            true
+          );
           return;
+        } else {
+          errorDetail = result.message;
         }
-        variantsOk = variantsResult.ok;
-        if (!variantsResult.ok) errorDetail = variantsResult.message ?? errorDetail;
       } catch (err) {
-        console.error("Błąd wysyłki wariantów do Apps Script:", err);
-        errorDetail = (err as Error)?.message ?? errorDetail;
+        console.error("Błąd zapisu katalogu do Apps Script:", err);
+        errorDetail = (err as Error)?.message;
       }
 
       // Znacznik dirty wolno zdjąć WYŁĄCZNIE po pełnym sukcesie obu zapisów.

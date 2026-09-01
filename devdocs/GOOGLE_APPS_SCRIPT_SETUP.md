@@ -957,3 +957,522 @@ W sekcji _Manage deployments_ sprawdź, który deployment ma status _Active_ i s
 2. W edytorze Apps Script otwórz **Executions** — sprawdź czy wywołanie się pojawiło i nie zgłosiło błędu.
 3. Sprawdź arkusz `Zamówienia` — nowy wiersz powinien mieć wypełnioną kolumnę S (`orderId`, format `RZ-XXXXXXXX`) i T (`RequestID`, UUID).
 4. Wyślij to samo zamówienie ponownie (bez zmiany `RequestID`) — arkusz powinien mieć nadal jeden wiersz, odpowiedź powinna zawierać ten sam `orderId`.
+
+---
+
+## 8) catalogRevision — synchronizacja cennika między stanowiskami (Faza 2)
+
+Kontrakt API: [`API_CATALOG_REVISION.md`](API_CATALOG_REVISION.md).
+
+Patch dopasowany do **aktualnego** `Code.gs` (arkusze `API_CENNIK` / `API_VARIANTS`,
+`SETTINGS_PIN_KEY`, `_verifyAdminSessionToken`, `withScriptLock`, `_json`,
+`respond`). Nie zmienia obsługi zamówień, kliknięć, PIN-u ani `prices.push` /
+`prices.pull`.
+
+Zakres zmian w istniejącym kodzie:
+
+- `VARIANTS_HEADERS` — 3 nowe kolumny (8.1),
+- `readVariants` i `handleVariantsUpdate` — obsługa tych kolumn (8.2, 8.4),
+- `handlePricesUpdate` — podbicie rewizji (8.4),
+- `doGet` — `action=getRevision` i dwa pola w `getState` (8.5),
+- `doPost` — routing `catalog.save` (8.6).
+
+### 8.0 Dlaczego kolumny wariantów muszą się zmienić
+
+`VARIANTS_HEADERS` ma dziś 11 kolumn i **gubi trzy pola**, które aplikacja
+utrzymuje w `VariantDefinition`:
+
+| Pole                  | Do czego służy                                                                 | Skutek utraty                                                          |
+| --------------------- | ------------------------------------------------------------------------------ | ---------------------------------------------------------------------- |
+| `subgroupSortOrder`   | kolejność całej podgrupy w kategorii                                           | po pobraniu z arkusza podgrupy ustawiają się w kolejności przypadkowej |
+| `calcScheme`          | sposób liczenia ceny podgrupy (`interpolated` / `flat-per-unit` / `flat-rate`) | podgrupa wraca do reguły domyślnej — **inna cena**                     |
+| `materialSizeOptions` | opisy materiał/format przy progach                                             | znikają z widoku klienta                                               |
+
+Dopóki tego nie naprawimy, „Odśwież ceny" na drugim stanowisku pobrałoby
+warianty bez tych pól i **zepsuło konfigurację**. Dlatego rozszerzenie kolumn
+jest częścią tego patcha, nie opcją. Kolumny dopisujemy na końcu, więc istniejące
+dane i ich kolejność zostają nietknięte, a `ensureSheet` sam poprawi nagłówek.
+
+### 8.1 Stałe — podmień `VARIANTS_HEADERS` i dopisz stałe rewizji
+
+```javascript
+const VARIANTS_HEADERS = [
+  "key",
+  "categoryId",
+  "subcategoryPrefix",
+  "subgroupLabel",
+  "label",
+  "legend",
+  "visibleInSettings",
+  "visibleInCalculator",
+  "sortOrder",
+  "createdAt",
+  "updatedAt",
+  "subgroupSortOrder",
+  "calcScheme",
+  "materialSizeOptions",
+];
+
+const CATALOG_REVISION_PROP = "CATALOG_REVISION";
+const CATALOG_UPDATED_AT_PROP = "CATALOG_UPDATED_AT";
+const CATALOG_LOCK_TIMEOUT_MS = 20000;
+```
+
+### 8.2 Helpery rewizji i zapisu — dopisz obok `readVariants`
+
+```javascript
+function readCatalogRevision() {
+  var raw = _getProps().getProperty(CATALOG_REVISION_PROP);
+  var n = parseInt(raw, 10);
+  return isNaN(n) || n < 0 ? 0 : n;
+}
+
+function readCatalogUpdatedAt() {
+  return _getProps().getProperty(CATALOG_UPDATED_AT_PROP) || "";
+}
+
+function bumpCatalogRevision() {
+  var props = _getProps();
+  var next = readCatalogRevision() + 1;
+  props.setProperty(CATALOG_REVISION_PROP, String(next));
+  props.setProperty(CATALOG_UPDATED_AT_PROP, new Date().toISOString());
+  return next;
+}
+
+// Odczyt całego katalogu pod TYM SAMYM lockiem, którego używa catalog.save.
+// Bez tego getState trafiony w środku zapisu mógłby zwrócić nowe ceny i stare
+// warianty albo rewizję bez pokrycia w danych — czyli katalog, który nigdy nie
+// istniał. Lock trzymamy wyłącznie na czas odczytu.
+function readCatalogStateLocked() {
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(CATALOG_LOCK_TIMEOUT_MS)) {
+    return null;
+  }
+  try {
+    return {
+      prices: readCennikAsObject(),
+      variants: readVariants(),
+      catalogRevision: readCatalogRevision(),
+      catalogUpdatedAt: readCatalogUpdatedAt(),
+    };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function _restoreCatalogRevision(revision, updatedAt) {
+  var props = _getProps();
+  props.setProperty(CATALOG_REVISION_PROP, String(revision));
+  if (updatedAt) {
+    props.setProperty(CATALOG_UPDATED_AT_PROP, updatedAt);
+  } else {
+    props.deleteProperty(CATALOG_UPDATED_AT_PROP);
+  }
+}
+
+function parseMaterialSizeOptions(raw) {
+  var s = String(raw || "").trim();
+  if (!s) return null;
+  try {
+    var parsed = JSON.parse(s);
+    return Array.isArray(parsed) ? parsed : null;
+  } catch (e) {
+    return null;
+  }
+}
+
+// Zapis BEZ locka — lock bierze wołający (withScriptLock albo handleCatalogSave).
+// Zagnieżdżone waitLock na drugim obiekcie Lock zakleszczyłoby wykonanie.
+function _writeCennikRows(prices) {
+  const sheet = ensureCennikSheet();
+  const lastRow = sheet.getLastRow();
+
+  if (lastRow > 1) {
+    sheet.getRange(2, 1, lastRow - 1, 2).clearContent();
+  }
+
+  const entries = Object.entries(prices || {});
+  for (var i = 0; i < entries.length; i += CHUNK_SIZE) {
+    const chunk = entries.slice(i, i + CHUNK_SIZE);
+    const rows = chunk
+      .map(function (pair) {
+        return [String(pair[0] || "").trim(), pair[1] === null ? "" : pair[1]];
+      })
+      .filter(function (row) {
+        return row[0] !== "";
+      });
+
+    if (rows.length > 0) {
+      sheet.getRange(2 + i, 1, rows.length, 2).setValues(rows);
+    }
+  }
+
+  return entries.length;
+}
+
+function _writeVariantRows(variants) {
+  const sheet = ensureVariantsSheet();
+  const lastRow = sheet.getLastRow();
+
+  if (lastRow > 1) {
+    sheet.getRange(2, 1, lastRow - 1, VARIANTS_HEADERS.length).clearContent();
+  }
+
+  const rows = (variants || [])
+    .map(function (v) {
+      return [
+        String(v.key || "").trim(),
+        String(v.categoryId || "").trim(),
+        String(v.subcategoryPrefix || "").trim(),
+        String(v.subgroupLabel || "").trim(),
+        String(v.label || "").trim(),
+        String(v.legend || "").trim(),
+        toBool(v.visibleInSettings, true),
+        toBool(v.visibleInCalculator, true),
+        Number(v.sortOrder) || 0,
+        String(v.createdAt || "").trim(),
+        String(v.updatedAt || "").trim(),
+        Number.isFinite(Number(v.subgroupSortOrder)) &&
+        v.subgroupSortOrder !== null &&
+        v.subgroupSortOrder !== ""
+          ? Number(v.subgroupSortOrder)
+          : "",
+        String(v.calcScheme || "").trim(),
+        Array.isArray(v.materialSizeOptions) && v.materialSizeOptions.length > 0
+          ? JSON.stringify(v.materialSizeOptions)
+          : "",
+      ];
+    })
+    .filter(function (row) {
+      return row[0] !== "";
+    });
+
+  for (var i = 0; i < rows.length; i += CHUNK_SIZE) {
+    const chunk = rows.slice(i, i + CHUNK_SIZE);
+    sheet.getRange(2 + i, 1, chunk.length, VARIANTS_HEADERS.length).setValues(chunk);
+  }
+
+  return rows.length;
+}
+```
+
+### 8.3 `readVariants` — podmień w całości
+
+Trzy nowe pola trafiają do odpowiedzi tylko wtedy, gdy komórka nie jest pusta.
+Wiersz zapisany przed patchem nie dostaje `undefined` — po prostu nie ma pola,
+a aplikacja stosuje wtedy reguły dla danych legacy.
+
+```javascript
+function readVariants() {
+  const sheet = ensureVariantsSheet();
+  const lastRow = sheet.getLastRow();
+  if (lastRow < 2) return [];
+
+  const data = sheet.getRange(2, 1, lastRow - 1, VARIANTS_HEADERS.length).getValues();
+
+  return data
+    .filter(function (row) {
+      return String(row[0] || "").trim();
+    })
+    .map(function (row) {
+      const variant = {
+        key: String(row[0] || "").trim(),
+        categoryId: String(row[1] || "").trim(),
+        subcategoryPrefix: String(row[2] || "").trim(),
+        subgroupLabel: String(row[3] || "").trim(),
+        label: String(row[4] || "").trim(),
+        legend: String(row[5] || "").trim(),
+        visibleInSettings: toBool(row[6], true),
+        visibleInCalculator: toBool(row[7], true),
+        sortOrder: Number(row[8]) || 0,
+        createdAt: String(row[9] || "").trim(),
+        updatedAt: String(row[10] || "").trim(),
+      };
+
+      const subgroupSortOrder = Number(row[11]);
+      if (
+        row[11] !== "" &&
+        row[11] !== null &&
+        row[11] !== undefined &&
+        Number.isFinite(subgroupSortOrder)
+      ) {
+        variant.subgroupSortOrder = subgroupSortOrder;
+      }
+
+      const calcScheme = String(row[12] || "").trim();
+      if (calcScheme) variant.calcScheme = calcScheme;
+
+      const materialSizeOptions = parseMaterialSizeOptions(row[13]);
+      if (materialSizeOptions) variant.materialSizeOptions = materialSizeOptions;
+
+      return variant;
+    });
+}
+```
+
+### 8.4 `handlePricesUpdate` i `handleVariantsUpdate` — podmień w całości
+
+Stare endpointy przestają zapisywać cokolwiek. Zapisywały katalog **bez
+`baseRevision`**, więc były furtką, którą starszy klient mógł nadpisać nowszy
+cennik — dokładnie to, co ten patch ma wykluczyć. Od teraz jedyną ścieżką zapisu
+cen i wariantów jest `catalog.save`.
+
+Odpowiedź `client_update_required` mówi wprost, co zrobić: zaktualizować
+aplikację (odświeżyć kartę). Nic nie jest zapisywane, `catalogRevision` nie rusza.
+
+```javascript
+function _clientUpdateRequired(what) {
+  Logger.log("ODRZUCONO " + what + " — wymagana aktualizacja klienta");
+  return _json({
+    ok: false,
+    error: "client_update_required",
+    catalogRevision: readCatalogRevision(),
+    message:
+      "Ta wersja aplikacji zapisuje cennik bez kontroli wersji i została wyłączona. " +
+      "Odśwież stronę (Ctrl+Shift+R), aby wczytać aktualną wersję, i zapisz ponownie.",
+  });
+}
+
+function handlePricesUpdate(prices) {
+  return _clientUpdateRequired("prices_update");
+}
+
+function handleVariantsUpdate(variants) {
+  return _clientUpdateRequired("variants_update");
+}
+```
+
+> Parametry `prices` / `variants` zostają w sygnaturach, żeby routing w `doPost`
+> nie wymagał zmian.
+
+**Zależność wdrożeniowa:** po wklejeniu tego patcha starsze karty aplikacji
+(otwarte przed wdrożeniem frontendu) nie zapiszą cennika — dostaną powyższy
+komunikat. To zamierzone: alternatywą jest ciche nadpisanie nowszego katalogu.
+
+### 8.5 `handleCatalogSave` — dopisz jako nową funkcję
+
+Zapis cennika i wariantów to dwie operacje na arkuszu. Jeśli druga padnie,
+funkcja przywraca stan sprzed zapisu i **nie podbija rewizji** — arkusz nigdy nie
+zostaje z nowymi cenami i starymi wariantami przy niezmienionej rewizji.
+
+Stan poprzedni czytamy PRZED wejściem w zapis, `readVariants()` po zmianie z 8.3
+zwraca komplet pól, więc odtworzenie jest bezstratne.
+
+```javascript
+function handleCatalogSave(data) {
+  const auth = _verifyAdminSessionToken(data);
+  if (!auth.ok) {
+    return _json({
+      ok: false,
+      error: auth.error === "pin_not_configured" ? "pin_not_configured" : "unauthorized",
+      message: "Brak ważnej sesji admina (" + auth.error + ").",
+    });
+  }
+
+  if (!data.prices || typeof data.prices !== "object" || Array.isArray(data.prices)) {
+    return _json({ ok: false, error: "bad_request", message: "Brak pola prices." });
+  }
+
+  if (!Array.isArray(data.variants)) {
+    return _json({ ok: false, error: "bad_request", message: "Brak pola variants." });
+  }
+
+  const baseRevision = parseInt(data.baseRevision, 10);
+  if (isNaN(baseRevision) || baseRevision < 0) {
+    return _json({
+      ok: false,
+      error: "missing_base_revision",
+      catalogRevision: readCatalogRevision(),
+      message: "Zapis wymaga pola baseRevision.",
+    });
+  }
+
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(CATALOG_LOCK_TIMEOUT_MS)) {
+    return _json({
+      ok: false,
+      error: "locked",
+      catalogRevision: readCatalogRevision(),
+      message: "Inny zapis cennika jest w toku. Spróbuj ponownie za chwilę.",
+    });
+  }
+
+  try {
+    const current = readCatalogRevision();
+
+    if (baseRevision !== current) {
+      Logger.log("catalog.save CONFLICT base=" + baseRevision + " current=" + current);
+      return _json({
+        ok: false,
+        error: "revision_conflict",
+        catalogRevision: current,
+        catalogUpdatedAt: readCatalogUpdatedAt(),
+        message:
+          "Arkusz zawiera nowszą wersję cennika (rev " + current + "). Nic nie zostało zapisane.",
+      });
+    }
+
+    // Snapshot do rollbacku — czytany PRZED jakimkolwiek zapisem. Obejmuje też
+    // licznik rewizji i jego znacznik czasu, bo bump należy do tej samej
+    // transakcji i przy błędzie musi zostać cofnięty.
+    const previousPrices = readCennikAsObject();
+    const previousVariants = readVariants();
+    const previousUpdatedAt = readCatalogUpdatedAt();
+
+    var pricesCount = 0;
+    var variantsCount = 0;
+    var next = current;
+
+    // Zapis cen, zapis wariantów, flush i podbicie rewizji to JEDNA sekcja:
+    // błąd na dowolnym kroku cofa wszystkie cztery. Rewizja rośnie DOPIERO po
+    // flushu, czyli po potwierdzonym utrwaleniu obu arkuszy — nigdy nie wskazuje
+    // na dane, których arkusz jeszcze nie przyjął.
+    try {
+      pricesCount = _writeCennikRows(data.prices);
+      variantsCount = _writeVariantRows(data.variants);
+      SpreadsheetApp.flush();
+      next = bumpCatalogRevision();
+    } catch (writeErr) {
+      Logger.log("catalog.save BŁĄD ZAPISU: " + writeErr + " — przywracam stan sprzed zapisu");
+
+      try {
+        _writeCennikRows(previousPrices);
+        _writeVariantRows(previousVariants);
+        _restoreCatalogRevision(current, previousUpdatedAt);
+        SpreadsheetApp.flush();
+      } catch (rollbackErr) {
+        Logger.log(
+          "catalog.save ROLLBACK NIEUDANY: " +
+            rollbackErr +
+            " | pierwotny błąd: " +
+            writeErr +
+            " | rev przywracana do " +
+            current +
+            " | pozycji w snapshocie: ceny=" +
+            Object.keys(previousPrices).length +
+            ", warianty=" +
+            previousVariants.length
+        );
+
+        return _json({
+          ok: false,
+          error: "rollback_failed",
+          catalogRevision: current,
+          message:
+            "Zapis nie powiódł się i nie udało się przywrócić poprzedniego cennika. " +
+            "Arkusz może być w stanie niespójnym — sprawdź API_CENNIK i API_VARIANTS " +
+            "przed kolejnym zapisem. Wersja katalogu pozostała " +
+            current +
+            ".",
+        });
+      }
+
+      return _json({
+        ok: false,
+        error: "server_error",
+        catalogRevision: current,
+        message: "Zapis nie powiódł się, przywrócono poprzedni cennik. Szczegóły: " + writeErr,
+      });
+    }
+
+    Logger.log(
+      "catalog.save OK rev=" + next + " prices=" + pricesCount + " variants=" + variantsCount
+    );
+
+    return _json({
+      ok: true,
+      catalogRevision: next,
+      catalogUpdatedAt: readCatalogUpdatedAt(),
+      savedAt: new Date().toISOString(),
+      count: { prices: pricesCount, variants: variantsCount },
+    });
+  } catch (err) {
+    return _json({ ok: false, error: "server_error", message: String(err) });
+  } finally {
+    lock.releaseLock();
+  }
+}
+```
+
+Rewizja rośnie **wyłącznie** po udanym zapisie obu arkuszy. Nieudany zapis
+zostawia rewizję bez zmian, więc klienci nadal widzą tę samą wersję katalogu
+i nikt nie dostanie fałszywego „są nowe ceny".
+
+### 8.6 `doGet` — dopisz `getRevision` i rozszerz `getState`
+
+W istniejącym `doGet`, obok pozostałych `if (action === ...)`.
+
+`getState` czyta wszystkie cztery pola pod tym samym `ScriptLock`, którego używa
+`catalog.save`, więc nigdy nie zwróci nowych cen ze starymi wariantami.
+`getRevision` locka nie bierze celowo — rewizja jest podbijana jednym zapisem
+właściwości na końcu udanej transakcji, więc odczyt zwraca albo starą, albo nową
+wartość, nigdy stan pośredni. Dzięki temu odpytywanie co 90 s nie konkuruje
+o lock z zapisem.
+
+```javascript
+if (action === "getRevision") {
+  return _json({
+    ok: true,
+    catalogRevision: readCatalogRevision(),
+    catalogUpdatedAt: readCatalogUpdatedAt(),
+  });
+}
+
+if (action === "getState") {
+  Logger.log("GET getState");
+  const state = readCatalogStateLocked();
+  if (!state) {
+    return _json({
+      ok: false,
+      error: "locked",
+      catalogRevision: readCatalogRevision(),
+      message: "Trwa zapis cennika. Spróbuj ponownie za chwilę.",
+    });
+  }
+  return ContentService.createTextOutput(JSON.stringify(state)).setMimeType(
+    ContentService.MimeType.JSON
+  );
+}
+```
+
+### 8.7 `doPost` — routing
+
+Dopisz **przed** blokiem `if (type === 'variants_update')`. Autoryzację robi
+`handleCatalogSave` (potrzebuje treści błędu), więc tutaj nie ma `_verifyAdminSessionToken`.
+
+```javascript
+if (type === "catalog.save") {
+  Logger.log("POST catalog.save base=" + data.baseRevision);
+  return handleCatalogSave(data);
+}
+```
+
+### 8.8 Weryfikacja po wdrożeniu
+
+1. **Deploy → Manage deployments → edytuj → New version** (URL bez zmian).
+2. `<URL>?action=getRevision` → `{"ok":true,"catalogRevision":0,...}`.
+3. Zapisz cennik z aplikacji → `?action=getRevision` pokazuje liczbę większą o 1,
+   a arkusz `API_VARIANTS` ma wypełnione kolumny L–N (`subgroupSortOrder`,
+   `calcScheme`, `materialSizeOptions`) dla podgrup, które ich używają.
+4. Test konfliktu z konsoli (podstaw URL i token z sesji admina) — przy rewizji
+   różnej od 0 odpowiedź musi mieć `error: "revision_conflict"`, a arkusz musi
+   zostać nietknięty:
+
+```javascript
+await (
+  await fetch(GAS, {
+    method: "POST",
+    headers: { "Content-Type": "text/plain" },
+    body: JSON.stringify({
+      type: "catalog.save",
+      token: TOKEN,
+      baseRevision: 0,
+      prices: {},
+      variants: [],
+    }),
+  })
+).json();
+```
+
+> **Uwaga:** krok 4 z poprawnym `baseRevision` nadpisałby cennik pustą mapą.
+> Testuj wyłącznie z celowo złym `baseRevision` (np. `0` przy rewizji > 0).
