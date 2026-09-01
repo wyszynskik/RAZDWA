@@ -71,6 +71,7 @@ Serwer wykonuje pod `LockService.getScriptLock()`, atomowo:
 | Zapis udany         | `{ "ok": true, "catalogRevision": 43, "catalogUpdatedAt": "…", "savedAt": "…" }`       |
 | Cudzy nowszy zapis  | `{ "ok": false, "error": "revision_conflict", "catalogRevision": 43, "message": "…" }` |
 | Brak/zły token      | `{ "ok": false, "error": "unauthorized", "message": "…" }`                             |
+| PIN nieustawiony    | `{ "ok": false, "error": "pin_not_configured", "message": "…" }`                       |
 | Brak `baseRevision` | `{ "ok": false, "error": "missing_base_revision", "catalogRevision": 43 }`             |
 | Lock zajęty         | `{ "ok": false, "error": "locked", "catalogRevision": 43 }`                            |
 | Wyjątek serwera     | `{ "ok": false, "error": "server_error", "message": "…" }`                             |
@@ -106,10 +107,27 @@ Zasady:
 - Brak sieci: odpytywanie cicho zawodzi, banner się nie pojawia, lokalne dane
   zostają nietknięte.
 
+## Kompletność wariantów w round-tripie
+
+`VariantDefinition` niesie trzy pola, których arkusz `API_VARIANTS` do tej pory
+nie zapisywał: `subgroupSortOrder` (kolejność podgrupy), `calcScheme` (sposób
+liczenia ceny) i `materialSizeOptions` (opisy materiał/format). Bez nich
+pobranie katalogu na drugim stanowisku psuło konfigurację — kolejność podgrup
+stawała się przypadkowa, a `calcScheme` wracał do reguły domyślnej, czyli
+**do innej ceny**.
+
+Patch rozszerza `VARIANTS_HEADERS` o te trzy kolumny (dopisane na końcu, więc
+istniejące dane zostają nietknięte). `materialSizeOptions` jest serializowane do
+JSON w jednej komórce. Wiersze zapisane przed patchem po prostu nie mają tych
+pól w odpowiedzi — aplikacja stosuje wtedy reguły dla danych legacy.
+
+Autoryzacja zapisu korzysta z istniejącego `_verifyAdminSessionToken(data)`
+(token sesji z `verifyPin`, `SETTINGS_PIN_KEY`), a nie z osobnego mechanizmu.
+
 ## Kompatybilność wsteczna
 
 - `prices_update` i `variants_update` zostają. Po udanym zapisie **też**
-  podbijają `catalogRevision` (pod tym samym lockiem), więc starszy klient nie
+  podbijają `catalogRevision` (pod `withScriptLock`), więc starszy klient nie
   desynchronizuje licznika. Nie sprawdzają `baseRevision` — starszy klient nadal
   może nadpisać nowszy katalog, dlatego wszystkie stanowiska trzeba zaktualizować.
 - Klient bez obsługi rewizji dostaje z `getState` dodatkowe pola i je ignoruje.
