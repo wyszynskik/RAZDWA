@@ -70,6 +70,7 @@ import { runMigrationIfNeeded } from "../services/priceMigrator";
 import { withConfigDirtySuppressed } from "../services/configSyncState";
 import { runSubgroupOrderMigrationIfNeeded } from "../services/subgroupOrderMigration";
 import { warmPriceCache, hasCachedPrices } from "../core/compat";
+import { reconcilePriceStore } from "../services/priceStoreSync";
 import { checkStartupConfig } from "../core/startGuard";
 import { categoryRegistry, eventBus } from "../bootstrap";
 import { registerBuiltinCategories } from "../domain/registerBuiltinCategories";
@@ -2394,8 +2395,11 @@ document.addEventListener("DOMContentLoaded", () => {
     syncVariantsToSubgroupsAtStartup();
     runSubgroupOrderMigrationIfNeeded();
   });
+  // Po migracji uzgadniamy IDB z cennikiem: to naprawia urządzenia, na których
+  // IDB zostało zamrożone przez jednorazową migrację, a ceny zmieniano później
+  // w panelu (reconcilePriceStore samo przeładowuje cache odczytu).
   runMigrationIfNeeded()
-    .then(() => warmPriceCache())
+    .then(() => reconcilePriceStore())
     .catch((err) => console.warn("[priceCache] startup error:", err));
   router.start();
 
@@ -2408,6 +2412,8 @@ document.addEventListener("DOMContentLoaded", () => {
       const remote = await fetchStateFromAppsScript();
       if (!remote) return;
 
+      let pricesFromRemoteApplied = false;
+
       // Dane przyszły z arkusza — zapisujemy je lokalnie jako cache, więc
       // znacznik dirty musi pozostać nietknięty (nie ma czego wysyłać z powrotem).
       withConfigDirtySuppressed(() => {
@@ -2415,6 +2421,7 @@ document.addEventListener("DOMContentLoaded", () => {
           const hasLocalPrices = Boolean(localStorage.getItem(PRICES_STORAGE_KEY));
           if (!hasLocalPrices) {
             setPrice("defaultPrices", remote.prices as Record<string, number | null>);
+            pricesFromRemoteApplied = true;
           }
           localStorage.setItem("razdwa_prices_ts", String(Date.now()));
         }
@@ -2429,6 +2436,12 @@ document.addEventListener("DOMContentLoaded", () => {
           }
         }
       });
+
+      // Bootstrap z arkusza (puste localStorage) musi objąć również cache
+      // odczytu, inaczej kalkulator liczyłby z wartości domyślnych z kodu.
+      if (pricesFromRemoteApplied) {
+        await reconcilePriceStore();
+      }
     } catch (err) {
       console.warn("[startupSync] fetchStateFromAppsScript failed:", err);
     }

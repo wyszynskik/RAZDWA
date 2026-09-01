@@ -1,5 +1,6 @@
 import { priceStore } from "./priceStore";
 import { warmPriceCache } from "../core/compat";
+import { mirrorPriceStoreToDefaultPrices } from "./priceStoreSync";
 import type { PriceRecord } from "../types/price-schema";
 import { getOrderExportConfig } from "./orderExportService";
 import { getAdminToken } from "../core/adminSession";
@@ -314,6 +315,10 @@ export async function pullPricesFromGas(): Promise<SyncResult> {
 
     const remoteRecords = data.records as PriceRecord[];
     const { merged, conflicts } = await mergeRemotePrices(remoteRecords);
+    // Rekordy weszły do IDB; cennik (localStorage + arkusz) jest źródłem prawdy
+    // dla kalkulatora, więc scalone ceny muszą trafić też tam — inaczej
+    // najbliższe uzgodnienie cofnęłoby pull.
+    await mirrorPriceStoreToDefaultPrices();
     await warmPriceCache();
 
     const syncedAt = new Date().toISOString();

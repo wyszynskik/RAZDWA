@@ -54,5 +54,7 @@ Endpoint backendu GAS jest konfiguracją **build-time**, nie runtime. Flow: GitH
 
 ## Decyzje architektoniczne
 
+- **Dwa magazyny cen, jedno źródło prawdy**: `defaultPrices` (localStorage `razdwa_prices` + arkusz GAS) jest źródłem prawdy, IndexedDB `razdwa-price-db/prices` wyłącznie cache'em odczytu dla `resolveStoredPrice()`. Każda ścieżka zapisu cennika (Zapisz cennik, import konfiguracji, reset, bootstrap z arkusza, start aplikacji) woła `reconcilePriceStore()` z `services/priceStoreSync.ts`; kierunek odwrotny (pull rekordów z GAS, edycja w panelu IDB) idzie przez `mirrorPriceStoreToDefaultPrices()` / `syncRecordToDefaultPrices()`. Bez tego edycja ceny była widoczna wyłącznie w panelu Ustawień, bo cache IDB — wypełniany jednorazową migracją — wygrywał przy odczycie.
+
 - **priceMigrator TODO-A** (`modifier-*`): klucze `modifier-express`, `modifier-satyna`, `modifier-express-vouchery` i in. są pomijane w migracji v1 (brak Modifier store). Efekt: modyfikatory działają przez `resolveStoredPrice()` z localStorage, nie z IDB. Domknięcie: `runModifierMigrationIfNeeded()` + Modifier store w ramach Etap 4 / sync.
 - **priceMigrator TODO-B** (`druk-cad-*`): klucze `druk-cad-*` trafiają do IDB z `category="druk"` (split po pierwszym segmencie). Efekt: żaden — app używa `getPrice("druk-cad")` z priceService, nie IDB. Domknięcie: ręczna korekta w panelu admina w Etapie 3.
