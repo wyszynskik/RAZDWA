@@ -206,7 +206,7 @@ export async function ensureAppliedRevision(): Promise<EnsureRevisionResult> {
       ok: false,
       revision: null,
       applied: false,
-      message: "Nie udało się połączyć z arkuszem, żeby ustalić wersję cennika.",
+      message: "Nie udało się pobrać cennika z arkusza, żeby ustalić jego wersję.",
     };
   }
 

@@ -4465,7 +4465,8 @@ export const UstawieniaView: View = {
         }
 
         showStatus(
-          `Nie zapisano. ${ensured.message ?? "Nie udało się ustalić wersji cennika w arkuszu."}`,
+          `Nie zapisano w arkuszu. ${ensured.message ?? "Nie udało się ustalić wersji cennika w arkuszu."} ` +
+            "Zmiany zapisano lokalnie.",
           "error",
           true
         );
@@ -4476,8 +4477,8 @@ export const UstawieniaView: View = {
         renderPricesSync("error", "Arkusz ma nowszą wersję cennika.");
         updateDraftIndicator();
         showStatus(
-          "Nie zapisano: cennik w arkuszu został w międzyczasie zmieniony na innym stanowisku " +
-            `(wersja ${revisionStatus.remoteRevision ?? "?"}). Twoje zmiany zostały zachowane lokalnie. ` +
+          "Nie zapisano w arkuszu: cennik został w międzyczasie zmieniony na innym stanowisku " +
+            `(wersja ${revisionStatus.remoteRevision ?? "?"}). Zmiany zapisano lokalnie. ` +
             "Użyj „Odśwież ceny” w komunikacie na dole ekranu, sprawdź swoje zmiany i zapisz ponownie.",
           "error",
           true
@@ -4492,8 +4493,8 @@ export const UstawieniaView: View = {
         renderPricesSync("error", "Nie potwierdzono wersji cennika w arkuszu.");
         updateDraftIndicator();
         showStatus(
-          "Nie zapisano: nie udało się potwierdzić wersji cennika w arkuszu. " +
-            "Twoje zmiany są zachowane lokalnie — sprawdź połączenie i spróbuj ponownie.",
+          "Nie zapisano w arkuszu: nie udało się potwierdzić wersji cennika. " +
+            "Zmiany zapisano lokalnie — sprawdź połączenie i spróbuj ponownie.",
           "error",
           true
         );
@@ -4504,8 +4505,8 @@ export const UstawieniaView: View = {
         renderPricesSync("error", "Arkusz nie zwraca wersji cennika.");
         updateDraftIndicator();
         showStatus(
-          "Nie zapisano: arkusz nie zwraca wersji cennika. Wymagana aktualizacja Apps Script " +
-            "(sekcja 8 instrukcji GAS). Twoje zmiany są zachowane lokalnie.",
+          "Nie zapisano w arkuszu: arkusz nie zwraca wersji cennika. Wymagana aktualizacja " +
+            "Apps Script (sekcja 8 instrukcji GAS). Zmiany zapisano lokalnie.",
           "error",
           true
         );
@@ -4535,9 +4536,9 @@ export const UstawieniaView: View = {
           renderPricesSync("error", "Arkusz ma nowszą wersję cennika.");
           updateDraftIndicator();
           showStatus(
-            "Nie zapisano: ktoś zapisał cennik w tej samej chwili " +
+            "Nie zapisano w arkuszu: ktoś zapisał cennik w tej samej chwili " +
               `(wersja ${result.catalogRevision ?? "?"}). Nic nie zostało nadpisane, ` +
-              "Twoje zmiany są nadal lokalne. Odśwież ceny i zapisz ponownie.",
+              "zmiany zapisano lokalnie. Odśwież ceny i zapisz ponownie.",
             "error",
             true
           );
