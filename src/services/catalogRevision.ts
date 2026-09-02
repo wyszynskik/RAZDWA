@@ -59,10 +59,19 @@ export function readAppliedUpdatedAt(): string | null {
   }
 }
 
+/**
+ * null/pusty string USUWA znacznik — inaczej nowa catalogRevision zapisana bez
+ * towarzyszącego catalogUpdatedAt (GAS tego pola nie zwrócił) zostawiałaby
+ * datę poprzedniej rewizji, a renderCatalogSyncNote() pokazałby nową wersję
+ * obok starej daty, czyli fałszywą informację.
+ */
 export function writeAppliedUpdatedAt(updatedAt: string | null): void {
-  if (!updatedAt) return;
   try {
     if (typeof localStorage === "undefined") return;
+    if (!updatedAt) {
+      localStorage.removeItem(CATALOG_UPDATED_AT_STORAGE_KEY);
+      return;
+    }
     localStorage.setItem(CATALOG_UPDATED_AT_STORAGE_KEY, updatedAt);
   } catch {
     // brak localStorage = brak trwałości, nie błąd krytyczny
