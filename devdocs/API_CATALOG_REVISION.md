@@ -142,10 +142,15 @@ Autoryzacja zapisu korzysta z istniejącego `_verifyAdminSessionToken(data)`
 
 ## Kompatybilność wsteczna
 
-- `prices_update` i `variants_update` zostają. Po udanym zapisie **też**
-  podbijają `catalogRevision` (pod `withScriptLock`), więc starszy klient nie
-  desynchronizuje licznika. Nie sprawdzają `baseRevision` — starszy klient nadal
-  może nadpisać nowszy katalog, dlatego wszystkie stanowiska trzeba zaktualizować.
+- `prices_update` i `variants_update` **nie zapisują już niczego i nie
+  podbijają `catalogRevision`**. Od patcha Faza 2 (`GOOGLE_APPS_SCRIPT_SETUP.md`
+  sekcja 8.4) obie funkcje zwracają wyłącznie
+  `{ ok: false, error: "client_update_required" }` z komunikatem o konieczności
+  odświeżenia aplikacji. To jedyna ścieżka zapisu — `catalog.save` — od
+  wdrożenia tego patcha. _(Poprzednia wersja tego akapitu twierdziła odwrotnie —
+  że stare endpointy nadal podbijają rewizję pod `withScriptLock`. To był opis
+  planu sprzed decyzji z sekcji 8.4, nie stan wdrożony; poprawione podczas
+  Discovery V3, 2026-09-02, po zestawieniu z rzeczywistym kodem patcha.)_
 - Klient bez obsługi rewizji dostaje z `getState` dodatkowe pola i je ignoruje.
 - Klient z obsługą rewizji wobec starego GAS-a (brak `catalogRevision` w
   odpowiedzi) działa jak dotąd: nie pokazuje bannera, zapis idzie starą ścieżką.
@@ -159,3 +164,78 @@ momencie między zapisami — wtedy nie wykona się także kod przywracający. R
 pozostaje wtedy stara, więc klienci nie dostają fałszywego „są nowe ceny", a
 sytuację sygnalizuje `rollback_failed` albo brak odpowiedzi. Pełna odporność
 wymagałaby zapisu przez staging sheet — poza zakresem tej fazy.
+
+## Zweryfikowany kontrakt (Discovery V3, 2026-09-02)
+
+Poniższe zostało potwierdzone jednym bezpiecznym `GET` (bez żadnego `POST`) do
+URL-a Apps Script z lokalnego `.env` tej maszyny. **Tożsamość tego deploymentu
+względem produkcji (GitHub Secret `GOOGLE_APPS_SCRIPT_URL` użyty przez
+`deploy.yml`) nie została potwierdzona w tym audycie** — porównanie prefiksów
+trzech znanych URL-i Web App (`.env` tej maszyny / „aktualny produkcyjny" wg
+pamięci projektu / legacy wg pamięci projektu) pokazuje trzy różne wartości.
+To jest pierwsza otwarta decyzja właściciela w planie operacyjnym PR 1–PR 6 —
+patrz `adr/G-catalog-snapshot-priceupdatedat.md` i sekcja „Otwarte decyzje"
+raportu discovery przekazanego właścicielowi.
+
+**`GET ?action=getRevision`, odpowiedź rzeczywista:**
+
+```json
+{ "ok": true, "catalogRevision": 0, "catalogUpdatedAt": "" }
+```
+
+**`GET ?action=getState`, odpowiedź rzeczywista (skrócona, pełny katalog miał
+~600 kluczy `prices` i 10 wpisów `variants`):**
+
+```json
+{
+  "prices": { "druk-bw-a4-1-5": 0.9, "...": "..." },
+  "variants": [{ "key": "...", "categoryId": "...", "...": "..." }],
+  "catalogRevision": 0,
+  "catalogUpdatedAt": ""
+}
+```
+
+Potwierdza dokładnie kształt opisany wyżej w sekcji `GET ?action=getState`:
+**brak pola `ok` w odpowiedzi sukcesu** — klient sprawdza wyłącznie
+`data.ok === false` (`orderExportService.ts:781`), więc brak pola jest
+poprawnie interpretowany jako sukces, nie błąd.
+
+**Redirect behavior (D0.7 — istotne dla każdego przyszłego workflow/`curl`):**
+bez `-L`, Apps Script zwraca `HTTP/1.1 302 Found` z pustym ciałem i nagłówkiem
+`Location: https://script.googleusercontent.com/macros/echo?...`. Właściwa
+odpowiedź JSON (`Content-Type: application/json; charset=utf-8`, `HTTP 200`)
+przychodzi dopiero z drugiego hopu. Node `fetch` (18+/20) podąża za
+przekierowaniem automatycznie; goły `curl` bez `-L` — nie. Każdy przyszły
+workflow snapshotu musi to uwzględnić w kliencie HTTP.
+
+**`catalogUpdatedAt` jako pusty string — potwierdzone empirycznie, nie tylko z
+kodu.** Zwrócona wartość to `""`, nie `null` i nie brak pola. Zgodne z
+`readCatalogUpdatedAt()` (`GOOGLE_APPS_SCRIPT_SETUP.md`: `return
+_getProps().getProperty(...) || ""`). Każdy walidator snapshotu (PR 4) musi
+tolerować ten stan bez traktowania go jako błąd parsowania, ale **nie może**
+uznać go za „katalog stabilny 12h" — `new Date("")` daje `Invalid Date`,
+więc warunek stabilności musi jawnie odrzucić pusty/niepoprawny
+`catalogUpdatedAt`, nie przepuścić go cicho.
+
+**Anomalia do wyjaśnienia przez właściciela:** testowany deployment zwrócił
+pełny, niepusty katalog (setki kluczy cenowych, warianty z `updatedAt` tak
+świeżym jak `2026-08-25`) **przy `catalogRevision: 0`**. Zgodnie z sekcją
+„Model" wyżej, rewizja `0` miała oznaczać pusty arkusz przed pierwszym
+zapisem — tu arkusz nie jest pusty. Najbardziej spójne wyjaśnienie z kodu: dane
+trafiły do arkusza przed wdrożeniem patcha Faza 2 (przez stary `prices_update`)
+albo przez ręczną edycję arkusza, a **żaden `catalog.save` nie zakończył się
+sukcesem na tym deploymencie od czasu wdrożenia patcha**. Jeśli to jest
+deployment produkcyjny, mechanizm snapshotu 12h nie ma punktu odniesienia do
+policzenia stabilności, dopóki `catalogUpdatedAt` nie zacznie się realnie
+zmieniać — wymaga to jednego świadomego „Zapisz cennik" z aplikacji i
+potwierdzenia, że `catalogRevision` wzrasta do `1`. Jeśli to deployment
+deweloperski/testowy, powyższe jest oczekiwanym stanem, nie błędem.
+
+**GET nie wymaga PIN-u/tokenu/OAuth** — potwierdzone empirycznie (GET zadziałał
+bez żadnego nagłówka autoryzacji), zgodne z kodem `doGet` (nie wywołuje
+`_verifyAdminSessionToken` dla `getState`/`getRevision`).
+
+**Błąd `locked` — niezweryfikowany empirycznie** (wymagałby wywołania
+współbieżnego zapisu, co naruszyłoby zakaz testowego zapisu podczas discovery).
+Kształt znany wyłącznie z kodu patcha:
+`{ ok: false, error: "locked", catalogRevision: <n> }`.
