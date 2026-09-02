@@ -9,7 +9,6 @@ import {
   pickTier,
   resolveStoredPrice,
   money,
-  readStoredPrices,
   mergeStoredQuantityTable,
 } from "./compat";
 
@@ -18,10 +17,14 @@ function tierRange(from: number, to: number): string {
   return to > 50000 ? `${from}+` : `${from}-${to}`;
 }
 
-/** Resolves price: stored value wins over hard-coded default. */
+/**
+ * Resolves price: stored value wins over hard-coded default.
+ * Delegates to resolveStoredPrice so IDB-cached overrides (the primary
+ * storage since the price-cache migration) are honored, not just the
+ * legacy localStorage fallback.
+ */
 function storedPrice(key: string, defaultUnit: number): number {
-  const stored = readStoredPrices();
-  return typeof stored[key] === "number" ? stored[key] : defaultUnit;
+  return resolveStoredPrice(key, defaultUnit);
 }
 
 /** A4/A3 Print calculation logic */
