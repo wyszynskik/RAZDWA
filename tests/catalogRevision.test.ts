@@ -17,6 +17,8 @@ import {
   parseRevision,
   readAppliedRevision,
   writeAppliedRevision,
+  readAppliedUpdatedAt,
+  writeAppliedUpdatedAt,
   CATALOG_REVISION_STORAGE_KEY,
 } from "../src/services/catalogRevision";
 import {
@@ -188,6 +190,24 @@ describe("compareRevision", () => {
     expect(parseRevision(1.5)).toBeNull();
     expect(parseRevision("abc")).toBeNull();
     expect(parseRevision(undefined)).toBeNull();
+  });
+});
+
+describe("catalogUpdatedAt lokalny — tylko do wyświetlenia", () => {
+  it("zapisuje i odczytuje znacznik czasu", () => {
+    withClient(makeStorage(), () => {
+      expect(readAppliedUpdatedAt()).toBeNull();
+      writeAppliedUpdatedAt("2026-09-01T12:31:07.882Z");
+      expect(readAppliedUpdatedAt()).toBe("2026-09-01T12:31:07.882Z");
+    });
+  });
+
+  it("pusta/brakująca wartość nie kasuje wcześniej zapisanego znacznika", () => {
+    withClient(makeStorage(), () => {
+      writeAppliedUpdatedAt("2026-09-01T12:31:07.882Z");
+      writeAppliedUpdatedAt(null);
+      expect(readAppliedUpdatedAt()).toBe("2026-09-01T12:31:07.882Z");
+    });
   });
 });
 

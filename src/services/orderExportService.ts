@@ -745,6 +745,8 @@ export interface RemoteCatalogState {
   variants: VariantDefinition[];
   /** null gdy GAS nie obsługuje jeszcze catalogRevision (stary Code.gs). */
   catalogRevision: number | null;
+  /** null gdy GAS nie zwraca jeszcze znacznika czasu katalogu. */
+  catalogUpdatedAt: string | null;
 }
 
 export async function fetchStateFromAppsScript(
@@ -770,6 +772,7 @@ export async function fetchStateFromAppsScript(
       prices?: unknown;
       variants?: unknown;
       catalogRevision?: unknown;
+      catalogUpdatedAt?: unknown;
     };
 
     // getState czyta katalog pod tym samym lockiem co zapis, więc trafiony
@@ -789,7 +792,12 @@ export async function fetchStateFromAppsScript(
         )
       : [];
 
-    return { prices, variants, catalogRevision: parseRevision(data.catalogRevision) };
+    return {
+      prices,
+      variants,
+      catalogRevision: parseRevision(data.catalogRevision),
+      catalogUpdatedAt: typeof data.catalogUpdatedAt === "string" ? data.catalogUpdatedAt : null,
+    };
   } catch {
     return null;
   } finally {
@@ -835,6 +843,8 @@ export interface CatalogSaveResult {
   ok: boolean;
   /** Rewizja po zapisie (ok) albo aktualna rewizja arkusza (konflikt). */
   catalogRevision: number | null;
+  /** Znacznik czasu towarzyszący catalogRevision (ok) albo aktualnemu stanowi arkusza (konflikt). */
+  catalogUpdatedAt: string | null;
   conflict?: boolean;
   noToken?: boolean;
   /** GAS nie zna typu catalog.save — wołający ma użyć starej ścieżki zapisu. */
@@ -860,13 +870,19 @@ export async function saveCatalogToAppsScript(
   config: OrderExportConfig = getOrderExportConfig()
 ): Promise<CatalogSaveResult> {
   if (!config.enabled || !config.appsScriptUrl) {
-    return { ok: false, catalogRevision: null, message: "Brak URL Apps Script Web App." };
+    return {
+      ok: false,
+      catalogRevision: null,
+      catalogUpdatedAt: null,
+      message: "Brak URL Apps Script Web App.",
+    };
   }
 
   if (config.dryRun) {
     return {
       ok: true,
       catalogRevision: payload.baseRevision + 1,
+      catalogUpdatedAt: new Date().toISOString(),
       message: "dry-run: katalog nie został wysłany.",
     };
   }
@@ -876,6 +892,7 @@ export async function saveCatalogToAppsScript(
     return {
       ok: false,
       catalogRevision: null,
+      catalogUpdatedAt: null,
       noToken: true,
       message: "Brak tokenu sesji. Zaloguj się ponownie do panelu ustawień.",
     };
@@ -901,24 +918,38 @@ export async function saveCatalogToAppsScript(
 
     const body = (await readAppsScriptBody(response)) as Record<string, unknown> | null;
     const revision = parseRevision(body?.catalogRevision);
+    const updatedAt = typeof body?.catalogUpdatedAt === "string" ? body.catalogUpdatedAt : null;
     const error = typeof body?.error === "string" ? body.error : "";
     const message = typeof body?.message === "string" ? body.message : "";
 
     if (body?.ok === true) {
-      return { ok: true, catalogRevision: revision, message };
+      return { ok: true, catalogRevision: revision, catalogUpdatedAt: updatedAt, message };
     }
 
     if (error === "revision_conflict") {
-      return { ok: false, catalogRevision: revision, conflict: true, message };
+      return {
+        ok: false,
+        catalogRevision: revision,
+        catalogUpdatedAt: updatedAt,
+        conflict: true,
+        message,
+      };
     }
 
     if (error === "unauthorized") {
-      return { ok: false, catalogRevision: revision, noToken: true, message };
+      return {
+        ok: false,
+        catalogRevision: revision,
+        catalogUpdatedAt: updatedAt,
+        noToken: true,
+        message,
+      };
     }
 
     return {
       ok: false,
       catalogRevision: revision,
+      catalogUpdatedAt: updatedAt,
       unsupported: !body || (!("ok" in body) && !error),
       message: message || `GAS odrzucił zapis katalogu (HTTP ${response.status}).`,
     };
@@ -927,6 +958,7 @@ export async function saveCatalogToAppsScript(
     return {
       ok: false,
       catalogRevision: null,
+      catalogUpdatedAt: null,
       message: isAbort
         ? "Przekroczono limit czasu zapisu katalogu."
         : `Nie udało się zapisać katalogu: ${(err as Error)?.message ?? "nieznany błąd"}.`,
