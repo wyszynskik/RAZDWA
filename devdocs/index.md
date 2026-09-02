@@ -71,6 +71,15 @@ npx tsc
 
 - [SUMMARY.md](../SUMMARY.md) - Podsumowanie refaktoryzacji PriceService
 
+### Katalog / live-sync / snapshot 12h (Discovery V3, w toku)
+
+- [adr/G-catalog-snapshot-priceupdatedat.md](adr/G-catalog-snapshot-priceupdatedat.md) - ADR: architektura docelowa, plan PR 1–PR 6
+- [COVERAGE_MATRIX.md](COVERAGE_MATRIX.md) - Mapa cen: kategoria → canonical key → resolver → test → status
+- [API_CATALOG_REVISION.md](API_CATALOG_REVISION.md) - Kontrakt GAS (getState/getRevision/catalog.save), sekcja "Zweryfikowany kontrakt"
+- [POC_OFFLINE_SERVICE_WORKER.md](POC_OFFLINE_SERVICE_WORKER.md) - Plan POC offline/Service Worker
+- [POC_SNAPSHOT_DEPLOY_CHAIN.md](POC_SNAPSHOT_DEPLOY_CHAIN.md) - Plan POC snapshot workflow → build/test → deploy
+- [PRICEUPDATEDAT_MIGRATION_PLAN.md](PRICEUPDATEDAT_MIGRATION_PLAN.md) - Plan migracji API_CENNIK 2→3 kolumny
+
 ## 🎓 Kluczowe koncepty
 
 ### PriceService
