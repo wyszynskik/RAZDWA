@@ -77,7 +77,11 @@ import {
   snoozeCatalogReminder,
   type CatalogStatus,
 } from "../services/catalogSync";
-import { writeAppliedRevision } from "../services/catalogRevision";
+import {
+  writeAppliedRevision,
+  readAppliedRevision,
+  readAppliedUpdatedAt,
+} from "../services/catalogRevision";
 import { checkStartupConfig } from "../core/startGuard";
 import { categoryRegistry, eventBus } from "../bootstrap";
 import { registerBuiltinCategories } from "../domain/registerBuiltinCategories";
@@ -485,6 +489,32 @@ const CATALOG_BANNER_ID = "catalogUpdateBanner";
 
 function hideCatalogBanner(): void {
   document.getElementById(CATALOG_BANNER_ID)?.remove();
+  renderCatalogSyncNote();
+}
+
+/**
+ * Mały, szary tekst pod panelem PIN/pracownika: ostatnia znana wersja
+ * cennika zastosowana na TYM stanowisku (nie stan arkusza — tylko to, co
+ * to urządzenie faktycznie ma). Czysto informacyjny, nic nie odświeża.
+ */
+function renderCatalogSyncNote(): void {
+  const el = document.getElementById("catalog-sync-note");
+  if (!el) return;
+
+  const revision = readAppliedRevision();
+  const updatedAt = readAppliedUpdatedAt();
+
+  if (revision === null || !updatedAt) {
+    el.textContent = "";
+    return;
+  }
+
+  const date = new Date(updatedAt);
+  const formatted = Number.isNaN(date.getTime())
+    ? updatedAt
+    : date.toLocaleDateString("pl-PL", { day: "2-digit", month: "2-digit", year: "numeric" });
+
+  el.textContent = `Ostatnia aktualizacja cennika: ${formatted} (wersja ${revision})`;
 }
 
 /**
@@ -2493,6 +2523,9 @@ document.addEventListener("DOMContentLoaded", () => {
     onBehind: showCatalogBanner,
     onCurrent: hideCatalogBanner,
   });
+
+  renderCatalogSyncNote();
+  eventEmitter.on("prices-updated", () => renderCatalogSyncNote());
 
   (async () => {
     const STARTUP_SYNC_TTL_MS = 4 * 60 * 60 * 1000;

@@ -17,6 +17,8 @@ import {
   parseRevision,
   readAppliedRevision,
   writeAppliedRevision,
+  readAppliedUpdatedAt,
+  writeAppliedUpdatedAt,
   CATALOG_REVISION_STORAGE_KEY,
 } from "../src/services/catalogRevision";
 import {
@@ -188,6 +190,35 @@ describe("compareRevision", () => {
     expect(parseRevision(1.5)).toBeNull();
     expect(parseRevision("abc")).toBeNull();
     expect(parseRevision(undefined)).toBeNull();
+  });
+});
+
+describe("catalogUpdatedAt lokalny — tylko do wyświetlenia", () => {
+  it("zapisuje i odczytuje poprawny znacznik czasu", () => {
+    withClient(makeStorage(), () => {
+      expect(readAppliedUpdatedAt()).toBeNull();
+      writeAppliedUpdatedAt("2026-09-01T12:31:07.882Z");
+      expect(readAppliedUpdatedAt()).toBe("2026-09-01T12:31:07.882Z");
+    });
+  });
+
+  // Celowe: nowa catalogRevision zapisana bez towarzyszącego catalogUpdatedAt
+  // (GAS tego pola nie zwrócił) nie może zostawić daty POPRZEDNIEJ rewizji —
+  // renderCatalogSyncNote() pokazałby wtedy nową wersję obok starej daty.
+  it("null usuwa istniejący znacznik czasu", () => {
+    withClient(makeStorage(), () => {
+      writeAppliedUpdatedAt("2026-09-01T12:31:07.882Z");
+      writeAppliedUpdatedAt(null);
+      expect(readAppliedUpdatedAt()).toBeNull();
+    });
+  });
+
+  it("pusty string usuwa istniejący znacznik czasu", () => {
+    withClient(makeStorage(), () => {
+      writeAppliedUpdatedAt("2026-09-01T12:31:07.882Z");
+      writeAppliedUpdatedAt("");
+      expect(readAppliedUpdatedAt()).toBeNull();
+    });
   });
 });
 

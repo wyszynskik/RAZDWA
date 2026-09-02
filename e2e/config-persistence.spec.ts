@@ -142,6 +142,55 @@ test.describe("trwałość konfiguracji podgrup", () => {
     await expect(page.locator("#sync-status-block")).toContainText("Niezapisane zmiany cennika");
   });
 
+  test("konflikt rewizji: lokalny zapis nie ginie, pojawia się bezpieczna akcja pobrania", async ({
+    page,
+  }) => {
+    // Stanowisko zna rewizję 1, ale arkusz odpowiada rewizją 2 — GAS jest
+    // osiągalny, ale zmienił się w międzyczasie na innym stanowisku. Ten
+    // handler zastępuje blanket stubAppsScript z beforeEach (LIFO routing),
+    // więc POST catalog.save nigdy nie powinien zostać wywołany — pre-flight
+    // getRevision musi zablokować zapis, zanim do tego dojdzie.
+    await page.addInitScript(() => {
+      localStorage.setItem("razdwa_catalog_revision", "1");
+    });
+    await page.route(/script\.google\.com/, (route) => {
+      const url = route.request().url();
+      if (route.request().method() === "GET" && url.includes("action=getRevision")) {
+        return route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            ok: true,
+            catalogRevision: 2,
+            catalogUpdatedAt: new Date().toISOString(),
+          }),
+        });
+      }
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ ok: false, message: "e2e: nie powinno się wywołać" }),
+      });
+    });
+
+    await openSettings(page);
+    await addSubgroupWithTier(page, SUBGROUP_NAME);
+    await savePrices(page);
+
+    // Lokalny zapis musi się udać mimo wykrytego konfliktu wersji.
+    const variants = await readVariants(page);
+    const created = variants.find((v: any) => v.subgroupLabel === SUBGROUP_NAME);
+    expect(created).toBeTruthy();
+    const dirtyAt = await page.evaluate(() => localStorage.getItem("razdwa_config_dirty_at"));
+    expect(dirtyAt).not.toBeNull();
+
+    // Komunikat musi mówić o konflikcie, nie o utracie danych, i dać bezpieczną
+    // akcję pobrania — bez automatycznego nadpisania czegokolwiek.
+    await expect(page.locator("#save-msg")).toContainText("W arkuszu istnieje nowszy cennik");
+    await expect(page.locator("#save-msg")).toContainText("pozostają lokalnie");
+    await expect(page.locator("#btn-fetch-remote")).toBeVisible();
+  });
+
   test("odtworzenie konfiguracji z eksportu na czystym stanie lokalnym", async ({ page }) => {
     await openSettings(page);
     await addSubgroupWithTier(page, SUBGROUP_NAME);

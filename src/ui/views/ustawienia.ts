@@ -74,8 +74,12 @@ import {
 } from "../../services/orderExportService";
 import { priceStore } from "../../services/priceStore";
 import { reconcilePriceStore, syncRecordToDefaultPrices } from "../../services/priceStoreSync";
-import { checkCatalogRevision, ensureAppliedRevision } from "../../services/catalogSync";
-import { writeAppliedRevision } from "../../services/catalogRevision";
+import {
+  checkCatalogRevision,
+  ensureAppliedRevision,
+  applyRemoteCatalog,
+} from "../../services/catalogSync";
+import { writeAppliedRevision, writeAppliedUpdatedAt } from "../../services/catalogRevision";
 import { warmPriceCache, getZeroPriceLabels, getZeroPriceDefaults } from "../../core/compat";
 import type { PriceRecord } from "../../types/price-schema";
 import {
@@ -2625,6 +2629,28 @@ export const UstawieniaView: View = {
       }
     }
 
+    // Zapis lokalny (localStorage/IndexedDB) zawsze kończy się sukcesem, zanim
+    // handler btn-save w ogóle spróbuje skontaktować się z GAS — te komunikaty
+    // opisują WYŁĄCZNIE stan synchronizacji z arkuszem, nigdy stan zapisu lokalnego.
+    // Nie ma automatycznego retry po odzyskaniu połączenia — kolejna próba
+    // synchronizacji następuje wyłącznie po ręcznym kliknięciu "Zapisz cennik".
+    // Komunikat musi to odzwierciedlać, inaczej obiecuje coś, czego kod nie robi.
+    const UNSYNCED_MESSAGE =
+      "Zmiany zapisano lokalnie, ale nie zapisano ich w arkuszu. " +
+      "Sprawdź połączenie i kliknij „Zapisz cennik”, aby ponowić synchronizację.";
+    const CONFLICT_MESSAGE =
+      "W arkuszu istnieje nowszy cennik. Twoje zmiany pozostają lokalnie i nie zostały wysłane do arkusza.";
+
+    function showFetchRemoteAction(show: boolean): void {
+      const btn = container.querySelector<HTMLButtonElement>("#btn-fetch-remote");
+      if (!btn) return;
+      btn.style.display = show ? "" : "none";
+      if (!show) {
+        btn.disabled = false;
+        btn.textContent = "📥 Pobierz ceny z arkusza";
+      }
+    }
+
     /**
      * Dokłada warianty wskazanej podgrupy do istniejącej listy draftów, żeby
      * licznik "niezsynchronizowane" i tak samo jak dotąd "Zapisz cennik"
@@ -2698,12 +2724,13 @@ export const UstawieniaView: View = {
       }
     }
 
-    type PricesSyncState = "saving" | "synced" | "error";
+    type PricesSyncState = "saving" | "synced" | "unsynced" | "conflict";
 
     const PRICES_SYNC_UI: Record<PricesSyncState, { icon: string; label: string }> = {
       saving: { icon: "⟳", label: "Zapisywanie…" },
       synced: { icon: "✓", label: "Zsynchronizowano" },
-      error: { icon: "✕", label: "Błąd zapisu" },
+      unsynced: { icon: "⏳", label: "Zapisano lokalnie — oczekuje na sync" },
+      conflict: { icon: "⚠", label: "Zapisano lokalnie — konflikt wersji" },
     };
 
     function renderPricesSync(state: PricesSyncState | null, detail?: string): void {
@@ -2716,7 +2743,10 @@ export const UstawieniaView: View = {
       }
 
       const ui = PRICES_SYNC_UI[state];
-      const labelText = state === "error" && detail ? `${ui.label}: ${detail}` : ui.label;
+      const labelText =
+        (state === "unsynced" || state === "conflict") && detail
+          ? `${ui.label}: ${detail}`
+          : ui.label;
       root.className = `prices-sync prices-sync--${state}`;
       root.style.display = "";
 
@@ -3808,6 +3838,7 @@ export const UstawieniaView: View = {
               </div>
 
               <div id="save-msg" class="settings-save-msg" style="display:none;"></div>
+              <button id="btn-fetch-remote" type="button" class="btn-secondary settings-action-btn" style="display:none;">📥 Pobierz ceny z arkusza</button>
             </div>
           </aside>
         </div>
@@ -4409,6 +4440,9 @@ export const UstawieniaView: View = {
         persistedLabels[key] = customPriceLabels[key] || getPriceLabel(key);
       });
 
+      // Zapis lokalny. Od tego miejsca w dół (rewizja, GAS, sieć) nic już go nie
+      // cofa — localStorage/IndexedDB mają nowe ceny, zanim padnie choć jedno
+      // zapytanie sieciowe. Reszta handlera dotyczy WYŁĄCZNIE synchronizacji.
       setPrice("defaultPrices", persisted);
       setPriceLabels(persistedLabels);
       setPriceSubgroups(customPriceSubgroups);
@@ -4425,8 +4459,9 @@ export const UstawieniaView: View = {
       syncAddCategorySelection();
       ctx?.emit?.("prices-updated", { timestamp: Date.now() });
 
-      showStatus("⏳ Zapisywanie do GAS…", "pending", true);
+      showStatus("⏳ Wysyłanie do arkusza…", "pending", true);
       renderPricesSync("saving");
+      showFetchRemoteAction(false);
 
       let pricesOk = false;
       let variantsOk = false;
@@ -4446,7 +4481,7 @@ export const UstawieniaView: View = {
       // blokuje TEN zapis — wysłać można dopiero ze znanej wersji.
       if (revisionStatus.appliedRevision === null) {
         const ensured = await ensureAppliedRevision();
-        renderPricesSync("error", "Nieznana wersja cennika w arkuszu.");
+        renderPricesSync("unsynced", "Nieznana wersja cennika w arkuszu.");
         updateDraftIndicator();
 
         if (ensured.applied) {
@@ -4465,7 +4500,7 @@ export const UstawieniaView: View = {
         }
 
         showStatus(
-          `Nie zapisano. ${ensured.message ?? "Nie udało się ustalić wersji cennika w arkuszu."}`,
+          `${UNSYNCED_MESSAGE} ${ensured.message ?? "Nie udało się ustalić wersji cennika w arkuszu."}`,
           "error",
           true
         );
@@ -4473,12 +4508,12 @@ export const UstawieniaView: View = {
       }
 
       if (revisionStatus.state === "behind") {
-        renderPricesSync("error", "Arkusz ma nowszą wersję cennika.");
+        renderPricesSync("conflict", "Arkusz ma nowszą wersję cennika.");
         updateDraftIndicator();
+        showFetchRemoteAction(true);
         showStatus(
-          "Nie zapisano: cennik w arkuszu został w międzyczasie zmieniony na innym stanowisku " +
-            `(wersja ${revisionStatus.remoteRevision ?? "?"}). Twoje zmiany zostały zachowane lokalnie. ` +
-            "Użyj „Odśwież ceny” w komunikacie na dole ekranu, sprawdź swoje zmiany i zapisz ponownie.",
+          `${CONFLICT_MESSAGE} (arkusz ma wersję ${revisionStatus.remoteRevision ?? "?"}). ` +
+            "Sprawdź swoje zmiany i użyj „Pobierz ceny z arkusza” albo zapisz ponownie po pobraniu.",
           "error",
           true
         );
@@ -4489,11 +4524,10 @@ export const UstawieniaView: View = {
       // chwilowo nieosiągalny albo odpowiedział błędem. Nie wysyłamy nic:
       // ślepy zapis pełnego cennika mógłby nadpisać cudzy nowszy katalog.
       if (revisionStatus.state === "unknown") {
-        renderPricesSync("error", "Nie potwierdzono wersji cennika w arkuszu.");
+        renderPricesSync("unsynced", "Nie potwierdzono wersji cennika w arkuszu.");
         updateDraftIndicator();
         showStatus(
-          "Nie zapisano: nie udało się potwierdzić wersji cennika w arkuszu. " +
-            "Twoje zmiany są zachowane lokalnie — sprawdź połączenie i spróbuj ponownie.",
+          `${UNSYNCED_MESSAGE} Nie udało się potwierdzić wersji cennika w arkuszu — sprawdź połączenie.`,
           "error",
           true
         );
@@ -4501,11 +4535,10 @@ export const UstawieniaView: View = {
       }
 
       if (revisionStatus.remoteRevision === null) {
-        renderPricesSync("error", "Arkusz nie zwraca wersji cennika.");
+        renderPricesSync("unsynced", "Arkusz nie zwraca wersji cennika.");
         updateDraftIndicator();
         showStatus(
-          "Nie zapisano: arkusz nie zwraca wersji cennika. Wymagana aktualizacja Apps Script " +
-            "(sekcja 8 instrukcji GAS). Twoje zmiany są zachowane lokalnie.",
+          `${UNSYNCED_MESSAGE} Arkusz nie zwraca wersji cennika — wymagana aktualizacja Apps Script (sekcja 8 instrukcji GAS).`,
           "error",
           true
         );
@@ -4531,13 +4564,14 @@ export const UstawieniaView: View = {
           pricesOk = true;
           variantsOk = true;
           if (result.catalogRevision !== null) writeAppliedRevision(result.catalogRevision);
+          writeAppliedUpdatedAt(result.catalogUpdatedAt);
         } else if (result.conflict) {
-          renderPricesSync("error", "Arkusz ma nowszą wersję cennika.");
+          renderPricesSync("conflict", "Arkusz ma nowszą wersję cennika.");
           updateDraftIndicator();
+          showFetchRemoteAction(true);
           showStatus(
-            "Nie zapisano: ktoś zapisał cennik w tej samej chwili " +
-              `(wersja ${result.catalogRevision ?? "?"}). Nic nie zostało nadpisane, ` +
-              "Twoje zmiany są nadal lokalne. Odśwież ceny i zapisz ponownie.",
+            `${CONFLICT_MESSAGE} (ktoś zapisał w tej samej chwili — wersja ${result.catalogRevision ?? "?"}). ` +
+              "Użyj „Pobierz ceny z arkusza” albo zapisz ponownie po pobraniu.",
             "error",
             true
           );
@@ -4562,23 +4596,80 @@ export const UstawieniaView: View = {
         }
         clearConfigDirty();
         renderPricesSync("synced");
+        showFetchRemoteAction(false);
         _draftVariantDefs = [];
         const backfillNote = _subgroupOrderBackfillPending
           ? " Kolejność podgrup została zapisana w arkuszu."
           : "";
         _subgroupOrderBackfillPending = false;
         updateDraftIndicator();
+        ctx?.emit?.("prices-updated", { timestamp: Date.now() });
         showStatus(
-          `✓ Konfiguracja została zapisana i zsynchronizowana z arkuszem.${backfillNote}`,
+          `✓ Cennik zapisany lokalnie i zsynchronizowany z arkuszem.${backfillNote}`,
           "success",
           true
         );
       } else {
-        renderPricesSync("error", errorDetail);
+        renderPricesSync("unsynced", errorDetail);
         updateDraftIndicator();
         showStatus(
-          "Zmiany zapisano lokalnie, ale nie zostały zsynchronizowane z arkuszem. " +
-            "Sprawdź połączenie i użyj „Zapisz cennik” ponownie.",
+          `${UNSYNCED_MESSAGE}${errorDetail ? ` Szczegóły: ${errorDetail}` : ""}`,
+          "error",
+          true
+        );
+      }
+    });
+
+    // Bezpieczna akcja przy konflikcie rewizji (pkt. 5): pobiera aktualny katalog
+    // z arkusza i nadpisuje nim lokalny stan — ale WYŁĄCZNIE po jawnym potwierdzeniu,
+    // że to świadome odrzucenie własnych, niezsynchronizowanych zmian.
+    container.querySelector("#btn-fetch-remote")?.addEventListener("click", async () => {
+      const proceed = confirm(
+        "Pobranie cennika z arkusza NADPISZE Twoje niezsynchronizowane zmiany lokalne. " +
+          "Tej operacji nie można cofnąć.\n\nKontynuować?"
+      );
+      if (!proceed) return;
+
+      const btn = container.querySelector<HTMLButtonElement>("#btn-fetch-remote");
+      if (btn) {
+        btn.disabled = true;
+        btn.textContent = "Pobieram…";
+      }
+
+      const result = await applyRemoteCatalog(true);
+
+      if (result.ok) {
+        prices = loadPrices();
+        customPriceLabels = {
+          ...loadPriceLabels(),
+          ...variantsToPriceLabels(getVariantDefinitions()),
+        };
+        customPriceSubgroups = mergeVariantSubgroupsIntoRegistry(
+          getPriceSubgroups(),
+          getVariantDefinitions()
+        );
+        renderTabs();
+        renderTable();
+        syncAddCategorySelection();
+        _draftVariantDefs = [];
+        clearConfigDirty();
+        showFetchRemoteAction(false);
+        renderPricesSync("synced");
+        updateDraftIndicator();
+        ctx?.emit?.("prices-updated", { timestamp: Date.now() });
+        showStatus(
+          `✓ Pobrano aktualny cennik z arkusza (wersja ${result.revision ?? "?"}). ` +
+            "Twoje poprzednie niezsynchronizowane zmiany zostały zastąpione.",
+          "success",
+          true
+        );
+      } else {
+        if (btn) {
+          btn.disabled = false;
+          btn.textContent = "📥 Pobierz ceny z arkusza";
+        }
+        showStatus(
+          `Nie udało się pobrać cennika z arkusza. ${result.message ?? ""}`.trim(),
           "error",
           true
         );

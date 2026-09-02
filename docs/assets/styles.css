@@ -633,6 +633,13 @@ button.ghost:hover {
   margin-top: 16px;
 }
 
+.catalog-sync-note {
+  font-size: 11px;
+  color: var(--text-secondary, #94a3b8);
+  margin-top: 10px;
+  line-height: 1.4;
+}
+
 .order-btn--primary {
   flex: 1;
   font-size: 15px;
@@ -3838,7 +3845,11 @@ a.employee-mode-btn {
   color: var(--success, #2c8c40);
 }
 
-.prices-sync--error .prices-sync-state {
+.prices-sync--unsynced .prices-sync-state {
+  color: #e67700;
+}
+
+.prices-sync--conflict .prices-sync-state {
   color: var(--danger, #c92a2a);
 }
 

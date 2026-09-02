@@ -21,6 +21,7 @@ import {
   compareRevision,
   readAppliedRevision,
   writeAppliedRevision,
+  writeAppliedUpdatedAt,
   type CatalogRevisionState,
 } from "./catalogRevision";
 import {
@@ -165,6 +166,7 @@ export async function applyCatalogState(remote: RemoteCatalogState): Promise<App
   if (remote.catalogRevision !== null) {
     writeAppliedRevision(remote.catalogRevision);
   }
+  writeAppliedUpdatedAt(remote.catalogUpdatedAt);
   clearCatalogSnooze();
 
   return { ok: true, revision: remote.catalogRevision ?? undefined };
