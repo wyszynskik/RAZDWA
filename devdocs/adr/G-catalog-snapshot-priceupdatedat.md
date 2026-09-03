@@ -1,8 +1,12 @@
-# G: Live-sync, snapshot 12h i priceUpdatedAt — ADR (Discovery, nie zaimplementowane)
+# G: Live-sync, snapshot 12h i priceUpdatedAt — ADR
 
-**Status**: Discovery zamknięte z werdyktem WARN — decyzje właściciela w toku, implementacja niezaczęta.
+**Status**: Snapshot 12h (sekcja 4) — **kod i testy gotowe** (branch
+`feat/catalog-snapshot-12h`), **trigger NIE zainstalowany** na żadnym GAS,
+zero zmian produkcyjnych. Reszta dokumentu (resolver PR 3, priceUpdatedAt PR 2,
+historia PR 6) — nadal wyłącznie plan, decyzje właściciela w toku.
 **Data discovery**: 2026-09-02 (Discovery V3, audyt read-only).
-**Powiązane**: [`API_CATALOG_REVISION.md`](../API_CATALOG_REVISION.md), [`COVERAGE_MATRIX.md`](../COVERAGE_MATRIX.md), [`POC_OFFLINE_SERVICE_WORKER.md`](../POC_OFFLINE_SERVICE_WORKER.md), [`POC_SNAPSHOT_DEPLOY_CHAIN.md`](../POC_SNAPSHOT_DEPLOY_CHAIN.md), [`PRICEUPDATEDAT_MIGRATION_PLAN.md`](../PRICEUPDATEDAT_MIGRATION_PLAN.md).
+**Data projektu snapshotu**: 2026-09-02/03 (plan v1 → v2 po korekcie właściciela).
+**Powiązane**: [`API_CATALOG_REVISION.md`](../API_CATALOG_REVISION.md), [`COVERAGE_MATRIX.md`](../COVERAGE_MATRIX.md), [`POC_OFFLINE_SERVICE_WORKER.md`](../POC_OFFLINE_SERVICE_WORKER.md), [`POC_SNAPSHOT_DEPLOY_CHAIN.md`](../POC_SNAPSHOT_DEPLOY_CHAIN.md), [`PRICEUPDATEDAT_MIGRATION_PLAN.md`](../PRICEUPDATEDAT_MIGRATION_PLAN.md), [`GOOGLE_APPS_SCRIPT_SETUP.md`](../GOOGLE_APPS_SCRIPT_SETUP.md) sekcja 9 (patch Code.gs).
 
 Ten dokument nie opisuje wdrożonego systemu. Opisuje **zaakceptowaną architekturę docelową** i **plan operacyjny PR 1–PR 6**, na podstawie audytu discovery, który zweryfikował dotychczasowe ustalenia dowodami z kodu i z jednego bezpiecznego GET do aktywnego Apps Script. Żaden z elementów opisanych niżej poza PR 1 (ten dokument i jego towarzysze) nie został jeszcze wdrożony.
 
@@ -39,30 +43,52 @@ Docelowy porządek (do zaimplementowania w PR 3, nie teraz):
 
 Wyjątek jawny, nie luka: `laminowanie-special-*` i sentinel „wycena ind." (`folia-szroniona-oklejanie`, `folia-szroniona-owv-oklejanie`, `CUSTOM_QUOTE_KEYS` w `compat.ts:220-223`) — tam `0`/custom-quote jest zamierzonym stanem biznesowym, nie brakiem danych. Resolver musi rozróżniać te dwa przypadki, nie traktować ich identycznie.
 
-## 4. Snapshot 12h — kontrakt danych
+## 4. Snapshot 12h — zaimplementowane (Faza 3), kod gotowy, trigger nieaktywny
+
+**Decyzja zmieniona względem pierwotnego planu w tej sekcji:** stabilność 12h
+nie jest liczona przez GitHub Actions (jak zakładała pierwsza wersja tego ADR
+i `POC_SNAPSHOT_DEPLOY_CHAIN.md`) — cała logika żyje **w GAS**, uruchamiana
+godzinowym time-driven triggerem. Uzasadnienie i pełny algorytm:
+`GOOGLE_APPS_SCRIPT_SETUP.md` sekcja 9. `POC_SNAPSHOT_DEPLOY_CHAIN.md`
+zachowuje aktualność wyłącznie dla osobnego, przyszłego kroku: zbudowania
+offline-bundlowanego fallbacku z już potwierdzonego, stabilnego snapshotu — nie
+dla samego wykrywania stabilności.
+
+Kontrakt danych — arkusz `API_CATALOG_SNAPSHOT`, append-only, jeden wiersz na
+stabilną `catalogRevision`:
 
 ```json
 {
   "schemaVersion": 1,
-  "catalogRevision": 42,
+  "snapshotRevision": 42,
   "catalogUpdatedAt": "2026-09-02T12:31:07.882Z",
-  "snapshottedAt": "2026-09-03T00:31:07.882Z",
+  "snapshotCreatedAt": "2026-09-03T00:31:07.882Z",
   "prices": {},
   "variants": []
 }
 ```
 
-Warunek utworzenia (workflow, PR 4):
+Warunek utworzenia (`runCatalogSnapshotIfStable`, GAS, wywoływana co godzinę):
 
 ```
 (now - catalogUpdatedAt) >= 12h
-AND remote catalogRevision != snapshot.catalogRevision
+AND snapshotRevision nie ma jeszcze wiersza w API_CATALOG_SNAPSHOT
+AND stan nie zmienił się między dwoma odczytami pod tym samym ScriptLock,
+    którego używa catalog.save (Lock A / Lock B — sekcja 9.3)
 AND pełny katalog przechodzi walidację
 ```
 
-Walidator **musi** odrzucić: `prices` puste/nie-obiekt, `variants` nie-array, oraz **musi failować głośno** (nie cicho pominąć) gdy `catalogUpdatedAt` jest pustym stringiem lub nie da się sparsować jako data — bo to oznacza brak punktu odniesienia dla „12h", nie „katalog świeży". Patrz anomalia w `API_CATALOG_REVISION.md`.
+Pusty/nieparsowalny `catalogUpdatedAt` → cichy no-op (nie błąd — to legalny
+stan przed pierwszym `catalog.save`, patrz anomalia w `API_CATALOG_REVISION.md`).
+Payload przekraczający limit komórki Google Sheets (50 000 znaków) → **fail-loud**
+(rzucony wyjątek, widoczny w Executions log), nie cichy skip.
 
-Snapshot: nie tworzy nowej `catalogRevision`, nie tworzy bannera, nie zapisuje nic do GAS, nie nadpisuje danych lokalnych.
+Snapshot: nie tworzy nowej `catalogRevision`, nie tworzy bannera, nie zapisuje
+nic do `API_CENNIK`/`API_VARIANTS`, nie nadpisuje danych lokalnych, nie dzieli
+locka z `catalog.save` dłużej niż pojedynczy krótki odczyt/zapis (nigdy nie
+opóźnia zapisu cennika).
+
+**Implementacja:** `src/services/catalogSnapshot.ts` (typ, klient `fetchCatalogSnapshot`, specyfikacja wykonywalna logiki decyzyjnej), testy w `tests/helpers/catalogSnapshotEngine.ts`, `tests/catalogSnapshotDecision.test.ts` i `tests/catalogSnapshotFetch.test.ts`, patch Code.gs w `GOOGLE_APPS_SCRIPT_SETUP.md` sekcja 9 (do ręcznego wklejenia). Trigger **nie został zainstalowany** na żadnym środowisku — instalacja jest osobnym, świadomym krokiem właściciela (sekcja 9.6 tamtego dokumentu), warunkowanym zamknięciem dwóch działań właścicielskich z Discovery V3 (provenance URL, zabezpieczenie lokalnych cen klientki).
 
 ## 5. Ryzyka nazwane wprost — Canvas, Wycinanie folii, Vouchery
 
