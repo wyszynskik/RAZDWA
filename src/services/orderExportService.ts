@@ -805,18 +805,15 @@ export async function fetchStateFromAppsScript(
   }
 }
 
-/**
- * Tani odczyt samej rewizji — używany przez odpytywanie (co 90 s, na
- * visibilitychange, online i przed zapisem). Nie ściąga całego katalogu.
- *
- * Zwraca null, gdy GAS jest niedostępny ALBO nie obsługuje jeszcze
- * catalogRevision; rozróżnienie tych dwóch przypadków nie zmienia zachowania
- * klienta — w obu nie ma czego porównywać.
- */
-export async function fetchCatalogRevision(
-  config: OrderExportConfig = getOrderExportConfig()
-): Promise<number | null> {
-  if (!config.enabled || !config.appsScriptUrl) return null;
+type CatalogRevisionAttempt =
+  | { kind: "ok"; revision: number | null }
+  | { kind: "http_error" }
+  | { kind: "network_error" };
+
+async function fetchCatalogRevisionOnce(
+  config: OrderExportConfig
+): Promise<CatalogRevisionAttempt> {
+  if (!config.enabled || !config.appsScriptUrl) return { kind: "network_error" };
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), config.timeoutMs);
@@ -828,15 +825,41 @@ export async function fetchCatalogRevision(
       mode: "cors",
       signal: controller.signal,
     });
-    if (!response.ok) return null;
+    if (!response.ok) return { kind: "http_error" };
 
     const data = (await response.json()) as { catalogRevision?: unknown };
-    return parseRevision(data.catalogRevision);
+    return { kind: "ok", revision: parseRevision(data.catalogRevision) };
   } catch {
-    return null;
+    // fetch rzucił: AbortError (timeout) albo błąd sieci — jedyne dwa
+    // przypadki, dla których warto ponowić raz. Odpowiedź serwera (nawet
+    // błędna) trafia do gałęzi "http_error" powyżej i NIE jest ponawiana.
+    return { kind: "network_error" };
   } finally {
     clearTimeout(timeout);
   }
+}
+
+/**
+ * Tani odczyt samej rewizji — używany przez odpytywanie (co 90 s, na
+ * visibilitychange, online i przed zapisem) oraz przez przycisk „Spróbuj
+ * ponownie pobrać wersję cennika".  Nie ściąga całego katalogu.
+ *
+ * Jeden retry WYŁĄCZNIE dla awarii sieci/timeoutu (fetch rzucił wyjątek) —
+ * odpowiedź HTTP (nawet z błędem) nigdy nie jest ponawiana, bo powtórzenie
+ * dałoby ten sam wynik i tylko wydłużyłoby oczekiwanie.
+ *
+ * Zwraca null, gdy GAS jest niedostępny ALBO nie obsługuje jeszcze
+ * catalogRevision; rozróżnienie tych dwóch przypadków nie zmienia zachowania
+ * klienta — w obu nie ma czego porównywać.
+ */
+export async function fetchCatalogRevision(
+  config: OrderExportConfig = getOrderExportConfig()
+): Promise<number | null> {
+  let attempt = await fetchCatalogRevisionOnce(config);
+  if (attempt.kind === "network_error") {
+    attempt = await fetchCatalogRevisionOnce(config);
+  }
+  return attempt.kind === "ok" ? attempt.revision : null;
 }
 
 export interface CatalogSaveResult {
@@ -982,12 +1005,19 @@ export interface PinSetResult {
   error?: "wrong_current" | "invalid_pin" | "offline" | "server_error";
 }
 
-async function pinPost(body: Record<string, unknown>): Promise<Record<string, unknown> | null> {
+const PIN_POST_TIMEOUT_MS = 8000;
+
+type PinPostAttempt =
+  | { kind: "response"; data: Record<string, unknown> }
+  | { kind: "not_configured" }
+  | { kind: "network_error" };
+
+async function pinPostOnce(body: Record<string, unknown>): Promise<PinPostAttempt> {
   const config = getOrderExportConfig();
-  if (!config.enabled || !config.appsScriptUrl) return null;
+  if (!config.enabled || !config.appsScriptUrl) return { kind: "not_configured" };
 
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 8000);
+  const timeoutId = setTimeout(() => controller.abort(), PIN_POST_TIMEOUT_MS);
   try {
     const response = await fetch(config.appsScriptUrl, {
       method: "POST",
@@ -996,13 +1026,33 @@ async function pinPost(body: Record<string, unknown>): Promise<Record<string, un
       body: JSON.stringify(body),
       signal: controller.signal,
     });
-    clearTimeout(timeoutId);
     const data = await readAppsScriptBody(response);
-    return data && typeof data === "object" ? (data as Record<string, unknown>) : null;
+    if (data && typeof data === "object") {
+      return { kind: "response", data: data as Record<string, unknown> };
+    }
+    // HTTP odpowiedział, ale bez sensownego ciała (np. pusta odpowiedź przy
+    // zerwanym połączeniu) — traktujemy jak awarię sieci, wolno ponowić.
+    return { kind: "network_error" };
   } catch {
+    // fetch rzucił: AbortError (timeout) albo błąd sieci.
+    return { kind: "network_error" };
+  } finally {
     clearTimeout(timeoutId);
-    return null;
   }
+}
+
+/**
+ * Jeden retry WYŁĄCZNIE dla awarii sieci/timeoutu. Gdy serwer faktycznie
+ * odpowiedział (choćby "wrong_pin", "rate_limited", "unauthorized" —
+ * cokolwiek z realnym ciałem JSON), wynik NIE jest ponawiany: powtórzenie
+ * dałoby ten sam błąd, a dla rate-limitu tylko przybliżyłoby blokadę.
+ */
+async function pinPost(body: Record<string, unknown>): Promise<Record<string, unknown> | null> {
+  let attempt = await pinPostOnce(body);
+  if (attempt.kind === "network_error") {
+    attempt = await pinPostOnce(body);
+  }
+  return attempt.kind === "response" ? attempt.data : null;
 }
 
 export async function verifyPinOnServer(pin?: string): Promise<PinVerifyResult> {
