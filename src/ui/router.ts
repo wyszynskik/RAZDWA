@@ -1,7 +1,8 @@
 import { View, ViewContext } from "./types";
 import { VIPERPRINT_URL } from "../core/external-links";
-import { verifyPinOnServer } from "../services/orderExportService";
+import { verifyPinOnServer, type PinVerifyResult } from "../services/orderExportService";
 import { isAdminSession, setAdminSession } from "../core/adminSession";
+import { createSingleFlightGuard } from "../core/singleFlight";
 import { mountDynamicSubgroupContainers } from "./dynamicSubgroups";
 import { BASE_PRICE_CATEGORIES } from "../core/productCat";
 import { hasNativeSubgroupRenderer } from "../core/variantKeys";
@@ -101,21 +102,32 @@ export class Router {
 
     pinInput?.focus();
 
+    // Klik na disabled <button> jest blokowany przez przeglądarkę, ale Enter
+    // w polu PIN wywołuje attempt() niezależnie od stanu przycisku — bez tej
+    // blokady kilka szybkich Enterów (typowe przy "kilku próbach" logowania)
+    // odpalało kilka równoległych verifyPinOnServer() naraz.
+    const pinGuard = createSingleFlightGuard();
+
     const attempt = async () => {
       const val = pinInput?.value ?? "";
       if (!val) return;
 
-      if (submitBtn) {
-        submitBtn.disabled = true;
-        submitBtn.textContent = "⏳";
-      }
-
-      const result = await verifyPinOnServer(val);
-
-      if (submitBtn) {
-        submitBtn.disabled = false;
-        submitBtn.textContent = "Zatwierdź";
-      }
+      const outcome = await pinGuard.run(async () => {
+        if (submitBtn) {
+          submitBtn.disabled = true;
+          submitBtn.textContent = "⏳";
+        }
+        try {
+          return await verifyPinOnServer(val);
+        } finally {
+          if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.textContent = "Zatwierdź";
+          }
+        }
+      });
+      if (outcome.skipped) return;
+      const result: PinVerifyResult = outcome.value;
 
       if (result.ok) {
         setAdminSession(result.token);

@@ -8,6 +8,7 @@ import {
 } from "../../core/productCat";
 import { logVariantOperation } from "../../core/variantLogger";
 import { clearAdminSession } from "../../core/adminSession";
+import { createSingleFlightGuard } from "../../core/singleFlight";
 import {
   buildQuantityKey,
   buildUniquePriceKey,
@@ -70,6 +71,7 @@ import {
 } from "../../services/subgroupBackfill";
 import {
   fetchStateFromAppsScript,
+  fetchCatalogRevision,
   saveCatalogToAppsScript,
 } from "../../services/orderExportService";
 import { priceStore } from "../../services/priceStore";
@@ -2583,6 +2585,9 @@ export const UstawieniaView: View = {
       _cleanup();
       _cleanup = null;
     }
+    // Blokada podwójnego kliknięcia "Zapisz cennik" — świeża przy każdym
+    // mount(), żeby po powrocie do widoku nikt nie zastał go "zablokowanego".
+    const saveGuard = createSingleFlightGuard();
 
     const _badPrices = [...new Set([...getZeroPriceLabels(), ...getZeroPriceDefaults()])];
     if (_badPrices.length > 0) {
@@ -2648,6 +2653,19 @@ export const UstawieniaView: View = {
       if (!show) {
         btn.disabled = false;
         btn.textContent = "📥 Pobierz ceny z arkusza";
+      }
+    }
+
+    // Bezpieczny odpowiednik #btn-fetch-remote dla stanu "nieznana rewizja":
+    // WYŁĄCZNIE GET getRevision, nigdy getState/import/odświeżenie/POST — bez
+    // ryzyka dla lokalnych, jeszcze niezapisanych cen (patrz handler poniżej).
+    function showRetryRevisionAction(show: boolean): void {
+      const btn = container.querySelector<HTMLButtonElement>("#btn-retry-revision");
+      if (!btn) return;
+      btn.style.display = show ? "" : "none";
+      if (!show) {
+        btn.disabled = false;
+        btn.textContent = "🔄 Spróbuj ponownie pobrać wersję cennika";
       }
     }
 
@@ -3838,6 +3856,7 @@ export const UstawieniaView: View = {
               </div>
 
               <div id="save-msg" class="settings-save-msg" style="display:none;"></div>
+              <button id="btn-retry-revision" type="button" class="btn-secondary settings-action-btn" style="display:none;">🔄 Spróbuj ponownie pobrać wersję cennika</button>
               <button id="btn-fetch-remote" type="button" class="btn-secondary settings-action-btn" style="display:none;">📥 Pobierz ceny z arkusza</button>
             </div>
           </aside>
@@ -4422,202 +4441,291 @@ export const UstawieniaView: View = {
     renderPricesSync(readPricesSyncedAt() ? "synced" : null);
 
     container.querySelector("#btn-save")?.addEventListener("click", async () => {
-      flushInputs();
+      const saveBtn = container.querySelector<HTMLButtonElement>("#btn-save");
+      const originalSaveLabel = saveBtn?.textContent ?? "💾 Zapisz cennik";
 
-      // Commit draft variant definitions do localStorage przed zapisem cennika.
-      // _draftVariantDefs NIE jest czyszczone tutaj — dopiero po potwierdzeniu GAS.
-      for (const dv of _draftVariantDefs) {
-        upsertVariantDefinition(dv);
-      }
+      // saveGuard.run() cicho pomija drugie wywołanie, dopóki poprzednie
+      // trwa — to samo zabezpieczenie co przy PIN (router.ts), tu chroni
+      // przed dwoma równoległymi catalog.save z dwóch szybkich kliknięć.
+      await saveGuard.run(async () => {
+        if (saveBtn) {
+          saveBtn.disabled = true;
+          saveBtn.textContent = "⏳ Zapisuję…";
+        }
+        // Pierwszy sygnał dla użytkowniczki MUSI pojawić się przed jakąkolwiek
+        // operacją asynchroniczną (IndexedDB, sieć) — inaczej klik przez cały
+        // czas ich trwania sprawia wrażenie braku jakiejkolwiek reakcji.
+        showStatus("⏳ Zapisywanie lokalnie…", "pending", true);
 
-      // Iterujemy pełne prices (wszystkie kategorie), nie tylko widoczne wiersze DOM.
-      // flushInputs() już zsynchronizował edytowalne pola aktywnej kategorii → prices.
-      const persisted: Record<string, number | null> = {};
-      const persistedLabels: PriceLabelMap = { ...customPriceLabels };
+        try {
+          flushInputs();
 
-      Object.entries(prices).forEach(([key, value]) => {
-        persisted[key] = typeof value === "number" && Number.isFinite(value) ? value : null;
-        persistedLabels[key] = customPriceLabels[key] || getPriceLabel(key);
-      });
+          // Commit draft variant definitions do localStorage przed zapisem cennika.
+          // _draftVariantDefs NIE jest czyszczone tutaj — dopiero po potwierdzeniu GAS.
+          for (const dv of _draftVariantDefs) {
+            upsertVariantDefinition(dv);
+          }
 
-      // Zapis lokalny. Od tego miejsca w dół (rewizja, GAS, sieć) nic już go nie
-      // cofa — localStorage/IndexedDB mają nowe ceny, zanim padnie choć jedno
-      // zapytanie sieciowe. Reszta handlera dotyczy WYŁĄCZNIE synchronizacji.
-      setPrice("defaultPrices", persisted);
-      setPriceLabels(persistedLabels);
-      setPriceSubgroups(customPriceSubgroups);
-      customPriceLabels = persistedLabels;
-      prices = loadPrices();
+          // Iterujemy pełne prices (wszystkie kategorie), nie tylko widoczne wiersze DOM.
+          // flushInputs() już zsynchronizował edytowalne pola aktywnej kategorii → prices.
+          const persisted: Record<string, number | null> = {};
+          const persistedLabels: PriceLabelMap = { ...customPriceLabels };
 
-      // Kalkulator i legendy czytają przez resolveStoredPrice(), które pyta
-      // NAJPIERW cache IndexedDB. Bez tego kroku nowa cena zostaje wyłącznie
-      // w localStorage i nigdzie poza panelem nie obowiązuje.
-      await reconcilePriceStore(persisted);
+          Object.entries(prices).forEach(([key, value]) => {
+            persisted[key] = typeof value === "number" && Number.isFinite(value) ? value : null;
+            persistedLabels[key] = customPriceLabels[key] || getPriceLabel(key);
+          });
 
-      renderTabs();
-      renderTable();
-      syncAddCategorySelection();
-      ctx?.emit?.("prices-updated", { timestamp: Date.now() });
-
-      showStatus("⏳ Wysyłanie do arkusza…", "pending", true);
-      renderPricesSync("saving");
-      showFetchRemoteAction(false);
-
-      let pricesOk = false;
-      let variantsOk = false;
-      let errorDetail: string | undefined;
-
-      const allVariants = collectAllVariants();
-      const flatPrices = buildFlatPrices(persisted);
-
-      // Przed zapisem sprawdzamy rewizję arkusza. Gdy ktoś zapisał w
-      // międzyczasie, NIE wysyłamy nic — inaczej nadpisalibyśmy cudzą pracę
-      // pełnym starym cennikiem. Zmiany zostają lokalnie ze znacznikiem dirty.
-      const revisionStatus = await checkCatalogRevision();
-
-      // Bez znanej rewizji nie wolno wysłać nic: baseRevision byłby zgadywany,
-      // a zgadnięty baseRevision to nadpisanie cudzej pracy. ensureAppliedRevision
-      // ustala rewizję (pobierając katalog, gdy nie ma lokalnych zmian) i zawsze
-      // blokuje TEN zapis — wysłać można dopiero ze znanej wersji.
-      if (revisionStatus.appliedRevision === null) {
-        const ensured = await ensureAppliedRevision();
-        renderPricesSync("unsynced", "Nieznana wersja cennika w arkuszu.");
-        updateDraftIndicator();
-
-        if (ensured.applied) {
+          // Zapis lokalny. Od tego miejsca w dół (rewizja, GAS, sieć) nic już go nie
+          // cofa — localStorage/IndexedDB mają nowe ceny, zanim padnie choć jedno
+          // zapytanie sieciowe. Reszta handlera dotyczy WYŁĄCZNIE synchronizacji.
+          setPrice("defaultPrices", persisted);
+          setPriceLabels(persistedLabels);
+          setPriceSubgroups(customPriceSubgroups);
+          customPriceLabels = persistedLabels;
           prices = loadPrices();
-          customPriceLabels = {
-            ...loadPriceLabels(),
-            ...variantsToPriceLabels(getVariantDefinitions()),
-          };
-          customPriceSubgroups = mergeVariantSubgroupsIntoRegistry(
-            getPriceSubgroups(),
-            getVariantDefinitions()
-          );
+
+          // Kalkulator i legendy czytają przez resolveStoredPrice(), które pyta
+          // NAJPIERW cache IndexedDB. Bez tego kroku nowa cena zostaje wyłącznie
+          // w localStorage i nigdzie poza panelem nie obowiązuje. openDB() ma
+          // teraz własny timeout/onblocked (priceStore.ts), więc to wywołanie
+          // nie może już wisieć w nieskończoność — ale nadal może potrwać, stąd
+          // osobny status tuż przed nim.
+          showStatus("⏳ Synchronizuję pamięć podręczną cen (IndexedDB)…", "pending", true);
+          await reconcilePriceStore(persisted);
+
           renderTabs();
           renderTable();
           syncAddCategorySelection();
+          ctx?.emit?.("prices-updated", { timestamp: Date.now() });
+
+          showStatus("⏳ Wysyłanie do arkusza…", "pending", true);
+          renderPricesSync("saving");
+          showFetchRemoteAction(false);
+          showRetryRevisionAction(false);
+
+          let pricesOk = false;
+          let variantsOk = false;
+          let errorDetail: string | undefined;
+
+          const allVariants = collectAllVariants();
+          const flatPrices = buildFlatPrices(persisted);
+
+          // Przed zapisem sprawdzamy rewizję arkusza. Gdy ktoś zapisał w
+          // międzyczasie, NIE wysyłamy nic — inaczej nadpisalibyśmy cudzą pracę
+          // pełnym starym cennikiem. Zmiany zostają lokalnie ze znacznikiem dirty.
+          const revisionStatus = await checkCatalogRevision();
+
+          // Bez znanej rewizji nie wolno wysłać nic: baseRevision byłby zgadywany,
+          // a zgadnięty baseRevision to nadpisanie cudzej pracy. ensureAppliedRevision
+          // ustala rewizję (pobierając katalog, gdy nie ma lokalnych zmian) i zawsze
+          // blokuje TEN zapis — wysłać można dopiero ze znanej wersji.
+          if (revisionStatus.appliedRevision === null) {
+            const ensured = await ensureAppliedRevision();
+            renderPricesSync("unsynced", "Nieznana wersja cennika w arkuszu.");
+            updateDraftIndicator();
+
+            if (ensured.applied) {
+              prices = loadPrices();
+              customPriceLabels = {
+                ...loadPriceLabels(),
+                ...variantsToPriceLabels(getVariantDefinitions()),
+              };
+              customPriceSubgroups = mergeVariantSubgroupsIntoRegistry(
+                getPriceSubgroups(),
+                getVariantDefinitions()
+              );
+              renderTabs();
+              renderTable();
+              syncAddCategorySelection();
+            }
+
+            // Rewizja dalej nieznana (np. arkusz nieosiągalny) → pokaż dedykowany,
+            // lekki przycisk zamiast każdorazowego ponawiania całego "Zapisz
+            // cennik". Rewizja już ustalona (nawet bez apply, np. dirty-path
+            // ensureAppliedRevision) → przycisk zbędny, kolejne "Zapisz cennik"
+            // pójdzie normalną ścieżką.
+            showRetryRevisionAction(ensured.revision === null);
+
+            showStatus(
+              `${UNSYNCED_MESSAGE} ${ensured.message ?? "Nie udało się ustalić wersji cennika w arkuszu."}`,
+              "error",
+              true
+            );
+            return;
+          }
+
+          showRetryRevisionAction(false);
+
+          if (revisionStatus.state === "behind") {
+            renderPricesSync("conflict", "Arkusz ma nowszą wersję cennika.");
+            updateDraftIndicator();
+            showFetchRemoteAction(true);
+            showStatus(
+              `${CONFLICT_MESSAGE} (arkusz ma wersję ${revisionStatus.remoteRevision ?? "?"}). ` +
+                "Sprawdź swoje zmiany i użyj „Pobierz ceny z arkusza” albo zapisz ponownie po pobraniu.",
+              "error",
+              true
+            );
+            return;
+          }
+
+          // Rewizja nieznana po stronie arkusza, choć stanowisko już ją znało → GAS
+          // chwilowo nieosiągalny albo odpowiedział błędem. Nie wysyłamy nic:
+          // ślepy zapis pełnego cennika mógłby nadpisać cudzy nowszy katalog.
+          if (revisionStatus.state === "unknown") {
+            renderPricesSync("unsynced", "Nie potwierdzono wersji cennika w arkuszu.");
+            updateDraftIndicator();
+            showStatus(
+              `${UNSYNCED_MESSAGE} Nie udało się potwierdzić wersji cennika w arkuszu — sprawdź połączenie.`,
+              "error",
+              true
+            );
+            return;
+          }
+
+          if (revisionStatus.remoteRevision === null) {
+            renderPricesSync("unsynced", "Arkusz nie zwraca wersji cennika.");
+            updateDraftIndicator();
+            showStatus(
+              `${UNSYNCED_MESSAGE} Arkusz nie zwraca wersji cennika — wymagana aktualizacja Apps Script (sekcja 8 instrukcji GAS).`,
+              "error",
+              true
+            );
+            return;
+          }
+
+          // Jedyna ścieżka zapisu: catalog.save z baseRevision. Stare prices_update /
+          // variants_update zapisywały katalog bez kontroli wersji i są wyłączone.
+          try {
+            const result = await saveCatalogToAppsScript({
+              prices: flatPrices,
+              variants: allVariants,
+              baseRevision: revisionStatus.remoteRevision,
+            });
+
+            if (result.noToken) {
+              // Wcześniej: cichy wyrzut na stronę główną bez żadnego komunikatu —
+              // klientka widziała identyczny "brak reakcji" jak przy zawieszeniu
+              // IndexedDB. Toast żyje poza #viewContainer (main.ts), więc
+              // przetrwa zmianę hasha poniżej.
+              ctx?.showToast?.(
+                result.message ?? "Sesja wygasła. Zaloguj się ponownie do panelu ustawień.",
+                "error"
+              );
+              clearAdminSession();
+              window.location.hash = "#/";
+              return;
+            }
+
+            if (result.ok) {
+              pricesOk = true;
+              variantsOk = true;
+              if (result.catalogRevision !== null) writeAppliedRevision(result.catalogRevision);
+              writeAppliedUpdatedAt(result.catalogUpdatedAt);
+            } else if (result.conflict) {
+              renderPricesSync("conflict", "Arkusz ma nowszą wersję cennika.");
+              updateDraftIndicator();
+              showFetchRemoteAction(true);
+              showStatus(
+                `${CONFLICT_MESSAGE} (ktoś zapisał w tej samej chwili — wersja ${result.catalogRevision ?? "?"}). ` +
+                  "Użyj „Pobierz ceny z arkusza” albo zapisz ponownie po pobraniu.",
+                "error",
+                true
+              );
+              return;
+            } else {
+              errorDetail = result.message;
+            }
+          } catch (err) {
+            console.error("Błąd zapisu katalogu do Apps Script:", err);
+            errorDetail = (err as Error)?.message;
+          }
+
+          // Znacznik dirty wolno zdjąć WYŁĄCZNIE po pełnym sukcesie obu zapisów.
+          // Częściowy sukces zostawia stan lokalny i znacznik nietknięte — inaczej UI
+          // twierdziłoby, że arkusz zna dane, których nie dostał.
+          if (pricesOk && variantsOk) {
+            try {
+              localStorage.setItem(PRICES_SYNCED_AT_KEY, new Date().toISOString());
+              localStorage.setItem("razdwa_prices_ts", "0");
+            } catch {
+              /* localStorage niedostępny — pomijamy */
+            }
+            clearConfigDirty();
+            renderPricesSync("synced");
+            showFetchRemoteAction(false);
+            showRetryRevisionAction(false);
+            _draftVariantDefs = [];
+            const backfillNote = _subgroupOrderBackfillPending
+              ? " Kolejność podgrup została zapisana w arkuszu."
+              : "";
+            _subgroupOrderBackfillPending = false;
+            updateDraftIndicator();
+            ctx?.emit?.("prices-updated", { timestamp: Date.now() });
+            showStatus(
+              `✓ Cennik zapisany lokalnie i zsynchronizowany z arkuszem.${backfillNote}`,
+              "success",
+              true
+            );
+          } else {
+            renderPricesSync("unsynced", errorDetail);
+            updateDraftIndicator();
+            showStatus(
+              `${UNSYNCED_MESSAGE}${errorDetail ? ` Szczegóły: ${errorDetail}` : ""}`,
+              "error",
+              true
+            );
+          }
+        } finally {
+          if (saveBtn) {
+            saveBtn.disabled = false;
+            saveBtn.textContent = originalSaveLabel;
+          }
         }
+      });
+    });
 
-        showStatus(
-          `${UNSYNCED_MESSAGE} ${ensured.message ?? "Nie udało się ustalić wersji cennika w arkuszu."}`,
-          "error",
-          true
-        );
-        return;
-      }
+    // Bezpieczny odpowiednik "#btn-fetch-remote" dla stanu "nieznana rewizja"
+    // (patrz showRetryRevisionAction powyżej): wykonuje WYŁĄCZNIE GET
+    // getRevision. Bez confirm(), bez getState, bez importu/odświeżenia cen,
+    // bez POST — sukces tylko zapisuje numer rewizji (writeAppliedRevision),
+    // nigdy nie dotyka cen/wariantów/etykiet klientki.
+    container.querySelector("#btn-retry-revision")?.addEventListener("click", async () => {
+      const btn = container.querySelector<HTMLButtonElement>("#btn-retry-revision");
+      if (!btn || btn.disabled) return; // blokada podwójnego kliknięcia
 
-      if (revisionStatus.state === "behind") {
-        renderPricesSync("conflict", "Arkusz ma nowszą wersję cennika.");
-        updateDraftIndicator();
-        showFetchRemoteAction(true);
-        showStatus(
-          `${CONFLICT_MESSAGE} (arkusz ma wersję ${revisionStatus.remoteRevision ?? "?"}). ` +
-            "Sprawdź swoje zmiany i użyj „Pobierz ceny z arkusza” albo zapisz ponownie po pobraniu.",
-          "error",
-          true
-        );
-        return;
-      }
+      btn.disabled = true;
+      btn.textContent = "⏳ Sprawdzam wersję…";
+      showStatus("⏳ Sprawdzam wersję cennika w arkuszu (GET getRevision)…", "pending", true);
 
-      // Rewizja nieznana po stronie arkusza, choć stanowisko już ją znało → GAS
-      // chwilowo nieosiągalny albo odpowiedział błędem. Nie wysyłamy nic:
-      // ślepy zapis pełnego cennika mógłby nadpisać cudzy nowszy katalog.
-      if (revisionStatus.state === "unknown") {
-        renderPricesSync("unsynced", "Nie potwierdzono wersji cennika w arkuszu.");
-        updateDraftIndicator();
-        showStatus(
-          `${UNSYNCED_MESSAGE} Nie udało się potwierdzić wersji cennika w arkuszu — sprawdź połączenie.`,
-          "error",
-          true
-        );
-        return;
-      }
-
-      if (revisionStatus.remoteRevision === null) {
-        renderPricesSync("unsynced", "Arkusz nie zwraca wersji cennika.");
-        updateDraftIndicator();
-        showStatus(
-          `${UNSYNCED_MESSAGE} Arkusz nie zwraca wersji cennika — wymagana aktualizacja Apps Script (sekcja 8 instrukcji GAS).`,
-          "error",
-          true
-        );
-        return;
-      }
-
-      // Jedyna ścieżka zapisu: catalog.save z baseRevision. Stare prices_update /
-      // variants_update zapisywały katalog bez kontroli wersji i są wyłączone.
+      let revision: number | null = null;
       try {
-        const result = await saveCatalogToAppsScript({
-          prices: flatPrices,
-          variants: allVariants,
-          baseRevision: revisionStatus.remoteRevision,
-        });
-
-        if (result.noToken) {
-          clearAdminSession();
-          window.location.hash = "#/";
-          return;
-        }
-
-        if (result.ok) {
-          pricesOk = true;
-          variantsOk = true;
-          if (result.catalogRevision !== null) writeAppliedRevision(result.catalogRevision);
-          writeAppliedUpdatedAt(result.catalogUpdatedAt);
-        } else if (result.conflict) {
-          renderPricesSync("conflict", "Arkusz ma nowszą wersję cennika.");
-          updateDraftIndicator();
-          showFetchRemoteAction(true);
-          showStatus(
-            `${CONFLICT_MESSAGE} (ktoś zapisał w tej samej chwili — wersja ${result.catalogRevision ?? "?"}). ` +
-              "Użyj „Pobierz ceny z arkusza” albo zapisz ponownie po pobraniu.",
-            "error",
-            true
-          );
-          return;
-        } else {
-          errorDetail = result.message;
-        }
-      } catch (err) {
-        console.error("Błąd zapisu katalogu do Apps Script:", err);
-        errorDetail = (err as Error)?.message;
+        revision = await fetchCatalogRevision();
+      } finally {
+        btn.disabled = false;
+        btn.textContent = "🔄 Spróbuj ponownie pobrać wersję cennika";
       }
 
-      // Znacznik dirty wolno zdjąć WYŁĄCZNIE po pełnym sukcesie obu zapisów.
-      // Częściowy sukces zostawia stan lokalny i znacznik nietknięte — inaczej UI
-      // twierdziłoby, że arkusz zna dane, których nie dostał.
-      if (pricesOk && variantsOk) {
-        try {
-          localStorage.setItem(PRICES_SYNCED_AT_KEY, new Date().toISOString());
-          localStorage.setItem("razdwa_prices_ts", "0");
-        } catch {
-          /* localStorage niedostępny — pomijamy */
-        }
-        clearConfigDirty();
-        renderPricesSync("synced");
-        showFetchRemoteAction(false);
-        _draftVariantDefs = [];
-        const backfillNote = _subgroupOrderBackfillPending
-          ? " Kolejność podgrup została zapisana w arkuszu."
-          : "";
-        _subgroupOrderBackfillPending = false;
-        updateDraftIndicator();
-        ctx?.emit?.("prices-updated", { timestamp: Date.now() });
+      if (revision === null) {
         showStatus(
-          `✓ Cennik zapisany lokalnie i zsynchronizowany z arkuszem.${backfillNote}`,
-          "success",
-          true
-        );
-      } else {
-        renderPricesSync("unsynced", errorDetail);
-        updateDraftIndicator();
-        showStatus(
-          `${UNSYNCED_MESSAGE}${errorDetail ? ` Szczegóły: ${errorDetail}` : ""}`,
+          `${UNSYNCED_MESSAGE} Nie udało się pobrać wersji cennika (GET getRevision) — sprawdź połączenie.`,
           "error",
           true
         );
+        return;
       }
+
+      writeAppliedRevision(revision);
+      showRetryRevisionAction(false);
+      renderPricesSync("unsynced", `Wersja cennika ustalona (${revision}).`);
+      updateDraftIndicator();
+      showStatus(
+        `✓ Ustalono wersję cennika w arkuszu (${revision}). Twoje lokalne zmiany są nienaruszone — ` +
+          "kliknij „Zapisz cennik” ponownie, aby je zapisać.",
+        "success",
+        true
+      );
     });
 
     // Bezpieczna akcja przy konflikcie rewizji (pkt. 5): pobiera aktualny katalog
@@ -4701,6 +4809,11 @@ export const UstawieniaView: View = {
     }
 
     function exportConfiguration(suffix = ""): void {
+      // Bez tego świeże wartości wpisane w widocznej tabeli, ale jeszcze nie
+      // przepisane do `prices` (dzieje się to dopiero przy zmianie zakładki
+      // albo "Zapisz cennik" — patrz flushInputs()), byłyby cicho pomijane w
+      // kopii bezpieczeństwa.
+      flushInputs();
       const file = buildConfigExport(collectConfigExportData());
       downloadConfigFile(
         serializeConfigExport(file),
