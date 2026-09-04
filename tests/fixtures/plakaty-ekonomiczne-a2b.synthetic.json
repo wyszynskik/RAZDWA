@@ -1,0 +1,106 @@
+{
+  "format": "razdwa-configuration",
+  "version": 1,
+  "exportedAt": "2000-01-01T00:00:00.000Z",
+  "data": {
+    "prices": {
+      "plakaty-maly-canon-margin-170-ekonomiczne-z-marginesem-a4-130g-10-szt-10-szt": 49,
+      "plakaty-maly-canon-margin-170-ekonomiczne-z-marginesem-a4-130g-10-szt-ekonomiczne-a4-130g-10-szt": 49,
+      "plakaty-a4-a3-inny-kontrolny-produkt-1": 15,
+      "maly-canon-kontrolny-produkt-1": 20,
+      "uslugi-kontrolna-uslugą-1": 5
+    },
+    "priceLabels": {
+      "plakaty-maly-canon-margin-170-ekonomiczne-z-marginesem-a4-130g-10-szt-10-szt": "10 szt",
+      "plakaty-maly-canon-margin-170-ekonomiczne-z-marginesem-a4-130g-10-szt-ekonomiczne-a4-130g-10-szt": "EKONOMICZNE (A4) 130G - 10 szt",
+      "plakaty-a4-a3-inny-kontrolny-produkt-1": "Kontrolny produkt plakatowy",
+      "maly-canon-kontrolny-produkt-1": "Kontrolny produkt Mały Canon",
+      "uslugi-kontrolna-uslugą-1": "Kontrolna usługa"
+    },
+    "variants": [
+      {
+        "key": "plakaty-maly-canon-margin-170-ekonomiczne-z-marginesem-a4-130g-10-szt-10-szt",
+        "categoryId": "plakaty-a4-a3",
+        "subcategoryPrefix": "plakaty-maly-canon-margin-170-ekonomiczne-z-marginesem-a4-130g-10-szt-",
+        "subgroupLabel": "EKONOMICZNE z marginesem (A4) 130G - 10 szt",
+        "label": "10 szt",
+        "legend": "",
+        "visibleInSettings": true,
+        "visibleInCalculator": true,
+        "sortOrder": 0,
+        "createdAt": "2000-01-01T00:00:00.000Z",
+        "updatedAt": "2000-01-01T00:00:00.000Z"
+      },
+      {
+        "key": "plakaty-maly-canon-margin-170-ekonomiczne-z-marginesem-a4-130g-10-szt-ekonomiczne-a4-130g-10-szt",
+        "categoryId": "plakaty-a4-a3",
+        "subcategoryPrefix": "plakaty-maly-canon-margin-170-ekonomiczne-z-marginesem-a4-130g-10-szt-",
+        "subgroupLabel": "",
+        "label": "EKONOMICZNE (A4) 130G - 10 szt",
+        "legend": "",
+        "visibleInSettings": true,
+        "visibleInCalculator": true,
+        "sortOrder": 1,
+        "createdAt": "2000-01-01T00:00:00.000Z",
+        "updatedAt": "2000-01-01T00:00:00.000Z"
+      },
+      {
+        "key": "plakaty-a4-a3-inny-kontrolny-produkt-1",
+        "categoryId": "plakaty-a4-a3",
+        "subcategoryPrefix": "plakaty-a4-a3-inny-kontrolny-produkt-",
+        "subgroupLabel": "Inny kontrolny produkt plakatowy",
+        "label": "Kontrolny produkt plakatowy",
+        "legend": "",
+        "visibleInSettings": true,
+        "visibleInCalculator": true,
+        "sortOrder": 0,
+        "createdAt": "2000-01-01T00:00:00.000Z",
+        "updatedAt": "2000-01-01T00:00:00.000Z"
+      },
+      {
+        "key": "maly-canon-kontrolny-produkt-1",
+        "categoryId": "maly-canon",
+        "subcategoryPrefix": "maly-canon-kontrolny-produkt-",
+        "subgroupLabel": "Kontrolna podgrupa Mały Canon",
+        "label": "Kontrolny produkt Mały Canon",
+        "legend": "",
+        "visibleInSettings": true,
+        "visibleInCalculator": true,
+        "sortOrder": 0,
+        "createdAt": "2000-01-01T00:00:00.000Z",
+        "updatedAt": "2000-01-01T00:00:00.000Z"
+      },
+      {
+        "key": "uslugi-kontrolna-uslugą-1",
+        "categoryId": "uslugi",
+        "subcategoryPrefix": "uslugi-kontrolna-uslugą-",
+        "subgroupLabel": "Kontrolna podgrupa usług",
+        "label": "Kontrolna usługa",
+        "legend": "",
+        "visibleInSettings": true,
+        "visibleInCalculator": true,
+        "sortOrder": 0,
+        "createdAt": "2000-01-01T00:00:00.000Z",
+        "updatedAt": "2000-01-01T00:00:00.000Z"
+      }
+    ],
+    "subgroups": {
+      "plakaty-a4-a3": {
+        "plakaty-maly-canon-margin-170-ekonomiczne-z-marginesem-a4-130g-10-szt-": {
+          "label": "EKONOMICZNE z marginesem (A4) 130G - 10 szt",
+          "sortOrder": 0
+        },
+        "plakaty-a4-a3-inny-kontrolny-produkt-": {
+          "label": "Inny kontrolny produkt plakatowy",
+          "sortOrder": 1
+        }
+      },
+      "maly-canon": {
+        "maly-canon-kontrolny-produkt-": {
+          "label": "Kontrolna podgrupa Mały Canon",
+          "sortOrder": 0
+        }
+      }
+    }
+  }
+}
