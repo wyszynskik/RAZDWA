@@ -29,11 +29,19 @@ const CAD_FILE_HARD_MB = 80;
 const CAD_FILE_WARN_BYTES = CAD_FILE_WARN_MB * 1024 * 1024;
 const CAD_FILE_HARD_BYTES = CAD_FILE_HARD_MB * 1024 * 1024;
 
+// Numer generacji bieżącego montażu widoku. initLogic() czeka na
+// loadCadExtraOptions() przed podpięciem listenerów — jeśli w tym oknie
+// router zdąży zamontować widok ponownie (np. re-render po zmianie trybu
+// Express), poprzednia, nieaktualna instancja initLogic() musi się wycofać
+// zamiast podpinać duplikaty listenerów pod te same checkboxy nagłówka.
+let mountGeneration = 0;
+
 export const CadUploadView: View = {
   id: "cad-upload",
   name: "CAD Upload plików",
 
   async mount(container: HTMLElement, ctx: ViewContext) {
+    mountGeneration++;
     try {
       const response = await fetch("categories/cad-upload.html");
       if (!response.ok) throw new Error("Failed to load template");
@@ -45,6 +53,7 @@ export const CadUploadView: View = {
   },
 
   async initLogic(container: HTMLElement, ctx: ViewContext) {
+    const myMountGeneration = mountGeneration;
     // DOM elements
     const dropZone =
       container.querySelector<HTMLElement>("#cadDropZone") ||
@@ -59,6 +68,7 @@ export const CadUploadView: View = {
     const optEmail = container.querySelector<HTMLInputElement>("#optEmail");
     // Dynamically render extra CAD options from JSON
     const extraOptions = await loadCadExtraOptions();
+    if (myMountGeneration !== mountGeneration) return;
     const extraOptionsMap = Object.fromEntries(extraOptions.map((opt) => [opt.id, opt]));
 
     // Render extra options in the UI
