@@ -150,7 +150,8 @@ function matchesExpectedB(
       found.subgroupLabel !== exp.subgroupLabel ||
       found.label !== exp.label ||
       found.calcScheme !== exp.calcScheme ||
-      JSON.stringify(found.materialSizeOptions ?? []) !== JSON.stringify(exp.materialSizeOptions ?? [])
+      JSON.stringify(found.materialSizeOptions ?? []) !==
+        JSON.stringify(exp.materialSizeOptions ?? [])
     ) {
       return false;
     }
@@ -175,7 +176,12 @@ export function planMigration(before: CatalogState, config: MigrationConfig): Mi
       after: before,
       diff: emptyDiff(),
       backupPlan: buildBackupPlan(before),
-      validationReport: { ok: false, issues: [priceIssue], legacyRemovalWasNoop: false, bCreationWasNoop: false },
+      validationReport: {
+        ok: false,
+        issues: [priceIssue],
+        legacyRemovalWasNoop: false,
+        bCreationWasNoop: false,
+      },
     };
   }
 
@@ -192,9 +198,13 @@ export function planMigration(before: CatalogState, config: MigrationConfig): Mi
   const existingBVariants = before.variants.filter((v) => v.subcategoryPrefix === B_PREFIX);
   const bAlreadyExists = existingBVariants.length > 0;
   const bCreationWasNoop =
-    bAlreadyExists && matchesExpectedB(existingBVariants, expectedBVariants, before.prices, expectedBPrices);
+    bAlreadyExists &&
+    matchesExpectedB(existingBVariants, expectedBVariants, before.prices, expectedBPrices);
   if (bAlreadyExists && !bCreationWasNoop) {
-    issues.push({ code: "B_CONFLICT", reason: "existing B variants do not match the expected model" });
+    issues.push({
+      code: "B_CONFLICT",
+      reason: "existing B variants do not match the expected model",
+    });
   }
 
   if (issues.length > 0) {
@@ -318,11 +328,13 @@ export function computeDiff(before: CatalogState, after: CatalogState): CatalogD
 
   const registryEntriesBefore = new Set<string>();
   for (const [categoryId, prefixes] of Object.entries(before.subgroups)) {
-    for (const prefix of Object.keys(prefixes)) registryEntriesBefore.add(`${categoryId}::${prefix}`);
+    for (const prefix of Object.keys(prefixes))
+      registryEntriesBefore.add(`${categoryId}::${prefix}`);
   }
   const registryEntriesAfter = new Set<string>();
   for (const [categoryId, prefixes] of Object.entries(after.subgroups)) {
-    for (const prefix of Object.keys(prefixes)) registryEntriesAfter.add(`${categoryId}::${prefix}`);
+    for (const prefix of Object.keys(prefixes))
+      registryEntriesAfter.add(`${categoryId}::${prefix}`);
   }
   const subgroupsRemoved = [...registryEntriesBefore]
     .filter((e) => !registryEntriesAfter.has(e))
@@ -348,7 +360,8 @@ export function computeDiff(before: CatalogState, after: CatalogState): CatalogD
       before.variants.find((x) => x.key === v) ?? after.variants.find((x) => x.key === v);
     if (variant) touchedCategories.add(variant.categoryId);
   }
-  for (const entry of [...subgroupsRemoved, ...subgroupsAdded]) touchedCategories.add(entry.categoryId);
+  for (const entry of [...subgroupsRemoved, ...subgroupsAdded])
+    touchedCategories.add(entry.categoryId);
 
   return {
     prices: { removed: pricesRemoved, added: pricesAdded, modified: pricesModified },
@@ -367,40 +380,58 @@ const ALLOWED_DELETE_KEYS = new Set([LEGACY_KEY_A1, LEGACY_KEY_A2]);
  */
 export function assertScope(diff: CatalogDiff): ValidationIssue | null {
   for (const key of diff.prices.removed) {
-    if (!ALLOWED_DELETE_KEYS.has(key)) return { code: "SCOPE_VIOLATION", detail: `prices.removed: ${key}` };
+    if (!ALLOWED_DELETE_KEYS.has(key))
+      return { code: "SCOPE_VIOLATION", detail: `prices.removed: ${key}` };
   }
   for (const key of diff.prices.added) {
-    if (!key.startsWith(B_PREFIX)) return { code: "SCOPE_VIOLATION", detail: `prices.added: ${key}` };
+    if (!key.startsWith(B_PREFIX))
+      return { code: "SCOPE_VIOLATION", detail: `prices.added: ${key}` };
   }
   if (diff.prices.modified.length > 0) {
-    return { code: "SCOPE_VIOLATION", detail: `prices.modified: ${diff.prices.modified.join(",")}` };
+    return {
+      code: "SCOPE_VIOLATION",
+      detail: `prices.modified: ${diff.prices.modified.join(",")}`,
+    };
   }
 
   for (const key of diff.priceLabels.removed) {
-    if (!ALLOWED_DELETE_KEYS.has(key)) return { code: "SCOPE_VIOLATION", detail: `priceLabels.removed: ${key}` };
+    if (!ALLOWED_DELETE_KEYS.has(key))
+      return { code: "SCOPE_VIOLATION", detail: `priceLabels.removed: ${key}` };
   }
   for (const key of diff.priceLabels.added) {
-    if (!key.startsWith(B_PREFIX)) return { code: "SCOPE_VIOLATION", detail: `priceLabels.added: ${key}` };
+    if (!key.startsWith(B_PREFIX))
+      return { code: "SCOPE_VIOLATION", detail: `priceLabels.added: ${key}` };
   }
   if (diff.priceLabels.modified.length > 0) {
-    return { code: "SCOPE_VIOLATION", detail: `priceLabels.modified: ${diff.priceLabels.modified.join(",")}` };
+    return {
+      code: "SCOPE_VIOLATION",
+      detail: `priceLabels.modified: ${diff.priceLabels.modified.join(",")}`,
+    };
   }
 
   for (const key of diff.variants.removed) {
-    if (!ALLOWED_DELETE_KEYS.has(key)) return { code: "SCOPE_VIOLATION", detail: `variants.removed: ${key}` };
+    if (!ALLOWED_DELETE_KEYS.has(key))
+      return { code: "SCOPE_VIOLATION", detail: `variants.removed: ${key}` };
   }
   for (const key of diff.variants.added) {
-    if (!key.startsWith(B_PREFIX)) return { code: "SCOPE_VIOLATION", detail: `variants.added: ${key}` };
+    if (!key.startsWith(B_PREFIX))
+      return { code: "SCOPE_VIOLATION", detail: `variants.added: ${key}` };
   }
 
   for (const entry of diff.subgroups.removed) {
     if (entry.categoryId !== LEGACY_CATEGORY_ID || entry.prefix !== LEGACY_PREFIX) {
-      return { code: "SCOPE_VIOLATION", detail: `subgroups.removed: ${entry.categoryId}::${entry.prefix}` };
+      return {
+        code: "SCOPE_VIOLATION",
+        detail: `subgroups.removed: ${entry.categoryId}::${entry.prefix}`,
+      };
     }
   }
   for (const entry of diff.subgroups.added) {
     if (entry.categoryId !== B_CATEGORY_ID || entry.prefix !== B_PREFIX) {
-      return { code: "SCOPE_VIOLATION", detail: `subgroups.added: ${entry.categoryId}::${entry.prefix}` };
+      return {
+        code: "SCOPE_VIOLATION",
+        detail: `subgroups.added: ${entry.categoryId}::${entry.prefix}`,
+      };
     }
   }
 
@@ -411,10 +442,16 @@ export function assertScope(diff: CatalogDiff): ValidationIssue | null {
   }
 
   if (diff.prices.removed.length > 0 && diff.prices.removed.length !== 2) {
-    return { code: "SCOPE_VIOLATION", detail: `expected exactly 2 removed prices, got ${diff.prices.removed.length}` };
+    return {
+      code: "SCOPE_VIOLATION",
+      detail: `expected exactly 2 removed prices, got ${diff.prices.removed.length}`,
+    };
   }
   if (diff.variants.removed.length > 0 && diff.variants.removed.length !== 2) {
-    return { code: "SCOPE_VIOLATION", detail: `expected exactly 2 removed variants, got ${diff.variants.removed.length}` };
+    return {
+      code: "SCOPE_VIOLATION",
+      detail: `expected exactly 2 removed variants, got ${diff.variants.removed.length}`,
+    };
   }
   if (diff.subgroups.removed.length > 1) {
     return { code: "SCOPE_VIOLATION", detail: `expected at most 1 removed registry entry` };

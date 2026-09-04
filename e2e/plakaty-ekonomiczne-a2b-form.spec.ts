@@ -112,7 +112,10 @@ function subgroupCard(page: Page) {
     .locator("xpath=following-sibling::div[contains(@class,'card')][1]");
 }
 
-async function setQtyAndRead(page: Page, qty: number): Promise<{
+async function setQtyAndRead(
+  page: Page,
+  qty: number
+): Promise<{
   hasPrice: boolean;
   total: string;
   noPriceVisible: boolean;
@@ -127,7 +130,9 @@ async function setQtyAndRead(page: Page, qty: number): Promise<{
     .locator(".dyn-no-price-message")
     .isVisible()
     .catch(() => false);
-  const total = resultVisible ? ((await card.locator(".dyn-total").textContent()) ?? "").trim() : "";
+  const total = resultVisible
+    ? ((await card.locator(".dyn-total").textContent()) ?? "").trim()
+    : "";
   return { hasPrice: resultVisible, total, noPriceVisible };
 }
 

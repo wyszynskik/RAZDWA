@@ -24,7 +24,8 @@ import { tmpdir } from "node:os";
 const FIXTURE_PATH = join(__dirname, "fixtures", "plakaty-ekonomiczne-a2b.synthetic.json");
 const RUNNER_SCRIPT = join(__dirname, "..", "scripts", "migrate-plakaty-ekonomiczne-a2b.mts");
 
-const LEGACY_KEY_A1 = "plakaty-maly-canon-margin-170-ekonomiczne-z-marginesem-a4-130g-10-szt-10-szt";
+const LEGACY_KEY_A1 =
+  "plakaty-maly-canon-margin-170-ekonomiczne-z-marginesem-a4-130g-10-szt-10-szt";
 const LEGACY_KEY_A2 =
   "plakaty-maly-canon-margin-170-ekonomiczne-z-marginesem-a4-130g-10-szt-ekonomiczne-a4-130g-10-szt";
 const B10 = "plakaty-a4-a3-plakaty-ekonomiczne-a4-10";
