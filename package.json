@@ -5,6 +5,7 @@
     "esbuild": "^0.28.1",
     "eslint": "^10.5.0",
     "prettier": "^3.8.5",
+    "tsx": "4.23.13",
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.62.0",
     "vitest": "^4.1.0"
@@ -22,7 +23,8 @@
     "typecheck": "tsc --noEmit",
     "test": "node scripts/run-vitest.mjs",
     "test:smoke": "playwright test",
-    "package:client": "node scripts/package-client.mjs"
+    "package:client": "node scripts/package-client.mjs",
+    "migrate:plakaty-ekonomiczne": "tsx scripts/migrate-plakaty-ekonomiczne-a2b.mts"
   },
   "dependencies": {
     "@pdf-lib/fontkit": "^1.1.1",
