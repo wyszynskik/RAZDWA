@@ -1476,3 +1476,460 @@ await (
 
 > **Uwaga:** krok 4 z poprawnym `baseRevision` nadpisałby cennik pustą mapą.
 > Testuj wyłącznie z celowo złym `baseRevision` (np. `0` przy rewizji > 0).
+
+---
+
+## 9) Snapshot stabilnego katalogu po ≥12h (Faza 3)
+
+Dopisz **poniższe bloki do istniejącego `Code.gs` bez modyfikacji żadnych
+wcześniejszych funkcji** — w szczególności bez modyfikacji `handleCatalogSave`,
+`readCatalogRevision`, `bumpCatalogRevision`, `doPost`. Jedyna integracja z
+istniejącym kodem to **wywołanie**, nie zmiana, `readCatalogStateLocked()`,
+`readCatalogRevision()` i `readCatalogUpdatedAt()` — te trzy funkcje zostają
+bez żadnej zmiany.
+
+Specyfikacja wykonywalna (testy jednostkowe TypeScript, ponieważ Code.gs nie
+jest uruchamialny w tym repo): `src/services/catalogSnapshot.ts` +
+`tests/helpers/catalogSnapshotEngine.ts` + `tests/catalogSnapshotDecision.test.ts`.
+Każda zmiana logiki niżej musi być odzwierciedlona w tych plikach.
+
+### 9.0 Cel i gwarancje
+
+- `catalog.save` pozostaje funkcjonalnie niezmieniony — zero wspólnego kodu
+  poza odczytem przez ten sam `LockService.getScriptLock()`.
+- 12h oznacza **co najmniej** 12h (`>=`), nie dokładnie 12:00:00.
+- Snapshot nigdy nie zmienia cen, `catalogRevision`, `catalogUpdatedAt` ani
+  zawartości `API_CENNIK`/`API_VARIANTS`. Zapisuje wyłącznie do
+  `API_CATALOG_SNAPSHOT`.
+- Pusty/nieparsowalny `catalogUpdatedAt` → cichy no-op, nie błąd.
+- `getSnapshot` (GET) nie ma **żadnego** efektu ubocznego — nie tworzy arkusza
+  `API_CATALOG_SNAPSHOT`, jeśli jeszcze nie istnieje (patrz
+  `getExistingCatalogSnapshotSheetOrNull()`, sekcja 9.2/9.4). Tylko
+  `runCatalogSnapshotIfStable` (trigger) może utworzyć ten arkusz, i tylko po
+  przejściu całej walidacji stabilności/spójności/rozmiaru payloadu.
+- Dokładnie jeden snapshot na `catalogRevision` — arkusz jest źródłem prawdy,
+  property jest tylko szybką ścieżką (samonaprawa przy rozjeździe).
+
+### 9.1 Stałe — dopisz obok `CATALOG_REVISION_PROP`
+
+```javascript
+const CATALOG_SNAPSHOT_SHEET_NAME = "API_CATALOG_SNAPSHOT";
+const CATALOG_SNAPSHOT_REVISION_PROP = "CATALOG_SNAPSHOT_REVISION";
+const CATALOG_SNAPSHOT_AT_PROP = "CATALOG_SNAPSHOT_AT";
+const CATALOG_SNAPSHOT_STABLE_MS = 12 * 60 * 60 * 1000; // jedyne miejsce w Code.gs z tą liczbą
+const CATALOG_SNAPSHOT_WRITE_LOCK_TIMEOUT_MS = 5000; // krócej niż CATALOG_LOCK_TIMEOUT_MS (20000) — Lock B nie ma powodu czekać długo
+const CATALOG_SNAPSHOT_CELL_CHAR_LIMIT = 50000; // limit pojedynczej komórki Google Sheets
+const CATALOG_SNAPSHOT_MAX_ROWS = 100;
+const CATALOG_SNAPSHOT_TRIGGER_HANDLER = "runCatalogSnapshotIfStable";
+```
+
+### 9.2 Arkusz — append-only, fail-loud przy niezgodnym nagłówku
+
+```javascript
+var CATALOG_SNAPSHOT_HEADER = [
+  "snapshotRevision",
+  "catalogUpdatedAt",
+  "snapshotCreatedAt",
+  "schemaVersion",
+  "payloadJson",
+  "payloadSha256",
+];
+
+function _assertCatalogSnapshotHeader(sheet) {
+  var currentHeader = sheet.getRange(1, 1, 1, 6).getValues()[0];
+  var matches = CATALOG_SNAPSHOT_HEADER.every(function (h, i) {
+    return String(currentHeader[i] || "") === h;
+  });
+  if (!matches) {
+    throw new Error(
+      "API_CATALOG_SNAPSHOT ma nieoczekiwany nagłówek — sprawdź ręcznie, czy " +
+        "to nie jest arkusz z wcześniejszej wersji roboczej. Oczekiwany nagłówek: " +
+        CATALOG_SNAPSHOT_HEADER.join(", ")
+    );
+  }
+}
+
+/**
+ * Ścieżka ZAPISU (wołana wyłącznie z runCatalogSnapshotIfStable, KROK 5/6).
+ * Tworzy arkusz przy pierwszym udanym snapshocie w historii projektu.
+ * NIE wołać z endpointu getSnapshot — do odczytu służy
+ * getExistingCatalogSnapshotSheetOrNull() niżej.
+ */
+function ensureCatalogSnapshotSheet() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName(CATALOG_SNAPSHOT_SHEET_NAME);
+
+  if (!sheet) {
+    sheet = ss.insertSheet(CATALOG_SNAPSHOT_SHEET_NAME);
+    sheet.getRange(1, 1, 1, 6).setValues([CATALOG_SNAPSHOT_HEADER]);
+    sheet.getRange(1, 1, 1, 6).setFontWeight("bold");
+    sheet.setFrozenRows(1);
+    return sheet;
+  }
+
+  _assertCatalogSnapshotHeader(sheet);
+  return sheet;
+}
+
+/**
+ * Ścieżka ODCZYTU (wołana wyłącznie z endpointu getSnapshot). Prawdziwie
+ * read-only: używa wyłącznie getSheetByName, zwraca null gdy arkusz jeszcze
+ * nie istnieje (żaden snapshot nigdy nie powstał — legalny, jawny stan, nie
+ * błąd), i NIGDY nie wywołuje insertSheet/appendRow/deleteRows/setValues/
+ * setProperty. Pojedynczy GET nie może utworzyć API_CATALOG_SNAPSHOT.
+ */
+function getExistingCatalogSnapshotSheetOrNull() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName(CATALOG_SNAPSHOT_SHEET_NAME);
+  if (!sheet) {
+    return null;
+  }
+  _assertCatalogSnapshotHeader(sheet); // fail-loud przy niezgodnym nagłówku, tak jak ścieżka zapisu
+  return sheet;
+}
+
+function _sha256Hex(text) {
+  var digest = Utilities.computeDigest(
+    Utilities.DigestAlgorithm.SHA_256,
+    text,
+    Utilities.Charset.UTF_8
+  );
+  return digest
+    .map(function (b) {
+      var v = (b < 0 ? b + 256 : b).toString(16);
+      return v.length === 1 ? "0" + v : v;
+    })
+    .join("");
+}
+
+function _trimCatalogSnapshotRetention(sheet) {
+  var lastRow = sheet.getLastRow();
+  var dataRows = lastRow - 1; // bez nagłówka
+  if (dataRows > CATALOG_SNAPSHOT_MAX_ROWS) {
+    var excess = dataRows - CATALOG_SNAPSHOT_MAX_ROWS;
+    sheet.deleteRows(2, excess); // od góry = najstarsze, bo appendujemy zawsze na końcu
+  }
+}
+
+function _listCatalogSnapshotRevisions(sheet) {
+  var lastRow = sheet.getLastRow();
+  if (lastRow < 2) return [];
+  var col = sheet.getRange(2, 1, lastRow - 1, 1).getValues();
+  return col.map(function (row) {
+    return Number(row[0]);
+  });
+}
+```
+
+### 9.3 `runCatalogSnapshotIfStable` — funkcja triggera
+
+Odpowiednik 1:1 `runCatalogSnapshotIfStable` z `tests/helpers/catalogSnapshotEngine.ts`.
+KROK-i numerowane tak samo jak w tamtym pliku i w planie implementacji.
+
+```javascript
+function runCatalogSnapshotIfStable() {
+  var props = _getProps();
+
+  // KROK 1 — fast path, bez locka
+  var lastSnapshotRevisionProp = props.getProperty(CATALOG_SNAPSHOT_REVISION_PROP);
+  var liveRevisionFast = readCatalogRevision();
+  if (lastSnapshotRevisionProp !== null && Number(lastSnapshotRevisionProp) === liveRevisionFast) {
+    return;
+  }
+
+  // KROK 2 — Lock A: jeden odczyt pełnego katalogu, zwolniony natychmiast
+  var state = readCatalogStateLocked(); // ISTNIEJĄCA funkcja (sekcja 8.2), bez zmian
+  if (state === null) {
+    Logger.log("[catalogSnapshot] lock zajęty (Lock A), spróbuję za godzinę");
+    return;
+  }
+
+  // KROK 3 — obliczenia bez locka
+  if (!state.catalogUpdatedAt) {
+    Logger.log(
+      "[catalogSnapshot] brak catalogUpdatedAt — katalog nigdy nie był zapisany przez catalog.save, no-op"
+    );
+    return;
+  }
+  var updatedAtMs = Date.parse(state.catalogUpdatedAt);
+  if (isNaN(updatedAtMs)) {
+    Logger.log(
+      "[catalogSnapshot] nieparsowalny catalogUpdatedAt='" + state.catalogUpdatedAt + "', no-op"
+    );
+    return;
+  }
+  var ageMs = Date.now() - updatedAtMs;
+  if (ageMs < CATALOG_SNAPSHOT_STABLE_MS) {
+    return; // normalny, częsty przypadek — katalog jeszcze niestabilny
+  }
+  if (!state.prices || typeof state.prices !== "object" || Object.keys(state.prices).length === 0) {
+    Logger.log("[catalogSnapshot] prices puste/niepoprawne, odrzucam");
+    return;
+  }
+  if (!Array.isArray(state.variants)) {
+    Logger.log("[catalogSnapshot] variants niepoprawne, odrzucam");
+    return;
+  }
+
+  var candidate = {
+    schemaVersion: 1,
+    snapshotRevision: state.catalogRevision,
+    catalogUpdatedAt: state.catalogUpdatedAt,
+    snapshotCreatedAt: new Date().toISOString(),
+    prices: state.prices,
+    variants: state.variants,
+  };
+
+  // KROK 4 — Lock B: ponowna weryfikacja tuż przed zapisem
+  var lock2 = LockService.getScriptLock();
+  if (!lock2.tryLock(CATALOG_SNAPSHOT_WRITE_LOCK_TIMEOUT_MS)) {
+    Logger.log("[catalogSnapshot] lock zajęty (Lock B), spróbuję za godzinę");
+    return;
+  }
+  try {
+    var revisionNow = readCatalogRevision();
+    var updatedAtNow = readCatalogUpdatedAt();
+    if (revisionNow !== candidate.snapshotRevision || updatedAtNow !== candidate.catalogUpdatedAt) {
+      Logger.log(
+        "[catalogSnapshot] stan zmienił się między Lock A a Lock B (catalog.save w toku), odrzucam"
+      );
+      return;
+    }
+
+    var sheet = ensureCatalogSnapshotSheet();
+
+    // KROK 5 — samonaprawa idempotencji: arkusz jest źródłem prawdy, nie property.
+    // Retencja jest wołana też tutaj: jeśli poprzednie uruchomienie padło PO
+    // appendRow ale PRZED _trimCatalogSnapshotRetention (nie tylko przed
+    // setProperty), arkusz mógł zostać z więcej niż CATALOG_SNAPSHOT_MAX_ROWS
+    // wierszami — ta naprawa domyka retencję niezależnie od tego, w którym
+    // dokładnie miejscu poprzedni bieg się urwał.
+    var existing = _listCatalogSnapshotRevisions(sheet);
+    if (existing.indexOf(candidate.snapshotRevision) !== -1) {
+      _trimCatalogSnapshotRetention(sheet);
+      props.setProperty(CATALOG_SNAPSHOT_REVISION_PROP, String(candidate.snapshotRevision));
+      props.setProperty(CATALOG_SNAPSHOT_AT_PROP, candidate.snapshotCreatedAt);
+      Logger.log(
+        "[catalogSnapshot] rev=" +
+          candidate.snapshotRevision +
+          " już ma wiersz (naprawiono property i retencję po wcześniejszej awarii)"
+      );
+      return;
+    }
+
+    // KROK 6 — właściwy zapis
+    var payloadJson = JSON.stringify(candidate);
+    if (payloadJson.length > CATALOG_SNAPSHOT_CELL_CHAR_LIMIT) {
+      throw new Error(
+        "[catalogSnapshot] payloadJson (" +
+          payloadJson.length +
+          " znaków) przekracza limit " +
+          "komórki Google Sheets (" +
+          CATALOG_SNAPSHOT_CELL_CHAR_LIMIT +
+          ") dla rev=" +
+          candidate.snapshotRevision +
+          ". Snapshot NIE został zapisany."
+      );
+    }
+    var payloadSha256 = _sha256Hex(payloadJson);
+
+    sheet.appendRow([
+      candidate.snapshotRevision,
+      candidate.catalogUpdatedAt,
+      candidate.snapshotCreatedAt,
+      candidate.schemaVersion,
+      payloadJson,
+      payloadSha256,
+    ]);
+    _trimCatalogSnapshotRetention(sheet);
+
+    // Property ustawiana DOPIERO po udanym appendRow+trim — jeśli coś między
+    // appendRow a tym miejscem zawiedzie, KROK 5 naprawi to przy następnym
+    // uruchomieniu triggera, bez utworzenia duplikatu wiersza.
+    props.setProperty(CATALOG_SNAPSHOT_REVISION_PROP, String(candidate.snapshotRevision));
+    props.setProperty(CATALOG_SNAPSHOT_AT_PROP, candidate.snapshotCreatedAt);
+
+    Logger.log("[catalogSnapshot] utworzono snapshot rev=" + candidate.snapshotRevision);
+  } finally {
+    lock2.releaseLock();
+  }
+}
+```
+
+### 9.4 Endpoint read-only — dopisz w `doGet`, obok `getRevision`/`getState`
+
+Bez PIN-u/tokenu. **Prawdziwie read-only**: używa wyłącznie
+`getExistingCatalogSnapshotSheetOrNull()` (sekcja 9.2) — nigdy
+`ensureCatalogSnapshotSheet()`. Jeśli arkusz `API_CATALOG_SNAPSHOT` jeszcze nie
+istnieje (żaden snapshot nigdy nie powstał), endpoint zwraca `no_snapshot_yet`
+i **nie tworzy arkusza** — pojedynczy GET nie ma żadnego efektu ubocznego na
+strukturze arkusza. Bez `ScriptLock` — czyta zawsze kompletny, już zapisany
+wiersz; jedyna modyfikacja arkusza (append+trim) dzieje się w całości pod Lock
+B w `runCatalogSnapshotIfStable`, więc zewnętrzny odczyt nigdy nie trafia na
+częściowy zapis.
+
+**Parametr `revision` — kontrakt walidacji:**
+
+| Wejście                                      | Zachowanie                                                                                      |
+| -------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| brak parametru `revision` w ogóle            | najnowszy snapshot (ostatni wiersz)                                                             |
+| `revision=` (parametr obecny, wartość pusta) | `invalid_revision` — obecność parametru z pustą wartością **nie** jest traktowana jak jego brak |
+| `revision=0`                                 | `invalid_revision` (zero nie jest dodatnią liczbą)                                              |
+| `revision=-1`                                | `invalid_revision` (ujemne)                                                                     |
+| `revision=1.5`                               | `invalid_revision` (nie jest liczbą całkowitą)                                                  |
+| `revision=abc`                               | `invalid_revision` (nie jest liczbą)                                                            |
+| `revision=001`                               | `invalid_revision` (wiodące zero — format niejednoznaczny, odrzucany celowo, patrz niżej)       |
+| `revision=1`, `revision=42`, `revision=101`  | poprawne — dokładne dopasowanie po `Number(...) === target`                                     |
+
+Walidacja: regex `^[1-9][0-9]*$` — dodatnia liczba całkowita, bez wiodących
+zer, bez znaku, bez separatora dziesiętnego. Rozróżnienie "parametr
+nieobecny" (→ najnowszy) od "parametr obecny, ale pusty/niepoprawny"
+(→ `invalid_revision`) odbywa się przez `e.parameter.hasOwnProperty("revision")`,
+nie przez sprawdzenie samej wartości — Apps Script zwraca `""` (pusty string,
+nie `undefined`) dla parametru obecnego w URL bez wartości, więc sam warunek
+`!== ""` błędnie kwalifikowałby ten przypadek jako "brak parametru".
+
+```javascript
+if (action === "getSnapshot") {
+  var snapSheet = getExistingCatalogSnapshotSheetOrNull();
+  if (snapSheet === null) {
+    return _json({ ok: false, error: "no_snapshot_yet" });
+  }
+
+  var lastRow = snapSheet.getLastRow();
+  if (lastRow < 2) {
+    return _json({ ok: false, error: "no_snapshot_yet" });
+  }
+
+  var params = (e && e.parameter) || {};
+  var hasRevisionParam = Object.prototype.hasOwnProperty.call(params, "revision");
+
+  if (hasRevisionParam) {
+    var requestedRevision = params.revision;
+    if (!/^[1-9][0-9]*$/.test(String(requestedRevision))) {
+      return _json({ ok: false, error: "invalid_revision" });
+    }
+    var target = parseInt(requestedRevision, 10);
+    var col = snapSheet.getRange(2, 1, lastRow - 1, 1).getValues();
+    for (var i = col.length - 1; i >= 0; i--) {
+      if (Number(col[i][0]) === target) {
+        var row = snapSheet.getRange(2 + i, 5, 1, 1).getValues()[0][0]; // payloadJson
+        return ContentService.createTextOutput(String(row)).setMimeType(
+          ContentService.MimeType.JSON
+        );
+      }
+    }
+    return _json({ ok: false, error: "snapshot_not_found", requestedRevision: target });
+  }
+
+  var latestPayload = snapSheet.getRange(lastRow, 5).getValue(); // ostatni wiersz, kolumna E
+  return ContentService.createTextOutput(String(latestPayload)).setMimeType(
+    ContentService.MimeType.JSON
+  );
+}
+```
+
+### 9.5 Trigger — instalacja/aktualizacja/usunięcie WYŁĄCZNIE ręczne z edytora
+
+**Nigdy nie dostępne przez `doGet`/`doPost`** — instalacja/usunięcie triggera
+przez publiczny endpoint byłoby dziurą bezpieczeństwa.
+
+```javascript
+/** Uruchom RĘCZNIE raz z edytora Apps Script (Run → installCatalogSnapshotTrigger). */
+function installCatalogSnapshotTrigger() {
+  var existing = ScriptApp.getProjectTriggers().filter(function (t) {
+    return t.getHandlerFunction() === CATALOG_SNAPSHOT_TRIGGER_HANDLER;
+  });
+  if (existing.length > 0) {
+    Logger.log("[catalogSnapshot] trigger już istnieje, nic nie robię");
+    return;
+  }
+  ScriptApp.newTrigger(CATALOG_SNAPSHOT_TRIGGER_HANDLER).timeBased().everyHours(1).create();
+  Logger.log("[catalogSnapshot] trigger zainstalowany");
+}
+
+/** Uruchom RĘCZNIE, żeby wyłączyć automatyzację bez cofania kodu. */
+function uninstallCatalogSnapshotTrigger() {
+  var removed = 0;
+  ScriptApp.getProjectTriggers().forEach(function (t) {
+    if (t.getHandlerFunction() === CATALOG_SNAPSHOT_TRIGGER_HANDLER) {
+      ScriptApp.deleteTrigger(t);
+      removed++;
+    }
+  });
+  Logger.log("[catalogSnapshot] usunięto triggerów: " + removed);
+}
+
+/** Apps Script nie pozwala edytować interwału triggera — zawsze usuń+dodaj. */
+function updateCatalogSnapshotTrigger() {
+  uninstallCatalogSnapshotTrigger();
+  installCatalogSnapshotTrigger();
+}
+```
+
+### 9.6 Instrukcja ręcznej instalacji
+
+```
+1. Apps Script editor → wklej bloki z sekcji 9.1–9.5 do Code.gs.
+2. Deploy → Manage deployments → edytuj aktywny deployment → New version
+   (URL bez zmian).
+3. W edytorze: wybierz funkcję "installCatalogSnapshotTrigger" z listy
+   funkcji (górny pasek) → Run.
+4. Google poprosi o autoryzację nowego zakresu (Apps Script Trigger Service,
+   scope script.scriptapp) — jednorazowe, jak przy każdej nowej funkcji
+   korzystającej z nowego serwisu.
+5. Weryfikacja: edytor → ikona zegara "Triggers" (lewy pasek) → potwierdź
+   jeden wpis: funkcja "runCatalogSnapshotIfStable", typ "Time-driven",
+   "Hour timer".
+6. NIE uruchamiaj `installCatalogSnapshotTrigger` na produkcyjnym GAS,
+   dopóki nie zamkniesz obu działań właścicielskich z wcześniejszego etapu
+   (provenance URL, zabezpieczenie lokalnych cen) — trigger zacznie działać
+   natychmiast po instalacji.
+```
+
+### 9.7 Instrukcja rollbacku
+
+```
+Zatrzymanie automatyzacji (bez cofania kodu):
+  Run → "uninstallCatalogSnapshotTrigger" — natychmiastowe, dane w
+  API_CATALOG_SNAPSHOT zostają nietknięte.
+
+Cofnięcie kodu:
+  Deploy → Manage deployments → wybierz poprzednią wersję jako aktywną.
+
+Usunięcie danych (opcjonalne, nie wymagane do rollbacku):
+  Ręczne usunięcie arkusza API_CATALOG_SNAPSHOT — nie wpływa na
+  API_CENNIK/API_VARIANTS/catalogRevision w żaden sposób, bo to
+  całkowicie izolowany arkusz.
+```
+
+### 9.8 Weryfikacja po wdrożeniu (na testowym deploymencie, nie produkcyjnym)
+
+```
+0. PRZED krokiem 1 (na czystym arkuszu, gdzie API_CATALOG_SNAPSHOT jeszcze
+   nie istnieje): GET ?action=getSnapshot → potwierdź { ok:false,
+   error:"no_snapshot_yet" } I potwierdź w Google Sheets, że zakładka
+   API_CATALOG_SNAPSHOT NIE została utworzona przez ten GET.
+1. Tymczasowo zmniejsz CATALOG_SNAPSHOT_STABLE_MS (np. do 2000) TYLKO na
+   testowym deploymencie — nigdy nie wdrażaj tej zmiany na produkcję.
+2. Wykonaj testowy catalog.save.
+3. Run → "runCatalogSnapshotIfStable" ręcznie z edytora.
+4. Sprawdź: API_CATALOG_SNAPSHOT ma nowy wiersz (teraz dopiero arkusz
+   istnieje), catalogRevision/catalogUpdatedAt (żywe, w API_CENNIK/
+   właściwościach) NIE zmienione.
+5. Uruchom ponownie bez zmiany katalogu — brak nowego wiersza.
+6. GET ?action=getSnapshot i GET ?action=getSnapshot&revision=<N> — potwierdź
+   zgodność ze schematem i poprawność wyboru wiersza.
+7. GET ?action=getSnapshot&revision=abc, &revision=0, &revision=-1,
+   &revision=1.5, &revision=001, &revision= (pusta wartość) — potwierdź
+   { ok:false, error:"invalid_revision" } dla KAŻDEGO z tych sześciu,
+   bez efektu ubocznego. Osobno potwierdź, że sam GET ?action=getSnapshot
+   (bez parametru revision w ogóle) nadal zwraca najnowszy snapshot, nie
+   invalid_revision — to jest kontrola na to, że rozróżnienie "brak
+   parametru" vs "parametr obecny i pusty" faktycznie działa.
+8. GET ?action=getSnapshot&revision=1, &revision=42, &revision=101 (dla
+   rewizji, które faktycznie istnieją w arkuszu testowym) — potwierdź
+   zwrócenie właściwego payloadu, nie invalid_revision.
+9. Przywróć CATALOG_SNAPSHOT_STABLE_MS na 12h PRZED jakimkolwiek wdrożeniem
+   poza testowym deploymentem.
+```
