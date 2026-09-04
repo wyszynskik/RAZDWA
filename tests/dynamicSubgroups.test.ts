@@ -7,6 +7,7 @@ import {
   computeCartResult,
   buildCartItem,
   formatMaterialSizeOption,
+  hasDefinedPriceForQty,
   type DynamicSubgroupTier,
   type RenderableProduct,
 } from "../src/ui/dynamicSubgroups";
@@ -541,6 +542,147 @@ describe("safeInterpolate", () => {
       { key: "k5", qty: 5, price: 10 },
     ];
     expect(safeInterpolate(7, unsorted)).toBe(safeInterpolate(7, tiers));
+  });
+});
+
+describe("hasDefinedPriceForQty — zasada jednego progu (Plakaty ekonomiczne A4 / B)", () => {
+  const singleTier: DynamicSubgroupTier[] = [{ key: "b-10", qty: 10, price: 49 }];
+  const twoTiers: DynamicSubgroupTier[] = [
+    { key: "b-10", qty: 10, price: 49 },
+    { key: "b-20", qty: 20, price: 90 },
+  ];
+
+  it("interpolated + jeden potwierdzony próg: qty równe progowi ma zdefiniowaną cenę", () => {
+    expect(hasDefinedPriceForQty("interpolated", 10, singleTier)).toBe(true);
+  });
+
+  it("interpolated + jeden potwierdzony próg: żadna INNA ilość nie ma zdefiniowanej ceny", () => {
+    expect(hasDefinedPriceForQty("interpolated", 5, singleTier)).toBe(false);
+    expect(hasDefinedPriceForQty("interpolated", 15, singleTier)).toBe(false);
+    expect(hasDefinedPriceForQty("interpolated", 25, singleTier)).toBe(false);
+  });
+
+  it("interpolated + dwa progi: normalna interpolacja/klamrowanie jest dozwolone dla każdej ilości", () => {
+    expect(hasDefinedPriceForQty("interpolated", 10, twoTiers)).toBe(true);
+    expect(hasDefinedPriceForQty("interpolated", 20, twoTiers)).toBe(true);
+    expect(hasDefinedPriceForQty("interpolated", 15, twoTiers)).toBe(true);
+    expect(hasDefinedPriceForQty("interpolated", 1, twoTiers)).toBe(true);
+    expect(hasDefinedPriceForQty("interpolated", 1000, twoTiers)).toBe(true);
+  });
+
+  it("flat-per-unit i flat-rate nie są objęte zasadą jednego progu, nawet z jednym progiem", () => {
+    expect(hasDefinedPriceForQty("flat-per-unit", 5, singleTier)).toBe(true);
+    expect(hasDefinedPriceForQty("flat-rate", 999, singleTier)).toBe(true);
+  });
+});
+
+/** Minimalny kształt localStorage czytany/pisany przez priceService.ts. */
+type StorageLike = {
+  getItem: (key: string) => string | null;
+  setItem: (key: string, value: string) => void;
+  removeItem: (key: string) => void;
+};
+
+describe("hasDefinedPriceForQty — regresja: brak wpływu na inne kategorie/warianty", () => {
+  const mockStorage: Record<string, string> = {};
+
+  beforeEach(() => {
+    Object.keys(mockStorage).forEach((k) => delete mockStorage[k]);
+    (globalThis as unknown as { localStorage: StorageLike }).localStorage = {
+      getItem: (k: string) => mockStorage[k] ?? null,
+      setItem: (k: string, v: string) => {
+        mockStorage[k] = v;
+      },
+      removeItem: (k: string) => {
+        delete mockStorage[k];
+      },
+    };
+    resetPrices();
+  });
+
+  afterEach(() => {
+    delete (globalThis as { localStorage?: unknown }).localStorage;
+    resetPrices();
+  });
+
+  /**
+   * hasDefinedPriceForQty() ma dokładnie JEDNO miejsce wywołania w całej
+   * bazie kodu: recalc() wewnątrz mountDynamicSubgroupContainers()
+   * (src/ui/dynamicSubgroups.ts). Ta funkcja renderuje WYŁĄCZNIE produkty
+   * zwrócone przez getRenderableProducts(), a te z kolei pochodzą wyłącznie
+   * z getVariantDefinitions() (admin-created VariantDefinition[]) —
+   * przefiltrowane przez classifyVariantsIntoProducts(). Mały Canon i Duży
+   * Canon (plakaty-a4-a3) są renderowane przez WŁASNY, sprzętowy (hardcoded)
+   * kalkulator w src/ui/views/plakaty-a4-a3.ts, sterowany statycznym
+   * config/prices.json — nigdy nie przechodzą przez VariantDefinition[] ani
+   * przez getRenderableProducts(). Potwierdzone również wizualnie w e2e
+   * (Mały/Duży Canon renderują się jako natywne <select>/<input type=number>
+   * bez żadnej klasy `.dyn-*`), więc zmiana w tym pliku nie ma i nie może
+   * mieć na nie żadnego wpływu.
+   */
+  it("kategoria bez ŻADNYCH VariantDefinition (odpowiednik Małego/Dużego Canona) nigdy nie trafia do getRenderableProducts", () => {
+    setVariantDefinitions([]);
+    setPriceSubgroups({});
+    expect(getRenderableProducts("plakaty-a4-a3")).toEqual([]);
+  });
+
+  it("istniejacy produkt z co najmniej dwoma progami liczy identycznie jak przed zmianą (bez ograniczenia)", () => {
+    setVariantDefinitions([
+      makeVariant({
+        key: "plakaty-multi-5",
+        categoryId: "plakaty-a4-a3",
+        subcategoryPrefix: "plakaty-multi-",
+      }),
+      makeVariant({
+        key: "plakaty-multi-10",
+        categoryId: "plakaty-a4-a3",
+        subcategoryPrefix: "plakaty-multi-",
+      }),
+      makeVariant({
+        key: "plakaty-multi-20",
+        categoryId: "plakaty-a4-a3",
+        subcategoryPrefix: "plakaty-multi-",
+      }),
+    ]);
+    setPriceSubgroups({ "plakaty-a4-a3": { "plakaty-multi-": "Grupa wieloprogowa" } });
+    setPrice("defaultPrices", {
+      "plakaty-multi-5": 60,
+      "plakaty-multi-10": 100,
+      "plakaty-multi-20": 150,
+    });
+
+    const [product] = getRenderableProducts("plakaty-a4-a3");
+    expect(product.tiers).toHaveLength(3);
+
+    // Zasada jednego progu dotyczy WYŁĄCZNIE calcType "interpolated" z
+    // dokładnie jednym progiem — tu jest ich trzy, więc każda ilość
+    // (w tym te spoza progów) ma zdefiniowaną cenę tak jak dotychczas.
+    for (const qty of [1, 5, 7, 10, 15, 20, 1000]) {
+      expect(hasDefinedPriceForQty(product.calcType, qty, product.tiers)).toBe(true);
+    }
+  });
+
+  it("produkt jednoprogowy juz istniejacy w bazie (wzorzec sprzed zmiany) jest teraz poprawnie ograniczony, bez zmiany ceny dla potwierdzonej ilosci", () => {
+    setVariantDefinitions([
+      makeVariant({
+        key: "plakaty-eko-10",
+        categoryId: "plakaty-a4-a3",
+        subcategoryPrefix: "plakaty-eko-",
+        materialSizeOptions: [{ material: "130g", size: "A4" }],
+      }),
+    ]);
+    setPriceSubgroups({ "plakaty-a4-a3": { "plakaty-eko-": "Plakaty ekonomiczne A4" } });
+    setPrice("defaultPrices", { "plakaty-eko-10": 10 });
+
+    const [product] = getRenderableProducts("plakaty-a4-a3");
+    expect(product.tiers).toHaveLength(1);
+
+    // Cena za potwierdzoną ilość jest niezmieniona.
+    expect(hasDefinedPriceForQty(product.calcType, 10, product.tiers)).toBe(true);
+    expect(computeSubgroupPrice(product.calcType, 10, product.tiers)).toBe(10);
+    // Inne ilości nie dostają już zgadywanej ceny — to jest zamierzona zmiana zachowania,
+    // ograniczona wyłącznie do tego jednego wzorca (interpolated + 1 próg).
+    expect(hasDefinedPriceForQty(product.calcType, 5, product.tiers)).toBe(false);
   });
 });
 
