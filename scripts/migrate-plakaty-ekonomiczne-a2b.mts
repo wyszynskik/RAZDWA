@@ -92,7 +92,9 @@ export function parseExportEnvelope(raw: string): ExportEnvelope {
   }
   const obj = parsed as Record<string, unknown>;
   if (obj.format !== "razdwa-configuration") {
-    throw new Error(`INVALID_FORMAT: expected format "razdwa-configuration", got ${JSON.stringify(obj.format)}`);
+    throw new Error(
+      `INVALID_FORMAT: expected format "razdwa-configuration", got ${JSON.stringify(obj.format)}`
+    );
   }
   const data = obj.data as Record<string, unknown> | undefined;
   if (
@@ -102,7 +104,9 @@ export function parseExportEnvelope(raw: string): ExportEnvelope {
     !Array.isArray(data.variants) ||
     typeof data.subgroups !== "object"
   ) {
-    throw new Error("INVALID_FORMAT: data.{prices,priceLabels,variants,subgroups} missing or malformed");
+    throw new Error(
+      "INVALID_FORMAT: data.{prices,priceLabels,variants,subgroups} missing or malformed"
+    );
   }
   return parsed as ExportEnvelope;
 }
@@ -211,7 +215,9 @@ export function run(argv: string[]): number {
   // --apply od tego miejsca w dół.
   const outputEnvelope = toExportEnvelope(result.after, envelope.exportedAt);
   writeFileSync(args.output as string, JSON.stringify(outputEnvelope, null, 2) + "\n", "utf-8");
-  console.log(`\nTryb --apply: zapisano nowy plik ${args.output}. Plik wejściowy NIE został zmieniony.`);
+  console.log(
+    `\nTryb --apply: zapisano nowy plik ${args.output}. Plik wejściowy NIE został zmieniony.`
+  );
   console.log(
     "Ten plik jest wyłącznie lokalnym wynikiem migracji — żaden request sieciowy, catalog.save ani zapis do localStorage/IndexedDB nie został wykonany."
   );

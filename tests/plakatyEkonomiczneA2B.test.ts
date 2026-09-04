@@ -263,7 +263,10 @@ describe("plakatyEkonomiczneA2B — scope guard odrzuca kazda zmiane spoza zakre
       { prices: { "maly-canon-cos-innego": 5 }, priceLabels: {}, variants: [], subgroups: {} }
     );
     const issue = assertScope(diff);
-    expect(issue).toEqual({ code: "SCOPE_VIOLATION", detail: "prices.added: maly-canon-cos-innego" });
+    expect(issue).toEqual({
+      code: "SCOPE_VIOLATION",
+      detail: "prices.added: maly-canon-cos-innego",
+    });
   });
 
   it("odrzuca jakakolwiek modyfikacje istniejacej ceny", () => {
@@ -290,7 +293,12 @@ describe("plakatyEkonomiczneA2B — scope guard odrzuca kazda zmiane spoza zakre
       updatedAt: "2026-01-01T00:00:00.000Z",
     };
     const diff = computeDiff(
-      { prices: { [otherVariant.key]: 10 }, priceLabels: {}, variants: [otherVariant], subgroups: {} },
+      {
+        prices: { [otherVariant.key]: 10 },
+        priceLabels: {},
+        variants: [otherVariant],
+        subgroups: {},
+      },
       { prices: {}, priceLabels: {}, variants: [], subgroups: {} }
     );
     const issue = assertScope(diff);
