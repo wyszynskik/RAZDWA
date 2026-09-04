@@ -10,9 +10,11 @@
  * / import konfiguracji w Ustawieniach — { format, version, exportedAt, data:
  * { prices, priceLabels, subgroups, variants } }.
  *
- * Użycie:
- *   node scripts/migrate-plakaty-ekonomiczne-a2b.mts --input backup.json --dry-run
- *   node scripts/migrate-plakaty-ekonomiczne-a2b.mts --input backup.json --output after.json --apply
+ * Użycie (przez lokalny, przypięty w devDependencies `tsx` — patrz skrypt npm
+ * "migrate:plakaty-ekonomiczne"; Node 20 (m.in. CI) nie ma natywnego wsparcia
+ * dla uruchamiania .mts, więc bezpośrednie `node scripts/....mts` nie działa):
+ *   npm run migrate:plakaty-ekonomiczne -- --input backup.json --dry-run
+ *   npm run migrate:plakaty-ekonomiczne -- --input backup.json --output after.json --apply
  *
  * Cena progu B-10 (49 zł, materiał 130/A4) jest zatwierdzoną decyzją
  * biznesową z tej rozmowy — nie jest wyliczana ani zgadywana z niczego w

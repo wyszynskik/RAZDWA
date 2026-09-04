@@ -1,28 +1,35 @@
 import { describe, it, expect, afterEach } from "vitest";
 import { execFileSync } from "node:child_process";
 import { readFileSync, writeFileSync, rmSync, existsSync, mkdtempSync } from "node:fs";
-import { join } from "node:path";
+import { join, dirname } from "node:path";
 import { tmpdir } from "node:os";
+import { createRequire } from "node:module";
 
 /**
  * Testy jednorazowego runnera CLI migracji A → B
  * (scripts/migrate-plakaty-ekonomiczne-a2b.mts).
  *
- * Runner uruchamia się wyłącznie przez `node <plik>.mts` z natywnym
- * wsparciem Node 22+ dla TypeScript, więc jego relatywne importy MUSZĄ nosić
- * jawne rozszerzenie (.ts) — wymóg ESM w Node. `tsc` z ustawieniami tego
- * repo (moduleResolution: "node") odrzuca taki import, więc plik nie jest
- * częścią głównego programu `npx tsc --noEmit` (nie jest importowany przez
- * żaden plik w src/ ani tests/ — patrz brak importu poniżej). Zamiast tego
- * cała weryfikacja idzie przez rzeczywiste uruchomienia procesu (spawn) —
- * to i tak jedyny sposób, w jaki administrator będzie z niego korzystać.
- * Typy runnera są osobno zweryfikowane doraźnym wywołaniem tsc ze
- * `--moduleResolution bundler --allowImportingTsExtensions` (bez zmiany
- * współdzielonego tsconfig.json) — patrz raport.
+ * Node bez dodatkowego narzędzia nie potrafi uruchomić pliku .mts na Node 20
+ * (m.in. na runnerach CI tego repo) — brak natywnego wsparcia TypeScript.
+ * Dlatego runner i te testy używają lokalnie zainstalowanego, przypiętego w
+ * devDependencies `tsx` (patrz skrypt npm "migrate:plakaty-ekonomiczne") —
+ * dokładnie tego samego mechanizmu, którego użyje operator. `tsc` z
+ * ustawieniami tego repo (moduleResolution: "node") odrzuca import z
+ * jawnym rozszerzeniem .ts, więc plik nie jest częścią głównego programu
+ * `npx tsc --noEmit` (nie jest importowany przez żaden plik w src/ ani
+ * tests/ — patrz brak importu poniżej). Jego typy są osobno zweryfikowane
+ * doraźnym wywołaniem tsc ze `--moduleResolution bundler
+ * --allowImportingTsExtensions` (bez zmiany współdzielonego tsconfig.json)
+ * — patrz raport.
  */
+
+const require = createRequire(import.meta.url);
 
 const FIXTURE_PATH = join(__dirname, "fixtures", "plakaty-ekonomiczne-a2b.synthetic.json");
 const RUNNER_SCRIPT = join(__dirname, "..", "scripts", "migrate-plakaty-ekonomiczne-a2b.mts");
+
+/** Ten sam lokalny, przypięty binarny tsx (node_modules/tsx), którego uruchamia `npm run migrate:plakaty-ekonomiczne`. */
+const TSX_CLI = join(dirname(require.resolve("tsx/package.json")), "dist", "cli.mjs");
 
 const LEGACY_KEY_A1 =
   "plakaty-maly-canon-margin-170-ekonomiczne-z-marginesem-a4-130g-10-szt-10-szt";
@@ -46,7 +53,7 @@ afterEach(() => {
 
 function runCli(args: string[]): { status: number; stdout: string; stderr: string } {
   try {
-    const stdout = execFileSync("node", ["--no-warnings", RUNNER_SCRIPT, ...args], {
+    const stdout = execFileSync(process.execPath, [TSX_CLI, RUNNER_SCRIPT, ...args], {
       encoding: "utf-8",
       stdio: ["ignore", "pipe", "pipe"],
     });
