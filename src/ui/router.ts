@@ -6,6 +6,18 @@ import { mountDynamicSubgroupContainers } from "./dynamicSubgroups";
 import { BASE_PRICE_CATEGORIES } from "../core/productCat";
 import { hasNativeSubgroupRenderer } from "../core/variantKeys";
 
+/**
+ * Route id -> price-category id, for views whose route id doesn't match
+ * their BASE_PRICE_CATEGORIES id. Consulted only inside
+ * mountDynamicSubgroupsFor() — never affects VariantDefinition.categoryId,
+ * GAS, or the route/view ids themselves.
+ */
+const ROUTE_TO_PRICE_CATEGORY_ID: Record<string, string> = {
+  "wizytowki-druk-cyfrowy": "wizytowki",
+  "zaproszenia-kreda": "zaproszenia",
+  "ulotki-cyfrowe": "ulotki",
+};
+
 export interface CategoryContext extends ViewContext {
   cart: {
     addItem: (item: any) => void;
@@ -250,14 +262,22 @@ export class Router {
     // bespoke calculator — mounting the generic renderer here would
     // double-render them (see hasNativeSubgroupRenderer).
     if (hasNativeSubgroupRenderer(path)) return;
-    const category = BASE_PRICE_CATEGORIES.find((c) => c.id === path);
+    // Route id and price-category id diverge for these three views (their
+    // route ids are more descriptive than the price-category id admins pick
+    // in Ustawienia) — without this map, BASE_PRICE_CATEGORIES.find(id===path)
+    // returns undefined and the generic renderer never mounts, so any custom
+    // subgroup/paper added under these categories silently never reaches the
+    // customer. Confirmed live: a variant added to categoryId "zaproszenia"
+    // did not appear on #/zaproszenia-kreda before this map existed.
+    const priceCategoryId = ROUTE_TO_PRICE_CATEGORY_ID[path] ?? path;
+    const category = BASE_PRICE_CATEGORIES.find((c) => c.id === priceCategoryId);
     if (!category) return;
     try {
       const slot = this.container.querySelector<HTMLElement>("#dyn-subgroups-slot");
       mountDynamicSubgroupContainers(
         this.container,
         slot ?? this.container,
-        path,
+        priceCategoryId,
         category.label,
         this.getCtx(),
         slot ? "beforebegin" : "beforeend"

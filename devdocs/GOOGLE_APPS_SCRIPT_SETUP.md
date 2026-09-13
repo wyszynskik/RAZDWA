@@ -1479,6 +1479,93 @@ await (
 
 ---
 
+### 8.9 `priceFormula` — żywa cena relatywna (Faza 4)
+
+Ten sam wzorzec co patch z sekcji 8.0–8.3: jedna nowa kolumna dopisana na
+**końcu** `VARIANTS_HEADERS`, JSON w jednej komórce (jak `materialSizeOptions`),
+zero zmian w kolejności/znaczeniu istniejących kolumn. Klient aplikacji
+(`src/core/productModel.ts`) liczy pochodną cenę **na żywo** z ceny bazowego
+papieru przy każdym renderowaniu kalkulatora — Code.gs nadal tylko
+przechowuje i zwraca `priceFormula` jak każde inne pole `VariantDefinition`,
+bez żadnej logiki liczącej po swojej stronie.
+
+**Krok 1 — podmień `VARIANTS_HEADERS` (sekcja 8.1), dopisz jedną kolumnę na końcu:**
+
+```javascript
+const VARIANTS_HEADERS = [
+  "key",
+  "categoryId",
+  "subcategoryPrefix",
+  "subgroupLabel",
+  "label",
+  "legend",
+  "visibleInSettings",
+  "visibleInCalculator",
+  "sortOrder",
+  "createdAt",
+  "updatedAt",
+  "subgroupSortOrder",
+  "calcScheme",
+  "materialSizeOptions",
+  "priceFormula", // NOWA — kolumna O
+];
+```
+
+**Krok 2 — nowy parser, dopisz obok `parseMaterialSizeOptions` (sekcja 8.2):**
+
+```javascript
+function parsePriceFormula(raw) {
+  var s = String(raw || "").trim();
+  if (!s) return null;
+  try {
+    var parsed = JSON.parse(s);
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : null;
+  } catch (e) {
+    return null;
+  }
+}
+```
+
+**Krok 3 — `_writeVariantRows` (sekcja 8.2): dopisz jeden element na końcu tablicy wiersza**, zaraz po `materialSizeOptions`:
+
+```javascript
+        Array.isArray(v.materialSizeOptions) && v.materialSizeOptions.length > 0
+          ? JSON.stringify(v.materialSizeOptions)
+          : "",
+        v.priceFormula && typeof v.priceFormula === "object"
+          ? JSON.stringify(v.priceFormula)
+          : "", // NOWA linia
+      ];
+```
+
+**Krok 4 — `readVariants` (sekcja 8.3): dopisz na końcu, po `materialSizeOptions`:**
+
+```javascript
+      const materialSizeOptions = parseMaterialSizeOptions(row[13]);
+      if (materialSizeOptions) variant.materialSizeOptions = materialSizeOptions;
+
+      const priceFormula = parsePriceFormula(row[14]);
+      if (priceFormula) variant.priceFormula = priceFormula;
+
+      return variant;
+```
+
+**Bez zmian:** `handleVariantsUpdate`/`handleCatalogSave`/`doGet`/`doPost` (sekcje
+8.4–8.7) — już dziś przepuszczają cały obiekt `VariantDefinition` bez
+wybierania konkretnych pól, więc `priceFormula` jeździe tym samym kanałem
+automatycznie.
+
+**Krok 5 — ręczny, kosmetyczny krok w samym arkuszu** (opcjonalny, `ensureVariantsSheet()`
+nie synchronizuje nagłówków automatycznie — istniejące dane są nietknięte
+niezależnie od tekstu w wierszu 1): dopisz `priceFormula` do nagłówka kolumny O
+w arkuszu `API_VARIANTS`, żeby kolumna była czytelna przy ręcznym przeglądaniu.
+
+**Weryfikacja po wdrożeniu:** jak w kroku 8.8 punkt 3 — zapisz cennik z
+wariantem relatywnym z aplikacji, sprawdź że arkusz `API_VARIANTS` ma
+wypełnioną kolumnę O (`priceFormula`, JSON w jednej komórce) dla tego wiersza.
+
+---
+
 ## 9) Snapshot stabilnego katalogu po ≥12h (Faza 3)
 
 Dopisz **poniższe bloki do istniejącego `Code.gs` bez modyfikacji żadnych

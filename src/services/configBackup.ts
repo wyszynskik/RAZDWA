@@ -70,6 +70,14 @@ const variantSchema = z.object({
   materialSizeOptions: z.array(z.object({ material: z.string(), size: z.string() })).optional(),
   calcScheme: z.enum(["interpolated", "flat-per-unit", "flat-rate"]).optional(),
   subgroupSortOrder: sortOrderSchema.optional(),
+  priceFormula: z
+    .object({
+      baseCategoryId: z.string(),
+      basePrefix: z.string(),
+      op: z.enum(["percent", "fixed"]),
+      value: z.number(),
+    })
+    .optional(),
 });
 
 const configDataSchema = z.object({

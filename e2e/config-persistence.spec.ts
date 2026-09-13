@@ -344,7 +344,7 @@ test.describe("Cena relatywna do innego papieru (kategorie ilościowe)", () => {
     await stubAppsScript(page);
   });
 
-  test("papier dodany relatywnie (+20% od bazowego) liczy poprawną cenę i zapisuje ją jako zwykłą liczbę", async ({
+  test("papier dodany relatywnie (+20% od bazowego) liczy poprawną cenę i zapisuje żywą relację, nie zwykłą liczbę", async ({
     page,
   }) => {
     await openSettings(page);
@@ -376,18 +376,66 @@ test.describe("Cena relatywna do innego papieru (kategorie ilościowe)", () => {
     const prices = await page.evaluate(() =>
       JSON.parse(localStorage.getItem("razdwa_prices") ?? "{}")
     );
+    // prices[key] to tylko snapshot dla tabeli/eksportu — świeżo policzony przy
+    // "Zapisz cennik" — nie jest to, co kalkulator klienta faktycznie czyta.
     expect(prices["dyplomy-zzz-e2e-kreda-250g-100"]).toBe(10);
     expect(prices["dyplomy-zzz-e2e-satyna-250g-100"]).toBe(12);
 
-    // Zapisany wariant nie niesie żadnej relacji do papieru bazowego — to
-    // jednorazowe wyliczenie, nie żywa relacja (potwierdza zakres z planu).
+    // Właściciel poprosił o ŻYWĄ relację (nie jednorazowe wyliczenie) — zapisany
+    // wariant musi nieść priceFormula wskazującą na papier bazowy, żeby
+    // klasyfikacja mogła ją przeliczyć na nowo przy każdej zmianie ceny bazy.
     const variants = await readVariants(page);
     const relativeVariant = variants.find(
       (v: any) => v.key === "dyplomy-zzz-e2e-satyna-250g-100"
     );
-    expect(relativeVariant).toBeTruthy();
-    expect(relativeVariant.priceFormula).toBeUndefined();
-    expect(relativeVariant.baseVariant).toBeUndefined();
+    expect(relativeVariant?.priceFormula).toEqual({
+      baseCategoryId: "dyplomy",
+      basePrefix: "dyplomy-zzz-e2e-kreda-250g-",
+      op: "percent",
+      value: 20,
+    });
+  });
+
+  test("ŻYWY ZWIĄZEK: zmiana ceny bazowej PO zapisie automatycznie zmienia cenę pochodną, bez dotykania jej wiersza", async ({
+    page,
+  }) => {
+    await openSettings(page);
+    await page.selectOption("#new-price-category", "dyplomy");
+
+    await page.selectOption("#new-price-prefix", { label: "Nowa, niezależna podkategoria…" });
+    await page.fill("#new-price-subgroup", "ZZZ-E2E-Live-Kreda");
+    await page.fill("#new-price-qty", "100");
+    await page.fill("#new-price-value", "10");
+    await page.click("#btn-add-row");
+    await expect(page.locator("#save-msg")).toBeVisible();
+
+    await page.selectOption("#new-price-prefix", { label: "Nowa, niezależna podkategoria…" });
+    await page.fill("#new-price-subgroup", "ZZZ-E2E-Live-Satyna");
+    await page.selectOption("#new-price-mode", "relative");
+    await page.selectOption("#new-price-base-variant", { label: "ZZZ-E2E-Live-Kreda" });
+    await page.fill("#new-price-qty", "100");
+    await page.selectOption("#new-price-relative-op", "percent");
+    await page.fill("#new-price-relative-value", "20");
+    await page.click("#btn-add-row");
+    await expect(page.locator("#save-msg")).toBeVisible();
+    await savePrices(page);
+
+    const derivedInput = page.locator('tr[data-key="dyplomy-zzz-e2e-live-satyna-100"] input[data-field="unitPrice"]');
+    await expect(derivedInput).toBeDisabled();
+    await expect(derivedInput).toHaveValue("12.00");
+
+    // Admin zmienia TYLKO cenę bazową (kredy), nigdy nie dotyka wiersza pochodnego.
+    await page
+      .locator('tr[data-key="dyplomy-zzz-e2e-live-kreda-100"] input[data-field="unitPrice"]')
+      .fill("50");
+    await savePrices(page);
+
+    const prices = await page.evaluate(() =>
+      JSON.parse(localStorage.getItem("razdwa_prices") ?? "{}")
+    );
+    expect(prices["dyplomy-zzz-e2e-live-kreda-100"]).toBe(50);
+    expect(prices["dyplomy-zzz-e2e-live-satyna-100"]).toBe(60); // 50 * 1.2, przeliczone automatycznie
+    await expect(derivedInput).toHaveValue("60.00");
   });
 
   test("brak progu bazowego dla wybranej ilości pokazuje czytelny błąd i nie wypełnia ceny", async ({
@@ -415,4 +463,40 @@ test.describe("Cena relatywna do innego papieru (kategorie ilościowe)", () => {
     await expect(page.locator("#new-price-relative-error")).toContainText("Brak ceny papieru bazowego");
     await expect(page.locator("#new-price-value")).toHaveValue("");
   });
+});
+
+test.describe("Nowy wariant faktycznie renderuje się u klienta (route id vs price-category id)", () => {
+  test.beforeEach(async ({ page }) => {
+    await neutralizeReloadTriggers(page);
+    await seedAdminSession(page);
+    await stubAppsScript(page);
+  });
+
+  const cases: Array<{ categoryId: string; route: string; label: string }> = [
+    { categoryId: "zaproszenia", route: "zaproszenia-kreda", label: "ZZZ-M0-ZAP" },
+    { categoryId: "wizytowki", route: "wizytowki-druk-cyfrowy", label: "ZZZ-M0-WIZ" },
+    { categoryId: "ulotki", route: "ulotki-cyfrowe", label: "ZZZ-M0-ULO" },
+  ];
+
+  for (const c of cases) {
+    test(`kategoria "${c.categoryId}" -> widok "#/${c.route}"`, async ({ page }) => {
+      // Regresja: mountDynamicSubgroupsFor() w router.ts szukał kategorii
+      // cenowej po id TRASY, nie po id kategorii — dla tych trzech widoków
+      // id się różnią, więc generyczny renderer podgrup nigdy się nie
+      // montował i nowo dodany wariant był całkowicie niewidoczny dla
+      // klienta, niezależnie od trybu ceny.
+      await openSettings(page);
+      await page.selectOption("#new-price-category", c.categoryId);
+      await page.selectOption("#new-price-prefix", { label: "Nowa, niezależna podkategoria…" });
+      await page.fill("#new-price-subgroup", c.label);
+      await page.fill("#new-price-qty", "100");
+      await page.fill("#new-price-value", "10");
+      await page.click("#btn-add-row");
+      await expect(page.locator("#save-msg")).toBeVisible();
+      await savePrices(page);
+
+      await page.goto(`/#/${c.route}`);
+      await expect(page.locator("body")).toContainText(c.label);
+    });
+  }
 });

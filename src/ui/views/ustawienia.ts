@@ -53,6 +53,7 @@ import {
   deleteVariantDefinition,
   variantsToPriceLabels,
   type VariantCalcScheme,
+  type VariantPriceFormula,
   nextVariantSortOrderInSubgroup,
   mergeVariantSubgroupsIntoRegistry,
   createSubgroupRegistryEntry,
@@ -90,6 +91,7 @@ import {
 } from "../../services/catalogSync";
 import { writeAppliedRevision, writeAppliedUpdatedAt } from "../../services/catalogRevision";
 import { warmPriceCache, getZeroPriceLabels, getZeroPriceDefaults } from "../../core/compat";
+import { classifyVariantsIntoProducts } from "../../core/productModel";
 import type { PriceRecord } from "../../types/price-schema";
 import {
   pushPricesToGas,
@@ -193,6 +195,46 @@ export function resolveFormCalcScheme(
 
 function isValidCalcScheme(value: string): value is VariantCalcScheme {
   return value === "interpolated" || value === "flat-per-unit" || value === "flat-rate";
+}
+
+/**
+ * Mirrors resolveFormCalcScheme(): a priceFormula is a whole-subgroup
+ * property (denormalized across every tier sharing a subcategoryPrefix), so
+ * adding a tier to an EXISTING relative subgroup must inherit its formula
+ * unconditionally rather than let the mode toggle override it per-tier —
+ * doing otherwise would immediately trip agreedPriceFormula()'s conflict
+ * check in productModel.ts.
+ *
+ * Deliberate divergence from resolveFormCalcScheme's call site: callers here
+ * MUST pass merged saved+draft variants, not saved-only. resolveFormCalcScheme
+ * can miss a same-session draft sibling and softly fall back to a category
+ * default; missing one here would silently drop the relationship the very
+ * next click (adding tier #2 to a brand-new, still-unsaved relative
+ * subgroup) — a real correctness bug, not a cosmetic default gap.
+ *
+ * Exported for unit tests only.
+ */
+export function resolveFormPriceFormula(
+  categoryId: string,
+  selectedPrefixValue: string,
+  form: { mode: string; basePrefix: string; op: string; rawValue: string },
+  existingVariants: VariantDefinition[]
+): VariantPriceFormula | undefined {
+  if (!isQuantityBasedCategory(categoryId)) return undefined;
+  if (selectedPrefixValue === CUSTOM_PREFIX_VALUE) {
+    if (form.mode !== "relative" || !form.basePrefix) return undefined;
+    const value = Number.parseFloat(form.rawValue.replace(",", "."));
+    if (!Number.isFinite(value)) return undefined;
+    return {
+      baseCategoryId: categoryId,
+      basePrefix: form.basePrefix,
+      op: form.op === "fixed" ? "fixed" : "percent",
+      value,
+    };
+  }
+  return existingVariants.find(
+    (v) => v.categoryId === categoryId && v.subcategoryPrefix === selectedPrefixValue
+  )?.priceFormula;
 }
 
 /**
@@ -2986,6 +3028,7 @@ export const UstawieniaView: View = {
         const basePrefixes = new Map<string, string>();
         for (const v of [...savedForCategory, ...draftForCategory]) {
           if (v.subcategoryPrefix === currentPrefix) continue; // papier nie może być bazowy dla samego siebie
+          if (v.priceFormula) continue; // łańcuchowanie zablokowane — patrz resolveEntryPrice w productModel.ts
           basePrefixes.set(v.subcategoryPrefix, v.subgroupLabel || v.label || v.subcategoryPrefix);
         }
         const baseOptions = [...basePrefixes.entries()].sort((a, b) => a[1].localeCompare(b[1]));
@@ -3066,6 +3109,26 @@ export const UstawieniaView: View = {
       let isBoldGroup = false;
 
       const variantsByKey = new Map(getVariantDefinitions().map((v) => [v.key, v]));
+
+      // Wiersze z priceFormula (żywa cena relatywna) pokazują świeżo wyliczoną
+      // wartość, nie prices[key] wprost — ten sam rezolwer co kalkulator
+      // klienta, żeby panel nigdy nie pokazywał nieaktualnej/pustej liczby dla
+      // wariantu, którego baza właśnie się zmieniła w tej samej sesji, przed
+      // "Zapisz cennik" (kiedy prices[key] dostaje trwały snapshot).
+      const hasAnyPriceFormula = [...variantsByKey.values()].some((v) => v.priceFormula);
+      const liveResolvedByKey = hasAnyPriceFormula
+        ? (() => {
+            const report = classifyVariantsIntoProducts(
+              [...getVariantDefinitions(), ..._draftVariantDefs],
+              prices
+            );
+            const byKey = new Map<string, number | null>();
+            for (const product of report.migrated) {
+              for (const entry of product.entries) byKey.set(entry.key, entry.price);
+            }
+            return byKey;
+          })()
+        : null;
 
       const rows: string[] = [];
       keys.forEach((key) => {
@@ -3270,8 +3333,17 @@ export const UstawieniaView: View = {
             ? isLaminowanieEmphasizedRow(key) ||
               (previousLaminowanieSection === "BINDOWANIE" && isBoldGroup)
             : isBoldGroup;
-        const displayPrice =
-          typeof value === "number" && Number.isFinite(value) ? value.toFixed(2) : "";
+
+        const priceFormula = variantsByKey.get(key)?.priceFormula;
+        const liveResolved = priceFormula ? liveResolvedByKey?.get(key) : undefined;
+        const displayPrice = priceFormula
+          ? typeof liveResolved === "number"
+            ? liveResolved.toFixed(2)
+            : ""
+          : typeof value === "number" && Number.isFinite(value)
+            ? value.toFixed(2)
+            : "";
+        const isUnresolvedFormula = Boolean(priceFormula) && typeof liveResolved !== "number";
 
         const rowClasses = ["settings-price-row"];
         if (active.id === "zaproszenia") {
@@ -3288,9 +3360,10 @@ export const UstawieniaView: View = {
           <td class="settings-td-product">
             <span class="settings-product-label${useAltLabel ? " settings-product-label--alt" : ""}" title="${escapeHtml(label)}">${escapeHtml(label)}</span>
             ${materialSizeText ? `<span class="settings-product-materialsize" style="display:block; font-size:0.8em; color:#7a8a9a;">${escapeHtml(materialSizeText)}</span>` : ""}
+            ${priceFormula ? `<span class="settings-product-materialsize" style="display:block; font-size:0.8em; color:#7a8a9a;" title="Cena liczona na żywo od innego papieru">🔗 ${priceFormula.op === "percent" ? `${priceFormula.value >= 0 ? "+" : ""}${priceFormula.value}%` : `${priceFormula.value >= 0 ? "+" : ""}${priceFormula.value} zł`} od bazowego</span>` : ""}
           </td>
           <td class="settings-td-price">
-            <input data-field="unitPrice" type="number" step="0.01" min="0" value="${displayPrice}" placeholder="—" class="settings-input settings-input--price">
+            <input data-field="unitPrice" type="number" step="0.01" min="0" value="${displayPrice}" placeholder="${isUnresolvedFormula ? "brak bazy" : "—"}" class="settings-input settings-input--price"${priceFormula ? ` disabled title="${isUnresolvedFormula ? "Brak progu bazowego dla tej ilości — sprawdź papier bazowy albo edytuj ręcznie po usunięciu formuły" : "Cena liczona na żywo — edytuj cenę papieru bazowego"}" style="${isUnresolvedFormula ? "border-color:#dc2626;color:#dc2626;" : "opacity:0.75;"}"` : ""}>
           </td>
           <td class="settings-td-del">
             <button type="button" data-action="delete" data-key="${escapeHtml(key)}" class="settings-btn-del" title="Usuń pozycję">✕</button>
@@ -4341,6 +4414,27 @@ export const UstawieniaView: View = {
         isCustomSubgroupForCategory,
         effectiveScheme
       );
+      const priceModeSelectForSubmit = container.querySelector<HTMLSelectElement>("#new-price-mode");
+      const baseVariantSelectForSubmit = container.querySelector<HTMLSelectElement>(
+        "#new-price-base-variant"
+      );
+      const relativeOpSelectForSubmit = container.querySelector<HTMLSelectElement>(
+        "#new-price-relative-op"
+      );
+      const relativeValueInputForSubmit = container.querySelector<HTMLInputElement>(
+        "#new-price-relative-value"
+      );
+      const effectivePriceFormula = resolveFormPriceFormula(
+        chosenCategoryId,
+        selectedPrefix,
+        {
+          mode: priceModeSelectForSubmit?.value ?? "manual",
+          basePrefix: baseVariantSelectForSubmit?.value ?? "",
+          op: relativeOpSelectForSubmit?.value ?? "percent",
+          rawValue: relativeValueInputForSubmit?.value.trim() ?? "",
+        },
+        [...getVariantDefinitions(), ..._draftVariantDefs]
+      );
       // A custom subgroup handled by the generic renderer (not artykuly/uslugi).
       // Carries a calcScheme and, optionally, material/size — both denormalized
       // across every tier of the subgroup.
@@ -4518,6 +4612,7 @@ export const UstawieniaView: View = {
               addSubgroupSizeInput?.value ?? ""
             )
           : existingDef?.materialSizeOptions,
+        priceFormula: effectivePriceFormula,
       };
       _draftVariantDefs = _draftVariantDefs
         .filter((d) => d.key !== _variantDef.key)
@@ -4549,7 +4644,11 @@ export const UstawieniaView: View = {
           siblingDefs,
           _variantDef.materialSizeOptions,
           _now
-        ).map((v) => ({ ...v, calcScheme: _variantDef.calcScheme }));
+        ).map((v) => ({
+          ...v,
+          calcScheme: _variantDef.calcScheme,
+          priceFormula: _variantDef.priceFormula,
+        }));
         for (const updated of updatedSiblings) {
           _draftVariantDefs = _draftVariantDefs
             .filter((d) => d.key !== updated.key)
@@ -4781,6 +4880,29 @@ export const UstawieniaView: View = {
       // _draftVariantDefs NIE jest czyszczone tutaj — dopiero po potwierdzeniu GAS.
       for (const dv of _draftVariantDefs) {
         upsertVariantDefinition(dv);
+      }
+
+      // Snapshot świeżo wyliczonej ceny dla wariantów z priceFormula (żywa cena
+      // relatywna). Kalkulator klienta ZAWSZE liczy na żywo przez
+      // classifyVariantsIntoProducts i nigdy nie czyta tego zapisanego numeru —
+      // ale tabela cen w tym panelu i eksport do arkusza czytają prices[key]
+      // wprost, więc muszą mieć aktualną liczbę, nie pustkę ani nieaktualną
+      // wartość sprzed ewentualnej zmiany ceny papieru bazowego.
+      const allVariantsForSnapshot = getVariantDefinitions();
+      const formulaVariants = allVariantsForSnapshot.filter((v) => v.priceFormula);
+      if (formulaVariants.length > 0) {
+        const snapshotReport = classifyVariantsIntoProducts(allVariantsForSnapshot, prices);
+        const resolvedByKey = new Map<string, number | null>();
+        for (const product of snapshotReport.migrated) {
+          for (const entry of product.entries) {
+            resolvedByKey.set(entry.key, entry.price);
+          }
+        }
+        for (const v of formulaVariants) {
+          if (resolvedByKey.has(v.key)) {
+            prices[v.key] = resolvedByKey.get(v.key) ?? null;
+          }
+        }
       }
 
       // Iterujemy pełne prices (wszystkie kategorie), nie tylko widoczne wiersze DOM.
