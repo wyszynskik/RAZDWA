@@ -336,3 +336,83 @@ test.describe("Dodaj materiał — przypisanie do wielu kategorii", () => {
     await expect(page.locator("#save-msg")).toContainText("już istnieje");
   });
 });
+
+test.describe("Cena relatywna do innego papieru (kategorie ilościowe)", () => {
+  test.beforeEach(async ({ page }) => {
+    await neutralizeReloadTriggers(page);
+    await seedAdminSession(page);
+    await stubAppsScript(page);
+  });
+
+  test("papier dodany relatywnie (+20% od bazowego) liczy poprawną cenę i zapisuje ją jako zwykłą liczbę", async ({
+    page,
+  }) => {
+    await openSettings(page);
+    await page.selectOption("#new-price-category", "dyplomy");
+
+    // Papier bazowy: 100 szt = 10 zł.
+    await page.selectOption("#new-price-prefix", { label: "Nowa, niezależna podkategoria…" });
+    await page.fill("#new-price-subgroup", "ZZZ-E2E-Kreda-250g");
+    await page.fill("#new-price-qty", "100");
+    await page.fill("#new-price-value", "10");
+    await page.click("#btn-add-row");
+    await expect(page.locator("#save-msg")).toBeVisible();
+
+    // Drugi papier, w trybie relatywnym: bazowy=Kreda, +20%, ta sama ilość.
+    await page.selectOption("#new-price-prefix", { label: "Nowa, niezależna podkategoria…" });
+    await page.fill("#new-price-subgroup", "ZZZ-E2E-Satyna-250g");
+    await page.selectOption("#new-price-mode", "relative");
+    await page.selectOption("#new-price-base-variant", { label: "ZZZ-E2E-Kreda-250g" });
+    await page.fill("#new-price-qty", "100");
+    await page.selectOption("#new-price-relative-op", "percent");
+    await page.fill("#new-price-relative-value", "20");
+
+    await expect(page.locator("#new-price-value")).toHaveValue("12");
+
+    await page.click("#btn-add-row");
+    await expect(page.locator("#save-msg")).toBeVisible();
+    await savePrices(page);
+
+    const prices = await page.evaluate(() =>
+      JSON.parse(localStorage.getItem("razdwa_prices") ?? "{}")
+    );
+    expect(prices["dyplomy-zzz-e2e-kreda-250g-100"]).toBe(10);
+    expect(prices["dyplomy-zzz-e2e-satyna-250g-100"]).toBe(12);
+
+    // Zapisany wariant nie niesie żadnej relacji do papieru bazowego — to
+    // jednorazowe wyliczenie, nie żywa relacja (potwierdza zakres z planu).
+    const variants = await readVariants(page);
+    const relativeVariant = variants.find(
+      (v: any) => v.key === "dyplomy-zzz-e2e-satyna-250g-100"
+    );
+    expect(relativeVariant).toBeTruthy();
+    expect(relativeVariant.priceFormula).toBeUndefined();
+    expect(relativeVariant.baseVariant).toBeUndefined();
+  });
+
+  test("brak progu bazowego dla wybranej ilości pokazuje czytelny błąd i nie wypełnia ceny", async ({
+    page,
+  }) => {
+    await openSettings(page);
+    await page.selectOption("#new-price-category", "dyplomy");
+
+    await page.selectOption("#new-price-prefix", { label: "Nowa, niezależna podkategoria…" });
+    await page.fill("#new-price-subgroup", "ZZZ-E2E-Bazowy2");
+    await page.fill("#new-price-qty", "100");
+    await page.fill("#new-price-value", "10");
+    await page.click("#btn-add-row");
+    await expect(page.locator("#save-msg")).toBeVisible();
+
+    await page.selectOption("#new-price-prefix", { label: "Nowa, niezależna podkategoria…" });
+    await page.fill("#new-price-subgroup", "ZZZ-E2E-Pochodny2");
+    await page.selectOption("#new-price-mode", "relative");
+    await page.selectOption("#new-price-base-variant", { label: "ZZZ-E2E-Bazowy2" });
+    await page.fill("#new-price-qty", "999"); // brak progu 999 u bazowego
+    await page.selectOption("#new-price-relative-op", "percent");
+    await page.fill("#new-price-relative-value", "20");
+
+    await expect(page.locator("#new-price-relative-error")).toBeVisible();
+    await expect(page.locator("#new-price-relative-error")).toContainText("Brak ceny papieru bazowego");
+    await expect(page.locator("#new-price-value")).toHaveValue("");
+  });
+});

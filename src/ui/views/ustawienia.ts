@@ -2957,6 +2957,52 @@ export const UstawieniaView: View = {
             : "3. Nazwa wariantu / produktu";
         }
       }
+
+      // Cena relatywna do innego papieru — jednorazowe wyliczenie (nie żywy
+      // związek), dostępne tylko dla kategorii ilościowych, bo tam mechanizm
+      // buildQuantityKey daje wprost porównywalny klucz ceny dla tej samej
+      // ilości u papieru bazowego i pochodnego.
+      const priceModeWrapper = container.querySelector<HTMLElement>("#new-price-mode-wrapper");
+      const priceModeSelect = container.querySelector<HTMLSelectElement>("#new-price-mode");
+      const relativeWrapper = container.querySelector<HTMLElement>("#new-price-relative-wrapper");
+      const baseVariantSelect = container.querySelector<HTMLSelectElement>(
+        "#new-price-base-variant"
+      );
+      if (priceModeWrapper && priceModeSelect && relativeWrapper && baseVariantSelect) {
+        const chosenCatId = addCategorySelect.value;
+        const showModeToggle = isQuantityBasedCategory(chosenCatId);
+        priceModeWrapper.style.display = showModeToggle ? "" : "none";
+        if (!showModeToggle) {
+          priceModeSelect.value = "manual";
+          relativeWrapper.style.display = "none";
+        }
+
+        const previousBaseVariant = baseVariantSelect.value;
+        const currentPrefix = addPrefixSelect.value;
+        const draftForCategory = _draftVariantDefs.filter((v) => v.categoryId === chosenCatId);
+        const savedForCategory = getVariantDefinitions().filter(
+          (v) => v.categoryId === chosenCatId
+        );
+        const basePrefixes = new Map<string, string>();
+        for (const v of [...savedForCategory, ...draftForCategory]) {
+          if (v.subcategoryPrefix === currentPrefix) continue; // papier nie może być bazowy dla samego siebie
+          basePrefixes.set(v.subcategoryPrefix, v.subgroupLabel || v.label || v.subcategoryPrefix);
+        }
+        const baseOptions = [...basePrefixes.entries()].sort((a, b) => a[1].localeCompare(b[1]));
+        baseVariantSelect.innerHTML = baseOptions
+          .map(([prefix, label]) => `<option value="${escapeHtml(prefix)}">${escapeHtml(label)}</option>`)
+          .join("");
+        if (baseOptions.some(([prefix]) => prefix === previousBaseVariant)) {
+          baseVariantSelect.value = previousBaseVariant;
+        }
+
+        if (showModeToggle && priceModeSelect.value === "relative" && baseOptions.length > 0) {
+          relativeWrapper.style.display = "";
+        } else if (baseOptions.length === 0) {
+          relativeWrapper.style.display = "none";
+          priceModeSelect.value = "manual";
+        }
+      }
     }
 
     function renderTable(): void {
@@ -3796,6 +3842,27 @@ export const UstawieniaView: View = {
                   <input id="new-price-label" type="text" class="settings-input" placeholder="np. 2000 szt.">
                 </label>
 
+                <div id="new-price-mode-wrapper" class="settings-field" style="display:none">
+                  <span class="settings-action-label">Sposób wpisania ceny</span>
+                  <select id="new-price-mode" class="settings-input">
+                    <option value="manual">Ręcznie</option>
+                    <option value="relative">Relatywnie do innego papieru</option>
+                  </select>
+                </div>
+
+                <div id="new-price-relative-wrapper" class="settings-field" style="display:none">
+                  <span class="settings-action-label">Papier bazowy</span>
+                  <select id="new-price-base-variant" class="settings-input"></select>
+                  <div style="display:flex; gap:6px; margin-top:6px;">
+                    <select id="new-price-relative-op" class="settings-input" style="flex:1;">
+                      <option value="percent">% od ceny bazowej</option>
+                      <option value="fixed">kwota do ceny bazowej (zł)</option>
+                    </select>
+                    <input id="new-price-relative-value" type="number" step="0.01" class="settings-input" style="width:100px;" placeholder="np. 20">
+                  </div>
+                  <div id="new-price-relative-error" class="hint" style="display:none; color:#dc2626; margin-top:4px;"></div>
+                </div>
+
                 <label class="settings-field">
                   <span class="settings-action-label">Cena (zł) — opcjonalnie</span>
                   <input id="new-price-value" type="number" min="0" step="0.01" class="settings-input" placeholder="np. 45.00">
@@ -4162,6 +4229,83 @@ export const UstawieniaView: View = {
     addQtyInput?.addEventListener("input", updateKeyPreview);
     addLabelInput?.addEventListener("input", updateKeyPreview);
 
+    // Cena relatywna do papieru bazowego — jednorazowe wyliczenie (patrz komentarz
+    // przy syncAddCategorySelection). Wypełnia #new-price-value tak jak admin
+    // wpisałby cenę ręcznie; pole zostaje edytowalne, to tylko autouzupełnienie.
+    function recomputeRelativePrice(): void {
+      const modeSelect = container.querySelector<HTMLSelectElement>("#new-price-mode");
+      const relativeError = container.querySelector<HTMLElement>("#new-price-relative-error");
+      if (!modeSelect || modeSelect.value !== "relative") {
+        if (relativeError) relativeError.style.display = "none";
+        return;
+      }
+
+      const chosenCategoryId = addCategorySelect?.value || activeCategory;
+      const baseVariantSelect = container.querySelector<HTMLSelectElement>(
+        "#new-price-base-variant"
+      );
+      const opSelect = container.querySelector<HTMLSelectElement>("#new-price-relative-op");
+      const valueInput = container.querySelector<HTMLInputElement>("#new-price-relative-value");
+      const qty = addQtyInput?.value.trim() || "";
+      const basePrefix = baseVariantSelect?.value || "";
+      const op = opSelect?.value === "fixed" ? "fixed" : "percent";
+      const rawValue = valueInput?.value.trim() || "";
+
+      if (!basePrefix || !qty || rawValue === "") {
+        if (relativeError) relativeError.style.display = "none";
+        return;
+      }
+
+      const coefficient = Number.parseFloat(rawValue.replace(",", "."));
+      if (!Number.isFinite(coefficient)) {
+        if (relativeError) {
+          relativeError.textContent = "⚠️ Wpisz poprawną liczbę.";
+          relativeError.style.display = "";
+        }
+        return;
+      }
+
+      const baseKey = buildQuantityKey(chosenCategoryId, basePrefix, qty);
+      const basePrice = prices[baseKey];
+
+      if (typeof basePrice !== "number" || !Number.isFinite(basePrice)) {
+        if (relativeError) {
+          relativeError.textContent = `⚠️ Brak ceny papieru bazowego dla ilości "${qty}" — wpisz cenę ręcznie albo wybierz inną ilość.`;
+          relativeError.style.display = "";
+        }
+        return;
+      }
+
+      if (relativeError) relativeError.style.display = "none";
+      const computed =
+        op === "percent" ? basePrice * (1 + coefficient / 100) : basePrice + coefficient;
+      if (addPriceInput) addPriceInput.value = String(parseFloat(computed.toFixed(2)));
+      updateKeyPreview();
+    }
+
+    const priceModeSelectEl = container.querySelector<HTMLSelectElement>("#new-price-mode");
+    const baseVariantSelectEl = container.querySelector<HTMLSelectElement>(
+      "#new-price-base-variant"
+    );
+    const relativeOpSelectEl = container.querySelector<HTMLSelectElement>(
+      "#new-price-relative-op"
+    );
+    const relativeValueInputEl = container.querySelector<HTMLInputElement>(
+      "#new-price-relative-value"
+    );
+
+    priceModeSelectEl?.addEventListener("change", () => {
+      const relativeWrapper = container.querySelector<HTMLElement>("#new-price-relative-wrapper");
+      if (relativeWrapper) {
+        relativeWrapper.style.display = priceModeSelectEl.value === "relative" ? "" : "none";
+      }
+      recomputeRelativePrice();
+    });
+    baseVariantSelectEl?.addEventListener("change", recomputeRelativePrice);
+    relativeOpSelectEl?.addEventListener("change", recomputeRelativePrice);
+    relativeValueInputEl?.addEventListener("input", recomputeRelativePrice);
+    addQtyInput?.addEventListener("input", recomputeRelativePrice);
+
     container.querySelector("#btn-add-row")?.addEventListener("click", () => {
       flushInputs();
       const chosenCategoryId = addCategorySelect?.value || activeCategory;
@@ -4445,6 +4589,16 @@ export const UstawieniaView: View = {
       if (addPriceInput) addPriceInput.value = "";
       if (addLegendInput) addLegendInput.value = "";
       if (addQtyInput) addQtyInput.value = "";
+      const priceModeSelectAfterAdd = container.querySelector<HTMLSelectElement>("#new-price-mode");
+      if (priceModeSelectAfterAdd) priceModeSelectAfterAdd.value = "manual";
+      const relativeWrapperAfterAdd = container.querySelector<HTMLElement>(
+        "#new-price-relative-wrapper"
+      );
+      if (relativeWrapperAfterAdd) relativeWrapperAfterAdd.style.display = "none";
+      const relativeValueAfterAdd = container.querySelector<HTMLInputElement>(
+        "#new-price-relative-value"
+      );
+      if (relativeValueAfterAdd) relativeValueAfterAdd.value = "";
       updateKeyPreview();
 
       const priceInputs = container.querySelectorAll<HTMLInputElement>(
