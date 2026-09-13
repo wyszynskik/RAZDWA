@@ -178,6 +178,46 @@ export function findVariantBySignature(
  * @param existingKeys        - full prices map (for key collision detection)
  * @param existingPrefixes    - current category's custom prefix map (optional)
  */
+/**
+ * Reserved subcategoryPrefix marking a VariantDefinition row as a
+ * material-assignment record (see src/core/dynamicMaterials.ts), not a real
+ * customer-facing product/subgroup. Never emitted by slugifyKeySegment or
+ * buildUniqueSubgroupPrefix (they only ever produce hyphen-separated
+ * segments), so it can never collide with an admin-created subgroup prefix.
+ */
+export const MATERIAL_ASSIGNMENT_PREFIX = "__material__";
+
+/**
+ * Builds the tier-price key suffix, matching the convention read by
+ * overrideTiersWithStoredPrices() in src/core/compat.ts: `{min}+` for
+ * open-ended tiers (max === null or max > 50000), otherwise `{min}-{max}`.
+ */
+export function buildTierSuffix(min: number, max: number | null): string {
+  return max === null || max > 50000 ? `${min}+` : `${min}-${max}`;
+}
+
+/**
+ * Inverse of buildTierSuffix(). Returns null for anything that isn't exactly
+ * `{min}+` or `{min}-{max}` with finite non-negative integers — callers must
+ * drop unparseable keys rather than guess.
+ */
+export function parseTierSuffix(suffix: string): { min: number; max: number | null } | null {
+  const openEnded = suffix.match(/^(\d+)\+$/);
+  if (openEnded) {
+    return { min: Number(openEnded[1]), max: null };
+  }
+
+  const ranged = suffix.match(/^(\d+)-(\d+)$/);
+  if (ranged) {
+    const min = Number(ranged[1]);
+    const max = Number(ranged[2]);
+    if (max < min) return null;
+    return { min, max };
+  }
+
+  return null;
+}
+
 export function buildUniqueSubgroupPrefix(
   basePrefix: string,
   subgroupLabel: string,

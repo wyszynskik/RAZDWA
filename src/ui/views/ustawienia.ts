@@ -18,7 +18,16 @@ import {
   isQtyTieredSubgroupCategory,
   hasNativeSubgroupRenderer,
   normalizePricePrefix,
+  slugifyKeySegment,
+  buildTierSuffix,
+  MATERIAL_ASSIGNMENT_PREFIX,
 } from "../../core/variantKeys";
+import {
+  getCombinedMaterials,
+  buildMaterialAssignmentKey,
+  materialTierKeyPrefix,
+  type DynamicMaterialCategoryId,
+} from "../../core/dynamicMaterials";
 import {
   getCustomSubgroupDefinitions,
   type PrefixOption,
@@ -3807,6 +3816,44 @@ export const UstawieniaView: View = {
 
               <hr class="settings-divider">
 
+              <div class="settings-add-group" id="add-material-group">
+                <div class="settings-wizard-header">
+                  <span class="settings-wizard-title">Nowy materiał (kilka kategorii naraz)</span>
+                </div>
+                <div class="hint" style="margin-bottom:8px;">
+                  Dodaje materiał (np. nowy papier) od razu do wybranych kategorii — pojawi się
+                  w ich formularzach bez ręcznej edycji HTML.
+                </div>
+
+                <label class="settings-field">
+                  <span class="settings-action-label">Nazwa materiału</span>
+                  <input id="new-material-name" type="text" class="settings-input" placeholder="np. Papier 250g mat">
+                </label>
+
+                <div class="settings-field">
+                  <span class="settings-action-label">Dostępny w kategoriach</span>
+                  <label style="display:flex; align-items:center; gap:8px; margin:4px 0;">
+                    <input type="checkbox" class="new-material-category" value="banner"> Bannery
+                  </label>
+                  <label style="display:flex; align-items:center; gap:8px; margin:4px 0;">
+                    <input type="checkbox" class="new-material-category" value="solwentPlakaty"> Solwent - Plakaty
+                  </label>
+                  <label style="display:flex; align-items:center; gap:8px; margin:4px 0;">
+                    <input type="checkbox" class="new-material-category" value="foliaSzroniona"> Folia szroniona / OWV
+                  </label>
+                </div>
+
+                <div class="settings-field">
+                  <span class="settings-action-label">Progi cenowe (od m² / do m² — puste = bez górnej granicy / cena zł)</span>
+                  <div id="new-material-tiers"></div>
+                  <button type="button" id="btn-add-material-tier" class="btn-secondary settings-action-btn">+ Dodaj próg</button>
+                </div>
+
+                <button id="btn-add-material" type="button" class="btn-success settings-action-btn">+ Dodaj materiał</button>
+              </div>
+
+              <hr class="settings-divider">
+
               <div class="settings-persist-group">
                 <button id="btn-save" type="button" class="btn-primary settings-action-btn">💾 Zapisz cennik</button>
                 <button id="btn-reset" type="button" class="btn-secondary settings-action-btn">🔄 Przywróć</button>
@@ -4410,6 +4457,158 @@ export const UstawieniaView: View = {
       } else {
         addLabelInput?.focus();
       }
+    });
+
+    // ── "Dodaj materiał" — przypisanie jednego materiału do kilku kategorii ──
+    // Osobny, samodzielny formularz (nie dzieli stanu z "Dodaj wariant"), bo
+    // to inny kształt danych: jeden materiał -> N wpisów VariantDefinition
+    // (sentinel, patrz dynamicMaterials.ts) + N zestawów kluczy cenowych,
+    // po jednym na zaznaczoną kategorię. Zero zmian w Google Apps Script —
+    // każdy sentinel-wpis leci istniejącym kanałem catalog.save jak zwykły
+    // wariant, a jego ceny progów lecą płaską mapą defaultPrices.
+    const materialTiersContainer = container.querySelector<HTMLElement>("#new-material-tiers");
+    const materialNameInput = container.querySelector<HTMLInputElement>("#new-material-name");
+
+    function addMaterialTierRow(): void {
+      if (!materialTiersContainer) return;
+      const row = document.createElement("div");
+      row.className = "material-tier-row";
+      row.style.cssText = "display:flex; gap:6px; margin-bottom:6px; align-items:center;";
+      row.innerHTML = `
+        <input type="number" min="0" step="1" class="settings-input tier-min" placeholder="od" style="width:80px;">
+        <input type="number" min="0" step="1" class="settings-input tier-max" placeholder="do (puste = +)" style="width:110px;">
+        <input type="number" min="0" step="0.01" class="settings-input tier-price" placeholder="cena zł" style="width:100px;">
+        <button type="button" class="btn-secondary settings-icon-btn btn-remove-material-tier" title="Usuń próg">✕</button>
+      `;
+      row.querySelector(".btn-remove-material-tier")?.addEventListener("click", () => {
+        if (materialTiersContainer.children.length > 1) row.remove();
+      });
+      materialTiersContainer.appendChild(row);
+    }
+
+    function resetMaterialForm(): void {
+      if (materialNameInput) materialNameInput.value = "";
+      container
+        .querySelectorAll<HTMLInputElement>(".new-material-category")
+        .forEach((cb) => (cb.checked = false));
+      if (materialTiersContainer) materialTiersContainer.innerHTML = "";
+      addMaterialTierRow();
+    }
+
+    addMaterialTierRow();
+    container.querySelector("#btn-add-material-tier")?.addEventListener("click", addMaterialTierRow);
+
+    container.querySelector("#btn-add-material")?.addEventListener("click", () => {
+      const name = (materialNameInput?.value ?? "").trim();
+      if (!name) {
+        showStatus("⚠️ Wpisz nazwę materiału.", "error");
+        materialNameInput?.focus();
+        return;
+      }
+
+      const materialId = slugifyKeySegment(name);
+      if (!materialId) {
+        showStatus("⚠️ Nazwa materiału musi zawierać przynajmniej jedną literę lub cyfrę.", "error");
+        materialNameInput?.focus();
+        return;
+      }
+
+      const checkedCategories = Array.from(
+        container.querySelectorAll<HTMLInputElement>(".new-material-category:checked")
+      ).map((cb) => cb.value as DynamicMaterialCategoryId);
+      if (checkedCategories.length === 0) {
+        showStatus("⚠️ Zaznacz przynajmniej jedną kategorię.", "error");
+        return;
+      }
+
+      const tierRows = materialTiersContainer?.querySelectorAll<HTMLElement>(".material-tier-row") ?? [];
+      const tiers: Array<{ min: number; max: number | null; price: number }> = [];
+      for (const row of tierRows) {
+        const minRaw = row.querySelector<HTMLInputElement>(".tier-min")?.value ?? "";
+        const maxRaw = row.querySelector<HTMLInputElement>(".tier-max")?.value ?? "";
+        const priceRaw = row.querySelector<HTMLInputElement>(".tier-price")?.value ?? "";
+        if (minRaw === "" || priceRaw === "") continue;
+
+        const min = Number.parseInt(minRaw, 10);
+        const max = maxRaw === "" ? null : Number.parseInt(maxRaw, 10);
+        const price = Number.parseFloat(priceRaw);
+        if (!Number.isFinite(min) || min < 0) continue;
+        if (max !== null && (!Number.isFinite(max) || max <= min)) continue;
+        if (!Number.isFinite(price) || price < 0) continue;
+
+        tiers.push({ min, max, price });
+      }
+
+      if (tiers.length === 0) {
+        showStatus("⚠️ Dodaj przynajmniej jeden poprawny próg cenowy (od / cena).", "error");
+        return;
+      }
+
+      // Sprawdzamy zarówno zapisany stan (getCombinedMaterials, czyta
+      // getVariantDefinitions z localStorage) JAK I niezapisany draft
+      // (_draftVariantDefs) — inaczej dwukrotne "Dodaj materiał" dla tej
+      // samej nazwy w JEDNEJ sesji przed "Zapisz cennik" przechodziłoby
+      // walidację, a stare klucze cen progów z pierwszego wpisu (inny
+      // podział progów) zostawałyby osierocone w `prices`, dając w efekcie
+      // wewnętrznie sprzeczny cennik po zapisie.
+      const collisions = checkedCategories.filter(
+        (categoryId) =>
+          getCombinedMaterials(categoryId).some((m) => m.id === materialId) ||
+          _draftVariantDefs.some(
+            (d) => d.categoryId === categoryId && d.key === buildMaterialAssignmentKey(categoryId, materialId)
+          )
+      );
+      if (collisions.length > 0) {
+        showStatus(
+          `⚠️ Materiał o takiej nazwie już istnieje/jest w niezapisanym drafcie w: ${collisions.join(", ")}. ` +
+            "Wybierz inną nazwę albo najpierw kliknij „Zapisz cennik”, jeśli chcesz poprawić ceny.",
+          "error"
+        );
+        return;
+      }
+
+      const now = new Date().toISOString();
+      for (const categoryId of checkedCategories) {
+        const key = buildMaterialAssignmentKey(categoryId, materialId);
+        const variantDef: VariantDefinition = {
+          key,
+          categoryId,
+          subcategoryPrefix: MATERIAL_ASSIGNMENT_PREFIX,
+          subgroupLabel: "",
+          label: name,
+          legend: "",
+          visibleInSettings: true,
+          visibleInCalculator: true,
+          sortOrder: 0,
+          createdAt: now,
+          updatedAt: now,
+        };
+        _draftVariantDefs = _draftVariantDefs.filter((d) => d.key !== key).concat(variantDef);
+
+        const tierKeyPrefix = materialTierKeyPrefix(categoryId, materialId);
+        for (const tier of tiers) {
+          prices[`${tierKeyPrefix}${buildTierSuffix(tier.min, tier.max)}`] = tier.price;
+        }
+      }
+
+      logVariantOperation({
+        action: "add",
+        key: buildMaterialAssignmentKey(checkedCategories[0], materialId),
+        categoryId: checkedCategories.join(","),
+        prefix: MATERIAL_ASSIGNMENT_PREFIX,
+        label: name,
+        qty: "",
+        price: tiers[0]?.price ?? null,
+        timestamp: now,
+      });
+
+      showStatus(
+        `✓ Dodano materiał (niezapisany): "${name}" w ${checkedCategories.length} ${checkedCategories.length === 1 ? "kategorii" : "kategoriach"}`
+      );
+      updateDraftIndicator();
+      renderTable();
+      ctx?.emit?.("prices-updated", { timestamp: Date.now() });
+      resetMaterialForm();
     });
 
     // Zwraca wyłącznie warianty z rejestru (upsertVariantDefinition).

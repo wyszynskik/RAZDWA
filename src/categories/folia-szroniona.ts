@@ -2,8 +2,7 @@ import { calculatePrice } from "../core/pricing";
 import { PriceTable, CalculationResult } from "../core/types";
 import { getPrice } from "../services/priceService";
 import { overrideTiersWithStoredPrices } from "../core/compat";
-
-const data: any = getPrice("foliaSzroniona");
+import { getCombinedMaterials } from "../core/dynamicMaterials";
 
 export interface FoliaSzronionaOptions {
   widthMm: number;
@@ -16,7 +15,9 @@ export function calculateFoliaSzroniona(
   options: FoliaSzronionaOptions
 ): CalculationResult & { isCustom: boolean } {
   const tableData = getPrice("foliaSzroniona") as any;
-  const materialData = tableData?.materials?.find((m: any) => m.id === options.serviceId);
+  const materialData = getCombinedMaterials("foliaSzroniona").find(
+    (m) => m.id === options.serviceId
+  );
 
   if (!materialData) {
     throw new Error(`Unknown service: ${options.serviceId}`);

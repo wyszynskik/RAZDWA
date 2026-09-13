@@ -274,3 +274,65 @@ test.describe("trwałość konfiguracji podgrup", () => {
     if (existsSync(badPath)) rmSync(badPath);
   });
 });
+
+test.describe("Dodaj materiał — przypisanie do wielu kategorii", () => {
+  test.beforeEach(async ({ page }) => {
+    await neutralizeReloadTriggers(page);
+    await seedAdminSession(page);
+    await stubAppsScript(page);
+  });
+
+  test("nowy materiał trafia do localStorage jako sentinel i pojawia się w kalkulatorze banera po zapisie", async ({
+    page,
+  }) => {
+    await openSettings(page);
+
+    await page.fill("#new-material-name", "ZZZ-E2E Papier Testowy");
+    await page.check('.new-material-category[value="banner"]');
+    const tierRow = page.locator("#new-material-tiers .material-tier-row").first();
+    await tierRow.locator(".tier-min").fill("1");
+    await tierRow.locator(".tier-max").fill("9");
+    await tierRow.locator(".tier-price").fill("77");
+    await page.click("#btn-add-material");
+    await expect(page.locator("#save-msg")).toContainText("Dodano materiał");
+
+    await savePrices(page);
+
+    const variants = await readVariants(page);
+    const sentinel = variants.find((v: any) => v.key === "mat__banner__zzz-e2e-papier-testowy");
+    expect(sentinel).toBeTruthy();
+    expect(sentinel.subcategoryPrefix).toBe("__material__");
+
+    await page.goto("/#/banner");
+    await expect(page.locator("#b-material")).toContainText("ZZZ-E2E Papier Testowy");
+  });
+
+  test("dodanie materiału o tej samej nazwie DRUGI RAZ przed zapisem jest odrzucane, żeby nie osierocić kluczy cen z pierwszej próby", async ({
+    page,
+  }) => {
+    await openSettings(page);
+
+    await page.fill("#new-material-name", "ZZZ-E2E Duplikat");
+    await page.check('.new-material-category[value="banner"]');
+    const firstRow = page.locator("#new-material-tiers .material-tier-row").first();
+    await firstRow.locator(".tier-min").fill("1");
+    await firstRow.locator(".tier-max").fill("9");
+    await firstRow.locator(".tier-price").fill("10");
+    await page.click("#btn-add-material");
+    await expect(page.locator("#save-msg")).toContainText("Dodano materiał");
+
+    // Druga próba, PRZED "Zapisz cennik", z innym podziałem progów — to jest
+    // dokładnie scenariusz z audytu (poprawka literówki w cenie przed
+    // zapisem): musi zostać odrzucona, a nie po cichu zostawić stary klucz
+    // 1-9 obok nowych progów.
+    await page.fill("#new-material-name", "ZZZ-E2E Duplikat");
+    await page.check('.new-material-category[value="banner"]');
+    const secondRow = page.locator("#new-material-tiers .material-tier-row").first();
+    await secondRow.locator(".tier-min").fill("1");
+    await secondRow.locator(".tier-max").fill("5");
+    await secondRow.locator(".tier-price").fill("20");
+    await page.click("#btn-add-material");
+
+    await expect(page.locator("#save-msg")).toContainText("już istnieje");
+  });
+});

@@ -8,6 +8,7 @@ import {
   type MigrationReport,
 } from "../src/core/productModel";
 import type { OrphanedPriceKey } from "../src/core/orphanedPriceKeys";
+import { MATERIAL_ASSIGNMENT_PREFIX } from "../src/core/variantKeys";
 import {
   setVariantDefinitions,
   setPrice,
@@ -674,5 +675,64 @@ describe("classifyVariantsIntoProducts — explicit calcScheme (admin-declared)"
     expect(report.migrated).toEqual([]);
     expect(report.skipped).toHaveLength(1);
     expect(report.skipped[0].categoryId).toBe("banner");
+  });
+});
+
+describe("classifyVariantsIntoProducts — material-assignment sentinel (dynamicMaterials.ts)", () => {
+  it("a variant with subcategoryPrefix === MATERIAL_ASSIGNMENT_PREFIX never appears in migrated/skipped/needsReview", () => {
+    const variants = [
+      makeVariant({
+        key: "mat__banner__papier-250g",
+        categoryId: "banner",
+        subcategoryPrefix: MATERIAL_ASSIGNMENT_PREFIX,
+        subgroupLabel: "",
+        label: "Papier 250g mat",
+      }),
+    ];
+
+    const report = classifyVariantsIntoProducts(variants, {});
+
+    expect(report.migrated).toEqual([]);
+    expect(report.skipped).toEqual([]);
+    expect(report.needsReview).toEqual([]);
+  });
+
+  it("does not get flagged by the malformedKeys check even though its key never starts with the sentinel prefix", () => {
+    // mat__banner__papier-250g does not start with "__material__" — proves
+    // the sentinel guard runs BEFORE the malformedKeys check, not after.
+    const variants = [
+      makeVariant({
+        key: "mat__banner__papier-250g",
+        categoryId: "banner",
+        subcategoryPrefix: MATERIAL_ASSIGNMENT_PREFIX,
+      }),
+    ];
+
+    const report = classifyVariantsIntoProducts(variants, {});
+
+    expect(report.needsReview).toEqual([]);
+  });
+
+  it("a real product cluster in the same category is still classified normally alongside a sentinel row", () => {
+    const variants = [
+      makeVariant({
+        key: "mat__banner__papier-250g",
+        categoryId: "banner",
+        subcategoryPrefix: MATERIAL_ASSIGNMENT_PREFIX,
+      }),
+      makeVariant({
+        key: "banner-custom-10",
+        categoryId: "banner",
+        subcategoryPrefix: "banner-custom-",
+        calcScheme: "flat-rate",
+      }),
+    ];
+
+    const report = classifyVariantsIntoProducts(variants, { "banner-custom-10": 100 });
+
+    expect(report.migrated).toHaveLength(1);
+    expect(report.migrated[0].productId).toContain("banner-custom-");
+    expect(report.skipped).toEqual([]);
+    expect(report.needsReview).toEqual([]);
   });
 });

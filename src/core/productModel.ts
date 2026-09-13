@@ -43,7 +43,7 @@ import {
   type VariantCalcScheme,
 } from "../services/priceService";
 import { getDefaultPricesMap } from "./compat";
-import { isQtyTieredSubgroupCategory } from "./variantKeys";
+import { isQtyTieredSubgroupCategory, MATERIAL_ASSIGNMENT_PREFIX } from "./variantKeys";
 import type { OrphanedPriceKey } from "./orphanedPriceKeys";
 
 /**
@@ -210,6 +210,13 @@ export function classifyVariantsIntoProducts(
         });
         continue;
       }
+
+      // Material-assignment sentinel (see dynamicMaterials.ts): a pure data
+      // carrier for cross-category material definitions, never a real
+      // product/subgroup. Dropped silently — not migrated, not skipped, not
+      // needs-review — before the malformedKeys check below, since its key
+      // (mat__{categoryId}__{materialId}) never starts with this prefix.
+      if (subcategoryPrefix === MATERIAL_ASSIGNMENT_PREFIX) continue;
 
       const malformedKeys = clusterVariants.filter((v) => !v.key.startsWith(subcategoryPrefix));
       if (malformedKeys.length > 0) {

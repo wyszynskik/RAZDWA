@@ -2,8 +2,7 @@ import { calculatePrice } from "../core/pricing";
 import { PriceTable, CalculationResult } from "../core/types";
 import { getPrice } from "../services/priceService";
 import { overrideTiersWithStoredPrices } from "../core/compat";
-
-const data: any = getPrice("solwentPlakaty");
+import { getCombinedMaterials } from "../core/dynamicMaterials";
 
 export interface SolwentPlakatyInput {
   areaM2: number;
@@ -41,15 +40,16 @@ export function calculateSolwentPlakaty(input: SolwentPlakatyInput): Calculation
     .match(/(\d{2,3}g)/i)?.[1]
     ?.toLowerCase();
 
+  const combinedMaterials = getCombinedMaterials("solwentPlakaty");
   const materialData =
-    tableData.materials.find((m: any) => {
+    combinedMaterials.find((m) => {
       return (
         m.id === input.material ||
         normalizeMaterialKey(m.name) === materialKey ||
         normalizeMaterialKey(m.id) === materialKey
       );
     }) ??
-    tableData.materials.find((m: any) => {
+    combinedMaterials.find((m) => {
       return gsmToken ? String(m.id).toLowerCase() === gsmToken : false;
     });
 

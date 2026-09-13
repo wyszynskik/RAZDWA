@@ -569,6 +569,10 @@ function showCatalogBanner(status: CatalogStatus): void {
     const result = await applyRemoteCatalog(status.dirty);
     if (result.ok) {
       hideCatalogBanner();
+      // Widok już otwarty w chwili kliknięcia odświeża się sam — setPrice()
+      // wewnątrz applyRemoteCatalog emituje eventBus "price-changed", które
+      // niżej przekłada się na ctx "prices-updated" (patrz komentarz przy
+      // eventBus.on("price-changed", ...)).
       showToast("Ceny zaktualizowane z arkusza", "success");
       return;
     }
@@ -1352,12 +1356,17 @@ document.addEventListener("DOMContentLoaded", () => {
   });
   resetObserver.observe(viewContainer, { childList: true });
 
+  // Świadomie NIE router.handleRoute() — to robiło pełny unmount+mount
+  // aktualnego widoku (świeży fetch szablonu + initLogic od zera) przy KAŻDEJ
+  // zmianie ceny/wariantu, więc klient z wpisanymi danymi w otwartym
+  // kalkulatorze tracił je bezgłośnie (np. klik "Odśwież ceny" w bannerze
+  // czyścił wpisaną szerokość/wysokość) — dokładnie to, czego komentarz przy
+  // showCatalogBanner/applyRemoteCatalog wyżej deklaruje unikać. Każdy widok
+  // kategorii ma już własny nasłuch ctx.on("prices-updated", ...), który
+  // odświeża dane bez niszczenia stanu formularza — to jest jedyny mechanizm
+  // odświeżania, jakiego tu potrzeba.
   eventBus.on("price-changed", () => {
-    const currentHash = window.location.hash || "#/";
-    if (!currentHash || currentHash === "#/" || currentHash === "#/ustawienia") {
-      return;
-    }
-    router.handleRoute().catch(() => {});
+    eventEmitter.emit("prices-updated", { timestamp: Date.now() });
   });
 
   let prevNonExpressPriority: string = "Normalny";

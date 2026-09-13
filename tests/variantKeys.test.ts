@@ -9,6 +9,9 @@ import {
   findVariantBySignature,
   isQuantityBasedCategory,
   QUANTITY_BASED_CATEGORIES,
+  MATERIAL_ASSIGNMENT_PREFIX,
+  buildTierSuffix,
+  parseTierSuffix,
 } from "../src/core/variantKeys";
 
 describe("slugifyKeySegment", () => {
@@ -260,5 +263,43 @@ describe("findVariantBySignature", () => {
   it("vouchery: zwraca null gdy qty puste", () => {
     const prices = { "vouchery-100-jed": 5 };
     expect(findVariantBySignature("vouchery", "vouchery-jed-", "", "", prices)).toBeNull();
+  });
+});
+
+describe("buildTierSuffix / parseTierSuffix — round-trip", () => {
+  it("otwarty próg (max null) -> '{min}+' -> z powrotem", () => {
+    const suffix = buildTierSuffix(51, null);
+    expect(suffix).toBe("51+");
+    expect(parseTierSuffix(suffix)).toEqual({ min: 51, max: null });
+  });
+
+  it("zamknięty próg -> '{min}-{max}' -> z powrotem", () => {
+    const suffix = buildTierSuffix(21, 40);
+    expect(suffix).toBe("21-40");
+    expect(parseTierSuffix(suffix)).toEqual({ min: 21, max: 40 });
+  });
+
+  it("max > 50000 traktowany jak otwarty próg (zgodnie z overrideTiersWithStoredPrices)", () => {
+    expect(buildTierSuffix(1, 50001)).toBe("1+");
+  });
+
+  it("max dokładnie 50000 to nadal zamknięty próg", () => {
+    expect(buildTierSuffix(1, 50000)).toBe("1-50000");
+    expect(parseTierSuffix("1-50000")).toEqual({ min: 1, max: 50000 });
+  });
+
+  it("parseTierSuffix odrzuca nieparsowalne/uszkodzone sufiksy", () => {
+    expect(parseTierSuffix("")).toBeNull();
+    expect(parseTierSuffix("abc")).toBeNull();
+    expect(parseTierSuffix("5-")).toBeNull();
+    expect(parseTierSuffix("-5")).toBeNull();
+    expect(parseTierSuffix("5++")).toBeNull();
+    expect(parseTierSuffix("10-5")).toBeNull(); // max < min
+  });
+
+  it("MATERIAL_ASSIGNMENT_PREFIX nigdy nie koliduje z wygenerowanym prefiksem podgrupy", () => {
+    const generated = buildUniqueSubgroupPrefix("banner-", "Nowy Materiał", {});
+    expect(generated).not.toBe(MATERIAL_ASSIGNMENT_PREFIX);
+    expect(generated.includes("_")).toBe(false);
   });
 });
