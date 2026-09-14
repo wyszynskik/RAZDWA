@@ -118,6 +118,48 @@ describe("classifyVariantsIntoProducts — numeric-suffix clusters (interpolated
     ]);
   });
 
+  it("broszury-katalogi custom subgroup with plain-integer qty (post-fix form output) renders as a normal interpolated product", () => {
+    // Bug found 2026-09-14: the "Dodaj wariant" form (ustawienia.ts) forced
+    // admins to type a "51-1000" RANGE for this category specifically,
+    // mirroring the legacy built-in a4/a5/dl prices.json convention. But
+    // classifyVariantsIntoProducts needs a single numeric qty per tier to
+    // interpolate — a range string can't parse as one, so every custom
+    // broszury-katalogi variant silently never reached the customer,
+    // regardless of calcScheme. Fixed by making the form emit a plain
+    // integer for this category too, exactly like dyplomy/ulotki/zaproszenia.
+    // This test locks in that a plain-integer key (what the form now
+    // produces) classifies correctly — it is not testing the legacy range
+    // keys, which remain untouched in prices.json for the built-in a4/a5/dl
+    // dropdown (broszury-katalogi.ts's own bespoke resolveTierPrice()).
+    const variants = [
+      makeVariant({
+        key: "broszury-katalogi-kreda350g-100",
+        categoryId: "broszury-katalogi",
+        subcategoryPrefix: "broszury-katalogi-kreda350g-",
+        calcScheme: "interpolated",
+      }),
+      makeVariant({
+        key: "broszury-katalogi-kreda350g-500",
+        categoryId: "broszury-katalogi",
+        subcategoryPrefix: "broszury-katalogi-kreda350g-",
+        calcScheme: "interpolated",
+      }),
+    ];
+    const prices = {
+      "broszury-katalogi-kreda350g-100": 4.0,
+      "broszury-katalogi-kreda350g-500": 3.0,
+    };
+
+    const report = classifyVariantsIntoProducts(variants, prices);
+
+    expect(report.needsReview).toEqual([]);
+    expect(report.migrated).toHaveLength(1);
+    expect(report.migrated[0].entries).toEqual([
+      { key: "broszury-katalogi-kreda350g-100", qty: 100, price: 4.0 },
+      { key: "broszury-katalogi-kreda350g-500", qty: 500, price: 3.0 },
+    ]);
+  });
+
   it("CORE AUDIT FIX: a numeric-suffix key in artykuly/uslugi is classified as flat-per-unit, NOT interpolated", () => {
     // This is exactly the bug the audit flagged: isCustomSubgroupSelection()
     // forces the "Dodaj wariant" form into quantity mode (numeric-suffix

@@ -2984,13 +2984,8 @@ export const UstawieniaView: View = {
 
         const qtyLabelEl = qtyWrapper.querySelector<HTMLElement>("#new-price-qty-label");
         if (qtyLabelEl && qtyInput) {
-          if (chosenCatId === "broszury-katalogi") {
-            qtyLabelEl.textContent = "3. Zakres ilości (np. 51-1000)";
-            qtyInput.placeholder = "np. 51-1000";
-          } else {
-            qtyLabelEl.textContent = "3. Ilość (szt.)";
-            qtyInput.placeholder = "np. 500";
-          }
+          qtyLabelEl.textContent = "3. Ilość (szt.)";
+          qtyInput.placeholder = "np. 500";
         }
 
         if (labelDescEl) {
@@ -4461,23 +4456,7 @@ export const UstawieniaView: View = {
           addQtyInput?.focus();
           return;
         }
-        if (chosenCategoryId === "broszury-katalogi") {
-          if (!/^\d+-\d+$/.test(qtyValue)) {
-            logVariantOperation({
-              action: "skip",
-              key: "",
-              categoryId: chosenCategoryId,
-              prefix: selectedPrefix,
-              label: productLabel,
-              qty: qtyValue,
-              price: null,
-              timestamp: new Date().toISOString(),
-            });
-            showStatus("⚠️ Wpisz zakres ilości w formacie: 51-1000.", "error");
-            addQtyInput?.focus();
-            return;
-          }
-        } else if (!/^\d+$/.test(qtyValue)) {
+        if (!/^\d+$/.test(qtyValue)) {
           logVariantOperation({
             action: "skip",
             key: "",

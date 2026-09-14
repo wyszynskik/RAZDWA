@@ -500,3 +500,38 @@ test.describe("Nowy wariant faktycznie renderuje się u klienta (route id vs pri
     });
   }
 });
+
+test.describe("broszury-katalogi: nowy papier z ilością zwykłą (nie zakresem) renderuje się u klienta", () => {
+  test.beforeEach(async ({ page }) => {
+    await neutralizeReloadTriggers(page);
+    await seedAdminSession(page);
+    await stubAppsScript(page);
+  });
+
+  test("formularz nie wymusza już formatu zakresu (np. 51-1000) dla nowej podkategorii", async ({
+    page,
+  }) => {
+    // Regresja 2026-09-14: formularz "Dodaj wariant" wymuszał dla
+    // broszury-katalogi format "51-1000", którego classifyVariantsIntoProducts
+    // nie umie zinterpolować jako liczbę — każdy nowy papier był całkowicie
+    // niewidoczny u klienta, niezależnie od trybu ceny. Naprawione usunięciem
+    // specjalnego przypadku w ustawienia.ts; kategoria teraz zachowuje się
+    // jak każda inna kategoria ilościowa (dyplomy/ulotki/zaproszenia).
+    await openSettings(page);
+    await page.selectOption("#new-price-category", "broszury-katalogi");
+    await page.selectOption("#new-price-prefix", { label: "Nowa, niezależna podkategoria…" });
+
+    await expect(page.locator("#new-price-qty-label")).toHaveText("3. Ilość (szt.)");
+    await expect(page.locator("#new-price-qty")).toHaveAttribute("placeholder", "np. 500");
+
+    await page.fill("#new-price-subgroup", "ZZZ-BROSZURY-KREDA350");
+    await page.fill("#new-price-qty", "100");
+    await page.fill("#new-price-value", "4");
+    await page.click("#btn-add-row");
+    await expect(page.locator("#save-msg")).toBeVisible();
+    await savePrices(page);
+
+    await page.goto("/#/broszury-katalogi");
+    await expect(page.locator("body")).toContainText("ZZZ-BROSZURY-KREDA350");
+  });
+});

@@ -103,7 +103,11 @@ export function hasNativeSubgroupRenderer(categoryId: string): boolean {
 
 /**
  * Builds a deterministic base key for quantity-based categories.
- * qty – raw quantity value, e.g. "100" or "51-1000" (broszury range).
+ * qty – raw quantity value, e.g. "100". broszury-katalogi's built-in a4/a5/dl
+ * tiers still use legacy "51-1000" range suffixes in prices.json, but the
+ * "Dodaj wariant" form (ustawienia.ts) only ever produces plain-integer qty
+ * for this category too — a range suffix can't be interpolated as a numeric
+ * quantity by classifyVariantsIntoProducts, so it was never renderable.
  */
 export function buildQuantityKey(categoryId: string, prefix: string, qty: string): string {
   const q = qty.trim();
