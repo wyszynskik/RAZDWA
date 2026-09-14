@@ -3,15 +3,38 @@ import type { PriceRecord } from "../types/price-schema";
 const DB_NAME = "razdwa-price-db";
 const DB_VERSION = 2;
 
+/**
+ * Otwarcie IndexedDB jest prawie zawsze natychmiastowe. Gdy nie jest —
+ * najczęściej inna karta trzyma połączenie do starszej wersji bazy i
+ * blokuje upgrade (`onblocked`), albo środowisko po prostu nigdy nie
+ * wyemituje żadnego zdarzenia. Bez tego limitu handler "Zapisz cennik"
+ * wisiał w nieskończoność na `await reconcilePriceStore()`, zanim dotarł
+ * do pierwszego komunikatu dla użytkowniczki — patrz diagnostyka incydentu.
+ */
+export const IDB_OPEN_TIMEOUT_MS = 4000;
+
 let _dbPromise: Promise<IDBDatabase> | null = null;
 
-function openDB(): Promise<IDBDatabase> {
+/** Tylko do testów — czyści singleton połączenia między przypadkami testowymi. */
+export function resetPriceStoreConnectionForTests(): void {
+  _dbPromise = null;
+}
+
+function openDB(timeoutMs: number = IDB_OPEN_TIMEOUT_MS): Promise<IDBDatabase> {
   if (typeof indexedDB === "undefined") {
     return Promise.reject(new Error("IndexedDB is not available in this environment"));
   }
   if (_dbPromise) return _dbPromise;
   _dbPromise = new Promise((resolve, reject) => {
+    let settled = false;
     const request = indexedDB.open(DB_NAME, DB_VERSION);
+
+    const timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      _dbPromise = null;
+      reject(new Error("IndexedDB: przekroczono limit czasu otwarcia bazy."));
+    }, timeoutMs);
 
     request.onupgradeneeded = (event) => {
       const db = (event.target as IDBOpenDBRequest).result;
@@ -26,10 +49,40 @@ function openDB(): Promise<IDBDatabase> {
       }
     };
 
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => {
+    // Inna karta trzyma otwarte połączenie do starszej wersji bazy i blokuje
+    // upgrade. Bez tego handlera żądanie nigdy nie wyemitowałoby ani
+    // onsuccess, ani onerror — zawisłoby na zawsze (do czasu timeoutu wyżej).
+    request.onblocked = () => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
       _dbPromise = null;
-      reject(request.error);
+      reject(
+        new Error(
+          "IndexedDB: otwarcie zablokowane przez inną kartę z tą aplikacją. Zamknij pozostałe karty i spróbuj ponownie."
+        )
+      );
+    };
+
+    request.onsuccess = () => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      const db = request.result;
+      // Gdy inna karta/urządzenie podniesie DB_VERSION, ta połączenie trzeba
+      // zamknąć — inaczej to ono blokowałoby cudzy upgrade przez onblocked.
+      db.onversionchange = () => {
+        db.close();
+        _dbPromise = null;
+      };
+      resolve(db);
+    };
+    request.onerror = () => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      _dbPromise = null;
+      reject(request.error ?? new Error("IndexedDB: nie udało się otworzyć bazy."));
     };
   });
   return _dbPromise;

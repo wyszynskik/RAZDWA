@@ -200,6 +200,28 @@ export function safeInterpolate(qty: number, tiers: DynamicSubgroupTier[]): numb
 }
 
 /**
+ * True when `calcType`/`tiers` can define an ACTUAL price for `qty` without
+ * guessing. Only "interpolated" with EXACTLY ONE tier is restrictive: a
+ * single price point describes one confirmed quantity, not a ladder —
+ * clamping it to every other quantity (safeInterpolate's normal behavior
+ * for ≥2 tiers) would silently invent a price nobody confirmed for that
+ * quantity. Multi-tier interpolated clusters, flat-per-unit and flat-rate
+ * are unaffected — their existing clamp/compute behavior is unchanged.
+ *
+ * Exported for unit tests only — not part of this module's public API for
+ * other views, which should go through mountDynamicSubgroupContainers().
+ */
+export function hasDefinedPriceForQty(
+  calcType: SubgroupCalcType,
+  qty: number,
+  tiers: DynamicSubgroupTier[]
+): boolean {
+  if (calcType !== "interpolated") return true;
+  if (tiers.length !== 1) return true;
+  return tiers[0].qty === qty;
+}
+
+/**
  * flat-per-unit and flat-rate both assume a single-tier group — "flat"
  * strategies have no per-quantity price ladder to pick a tier from, unlike
  * "interpolated". Reading tiers[0] is only safe under that assumption;
@@ -443,6 +465,9 @@ function renderProductCard(product: RenderableProduct, cardTitle: string | null)
       <div class="price-line highlight">SUMA: <span class="dyn-total">-</span></div>
       <div class="express-hint" style="display:none;">W tym dopłata EXPRESS +${Math.round(getExpressRate() * 100)}%</div>
     </div>
+    <div class="dyn-no-price-message" style="display:none; margin-top:10px; color:#b45309; font-size:13px;">
+      Brak zdefiniowanej ceny dla tej ilości. Dodaj kolejny próg w Ustawieniach lub zastosuj wycenę indywidualną.
+    </div>
     <div class="form-actions" style="margin-top:10px;">
       <button type="button" class="btn-success dyn-add" ${isFlatRate ? "" : "disabled"}>DODAJ DO KOSZYKA</button>
     </div>
@@ -497,6 +522,7 @@ export function mountDynamicSubgroupContainers(
       const totalEl = card.querySelector<HTMLElement>(".dyn-total")!;
       const unitEl = card.querySelector<HTMLElement>(".dyn-unit")!;
       const expressHintEl = card.querySelector<HTMLElement>(".express-hint")!;
+      const noPriceEl = card.querySelector<HTMLElement>(".dyn-no-price-message")!;
       const addBtn = card.querySelector<HTMLButtonElement>(".dyn-add")!;
       const materialSizeSelect = card.querySelector<HTMLSelectElement>(".dyn-material-size-select");
 
@@ -512,6 +538,23 @@ export function mountDynamicSubgroupContainers(
 
       const recalc = () => {
         const requestedQty = qtyInput ? Number.parseInt(qtyInput.value, 10) : 1;
+
+        // Zasada jednego progu: dla "interpolated" z DOKŁADNIE jednym progiem
+        // nie wolno zgadywać/interpolować/ekstrapolować ceny dla innej
+        // ilości niż ta jedna potwierdzona — patrz hasDefinedPriceForQty().
+        if (
+          Number.isFinite(requestedQty) &&
+          requestedQty > 0 &&
+          !hasDefinedPriceForQty(product.calcType, requestedQty, product.tiers)
+        ) {
+          currentComputation = null;
+          resultBox.style.display = "none";
+          noPriceEl.style.display = "block";
+          addBtn.disabled = true;
+          return;
+        }
+        noPriceEl.style.display = "none";
+
         currentComputation = computeCartResult(product, requestedQty, ctx.expressMode);
 
         if (!currentComputation) {

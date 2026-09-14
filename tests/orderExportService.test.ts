@@ -1,12 +1,15 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import {
   buildOrderExportPayload,
+  fetchCatalogRevision,
   getOrderExportConfig,
   ORDER_EXPORT_CONFIG_KEY,
+  saveCatalogToAppsScript,
   savePricesToAppsScript,
   saveVariantsToAppsScript,
   sendOrderToAppsScript,
   setOrderExportConfig,
+  verifyPinOnServer,
 } from "../src/services/orderExportService";
 import { CartItem, CustomerData } from "../src/core/types";
 
@@ -592,5 +595,226 @@ describe("saveVariantsToAppsScript — body validation", () => {
     expect(result.ok).toBe(false);
     expect(result.noToken).toBe(true);
     expect(fetchSpy).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Hotfix: stabilniejszy getRevision/verifyPin (retry TYLKO dla sieci/timeoutu)
+// ---------------------------------------------------------------------------
+
+/** Minimalny kształt localStorage/sessionStorage czytany przez kod pod testem. */
+type StorageLike = {
+  getItem: (key: string) => string | null;
+  setItem?: (key: string, value: string) => void;
+  removeItem?: (key: string) => void;
+};
+
+/** Minimalny kształt Response faktycznie czytany przez orderExportService.ts. */
+type MockFetchResponse = {
+  ok: boolean;
+  status: number;
+  headers: { get: (name: string) => string | null };
+  json: () => Promise<unknown>;
+  text: () => Promise<string>;
+};
+
+/**
+ * globalThis.fetch ma w Node/@types/node pełną sygnaturę Response — nasze
+ * atrapy testowe implementują wyłącznie pola, które orderExportService.ts
+ * faktycznie czyta. Rzutowanie przez "unknown" (nie "any") jest jedynym
+ * sposobem podmiany globala na węższy, w pełni otypowany kształt.
+ */
+function stubFetch(impl: (...args: unknown[]) => Promise<MockFetchResponse>): void {
+  (globalThis as unknown as { fetch: typeof impl }).fetch = impl;
+}
+
+function clearFetchStub(): void {
+  delete (globalThis as { fetch?: unknown }).fetch;
+}
+
+function stubLocalStorageRecord(store: Record<string, string>): void {
+  (globalThis as unknown as { localStorage: StorageLike }).localStorage = {
+    getItem: (k: string) => store[k] ?? null,
+    setItem: (k: string, v: string) => {
+      store[k] = v;
+    },
+    removeItem: (k: string) => {
+      delete store[k];
+    },
+  };
+}
+
+function clearLocalStorageStub(): void {
+  delete (globalThis as { localStorage?: unknown }).localStorage;
+}
+
+function stubSessionStorageToken(token: string | null): void {
+  (globalThis as unknown as { sessionStorage: StorageLike }).sessionStorage = {
+    getItem: (k: string) => (k === "adminSessionToken" ? token : null),
+  };
+}
+
+function clearSessionStorageStub(): void {
+  delete (globalThis as { sessionStorage?: unknown }).sessionStorage;
+}
+
+describe("fetchCatalogRevision — retry wyłącznie dla awarii sieci/timeoutu", () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    clearFetchStub();
+  });
+
+  it("fetch rzuca raz (timeout/sieć), potem odpowiada → jeden retry wystarcza", async () => {
+    const fetchSpy = vi
+      .fn()
+      .mockRejectedValueOnce(new DOMException("aborted", "AbortError"))
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        headers: { get: () => "application/json" },
+        json: async () => ({ catalogRevision: 7 }),
+        text: async () => JSON.stringify({ catalogRevision: 7 }),
+      });
+    stubFetch(fetchSpy);
+
+    const revision = await fetchCatalogRevision(GAS_CONFIG);
+
+    expect(revision).toBe(7);
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+  });
+
+  it("fetch rzuca dwa razy → null, ale tylko jeden retry (dokładnie 2 próby)", async () => {
+    const fetchSpy = vi.fn().mockRejectedValue(new TypeError("network error"));
+    stubFetch(fetchSpy);
+
+    const revision = await fetchCatalogRevision(GAS_CONFIG);
+
+    expect(revision).toBeNull();
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+  });
+
+  it("serwer faktycznie odpowiedział (choćby bez catalogRevision) → BEZ retry, jedno wywołanie", async () => {
+    const fetchSpy = makeMockFetch(200, { ok: true });
+    stubFetch(fetchSpy);
+
+    const revision = await fetchCatalogRevision(GAS_CONFIG);
+
+    expect(revision).toBeNull();
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("verifyPinOnServer — retry wyłącznie dla sieci/timeoutu, nigdy dla odpowiedzi serwera", () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    clearFetchStub();
+    clearLocalStorageStub();
+    stubLocalStorageRecord({});
+    setOrderExportConfig(GAS_CONFIG);
+  });
+
+  it("fetch rzuca raz, potem odpowiada sukcesem → jeden retry, wynik ok:true", async () => {
+    const fetchSpy = vi
+      .fn()
+      .mockRejectedValueOnce(new TypeError("network error"))
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        headers: { get: () => "application/json" },
+        json: async () => ({ ok: true, token: "tok-123" }),
+        text: async () => JSON.stringify({ ok: true, token: "tok-123" }),
+      });
+    stubFetch(fetchSpy);
+
+    const result = await verifyPinOnServer("1234");
+
+    expect(result.ok).toBe(true);
+    expect(result.token).toBe("tok-123");
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+  });
+
+  it("fetch rzuca dwa razy → error:offline, dokładnie 2 próby (nie więcej)", async () => {
+    const fetchSpy = vi.fn().mockRejectedValue(new DOMException("aborted", "AbortError"));
+    stubFetch(fetchSpy);
+
+    const result = await verifyPinOnServer("1234");
+
+    expect(result.ok).toBe(false);
+    expect(result.error).toBe("offline");
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+  });
+
+  it("serwer odpowiada wrong_pin → BEZ retry, dokładnie jedno wywołanie", async () => {
+    const fetchSpy = makeMockFetch(200, { ok: false, error: "wrong_pin" });
+    stubFetch(fetchSpy);
+
+    const result = await verifyPinOnServer("0000");
+
+    expect(result.ok).toBe(false);
+    expect(result.error).toBe("wrong_pin");
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("serwer odpowiada rate_limited → BEZ retry, dokładnie jedno wywołanie", async () => {
+    const fetchSpy = makeMockFetch(200, { ok: false, error: "rate_limited" });
+    stubFetch(fetchSpy);
+
+    const result = await verifyPinOnServer("0000");
+
+    expect(result.ok).toBe(false);
+    expect(result.error).toBe("rate_limited");
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Hotfix: wygasła sesja (noToken) musi nieść czytelny komunikat — front-end
+// pokazuje go przez ctx.showToast() przed przekierowaniem na stronę główną
+// (patrz ustawienia.ts, handler #btn-save). Ta warstwa testuje kontrakt
+// danych: że saveCatalogToAppsScript() zawsze zwraca niepusty `message` przy
+// noToken, w obu wariantach (brak tokenu lokalnie / GAS odrzucił token).
+// Samo wywołanie ctx.showToast w DOM nie jest tu testowalne — repo nie ma
+// środowiska DOM (vitest.config.ts: environment "node").
+// ---------------------------------------------------------------------------
+
+describe("saveCatalogToAppsScript — komunikat przy wygasłej/brakującej sesji", () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    clearFetchStub();
+    clearSessionStorageStub();
+  });
+
+  it("brak tokenu lokalnie → noToken:true z niepustym, czytelnym komunikatem", async () => {
+    const fetchSpy = vi.fn();
+    stubFetch(fetchSpy);
+
+    const result = await saveCatalogToAppsScript(
+      { prices: {}, variants: [], baseRevision: 1 },
+      GAS_CONFIG
+    );
+
+    expect(result.noToken).toBe(true);
+    expect(result.message).toBeTruthy();
+    expect(result.message).toMatch(/sesj|zaloguj/i);
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("GAS odrzucił token (unauthorized) → noToken:true, message z odpowiedzi serwera", async () => {
+    stubSessionStorageToken("expired-token");
+    stubFetch(
+      makeMockFetch(200, {
+        ok: false,
+        error: "unauthorized",
+        message: "Sesja wygasła — zaloguj się ponownie.",
+      })
+    );
+
+    const result = await saveCatalogToAppsScript(
+      { prices: {}, variants: [], baseRevision: 1 },
+      GAS_CONFIG
+    );
+
+    expect(result.noToken).toBe(true);
+    expect(result.message).toBe("Sesja wygasła — zaloguj się ponownie.");
   });
 });

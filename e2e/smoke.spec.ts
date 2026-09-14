@@ -1,5 +1,23 @@
 import { test, expect } from "@playwright/test";
 
+/**
+ * startCatalogWatcher() (src/services/catalogSync.ts) woła prawdziwy GAS przy
+ * KAŻDYM starcie aplikacji (main.ts) — bez tej zaślepki testy smoke próbują
+ * łączyć się z produkcyjnym Apps Script z środowiska CI. Ten fetch ma
+ * 15s timeout i jeden retry przy błędzie sieci, więc nieudane/wolne
+ * połączenie nigdy nie pozwala osiągnąć "networkidle" w 20s oknie testu.
+ * Każdy inny e2e spec w tym repo już stubuje GAS w ten sam sposób.
+ */
+test.beforeEach(async ({ page }) => {
+  await page.route(/script\.google\.com/, (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ ok: false, message: "e2e smoke: GAS zaślepiony" }),
+    })
+  );
+});
+
 test.describe("startup", () => {
   test("HTML loads with correct title", async ({ page }) => {
     await page.goto("/");
