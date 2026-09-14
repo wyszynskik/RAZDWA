@@ -137,6 +137,15 @@ istniejące dane zostają nietknięte). `materialSizeOptions` jest serializowane
 JSON w jednej komórce. Wiersze zapisane przed patchem po prostu nie mają tych
 pól w odpowiedzi — aplikacja stosuje wtedy reguły dla danych legacy.
 
+**Faza 4 (`priceFormula`, żywa cena relatywna, `devdocs/GOOGLE_APPS_SCRIPT_SETUP.md`
+sekcja 8.9):** ten sam wzorzec, jedna kolejna kolumna na końcu, JSON w jednej
+komórce. Klient liczy pochodną cenę na żywo z ceny bazowego wariantu przy
+każdym renderowaniu — Code.gs wyłącznie przechowuje i zwraca to pole, bez
+żadnej logiki liczącej. **Wymaga ręcznej wklejki do Code.gs i redeployu przez
+właściciela** (poza tym repo) — do czasu redeployu `priceFormula` działa
+lokalnie na jednym stanowisku, ale nie przetrwa synchronizacji z arkuszem na
+inne stanowiska.
+
 Autoryzacja zapisu korzysta z istniejącego `_verifyAdminSessionToken(data)`
 (token sesji z `verifyPin`, `SETTINGS_PIN_KEY`), a nie z osobnego mechanizmu.
 

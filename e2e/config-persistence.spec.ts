@@ -274,3 +274,264 @@ test.describe("trwałość konfiguracji podgrup", () => {
     if (existsSync(badPath)) rmSync(badPath);
   });
 });
+
+test.describe("Dodaj materiał — przypisanie do wielu kategorii", () => {
+  test.beforeEach(async ({ page }) => {
+    await neutralizeReloadTriggers(page);
+    await seedAdminSession(page);
+    await stubAppsScript(page);
+  });
+
+  test("nowy materiał trafia do localStorage jako sentinel i pojawia się w kalkulatorze banera po zapisie", async ({
+    page,
+  }) => {
+    await openSettings(page);
+
+    await page.fill("#new-material-name", "ZZZ-E2E Papier Testowy");
+    await page.check('.new-material-category[value="banner"]');
+    const tierRow = page.locator("#new-material-tiers .material-tier-row").first();
+    await tierRow.locator(".tier-min").fill("1");
+    await tierRow.locator(".tier-max").fill("9");
+    await tierRow.locator(".tier-price").fill("77");
+    await page.click("#btn-add-material");
+    await expect(page.locator("#save-msg")).toContainText("Dodano materiał");
+
+    await savePrices(page);
+
+    const variants = await readVariants(page);
+    const sentinel = variants.find((v: any) => v.key === "mat__banner__zzz-e2e-papier-testowy");
+    expect(sentinel).toBeTruthy();
+    expect(sentinel.subcategoryPrefix).toBe("__material__");
+
+    await page.goto("/#/banner");
+    await expect(page.locator("#b-material")).toContainText("ZZZ-E2E Papier Testowy");
+  });
+
+  test("dodanie materiału o tej samej nazwie DRUGI RAZ przed zapisem jest odrzucane, żeby nie osierocić kluczy cen z pierwszej próby", async ({
+    page,
+  }) => {
+    await openSettings(page);
+
+    await page.fill("#new-material-name", "ZZZ-E2E Duplikat");
+    await page.check('.new-material-category[value="banner"]');
+    const firstRow = page.locator("#new-material-tiers .material-tier-row").first();
+    await firstRow.locator(".tier-min").fill("1");
+    await firstRow.locator(".tier-max").fill("9");
+    await firstRow.locator(".tier-price").fill("10");
+    await page.click("#btn-add-material");
+    await expect(page.locator("#save-msg")).toContainText("Dodano materiał");
+
+    // Druga próba, PRZED "Zapisz cennik", z innym podziałem progów — to jest
+    // dokładnie scenariusz z audytu (poprawka literówki w cenie przed
+    // zapisem): musi zostać odrzucona, a nie po cichu zostawić stary klucz
+    // 1-9 obok nowych progów.
+    await page.fill("#new-material-name", "ZZZ-E2E Duplikat");
+    await page.check('.new-material-category[value="banner"]');
+    const secondRow = page.locator("#new-material-tiers .material-tier-row").first();
+    await secondRow.locator(".tier-min").fill("1");
+    await secondRow.locator(".tier-max").fill("5");
+    await secondRow.locator(".tier-price").fill("20");
+    await page.click("#btn-add-material");
+
+    await expect(page.locator("#save-msg")).toContainText("już istnieje");
+  });
+});
+
+test.describe("Cena relatywna do innego papieru (kategorie ilościowe)", () => {
+  test.beforeEach(async ({ page }) => {
+    await neutralizeReloadTriggers(page);
+    await seedAdminSession(page);
+    await stubAppsScript(page);
+  });
+
+  test("papier dodany relatywnie (+20% od bazowego) liczy poprawną cenę i zapisuje żywą relację, nie zwykłą liczbę", async ({
+    page,
+  }) => {
+    await openSettings(page);
+    await page.selectOption("#new-price-category", "dyplomy");
+
+    // Papier bazowy: 100 szt = 10 zł.
+    await page.selectOption("#new-price-prefix", { label: "Nowa, niezależna podkategoria…" });
+    await page.fill("#new-price-subgroup", "ZZZ-E2E-Kreda-250g");
+    await page.fill("#new-price-qty", "100");
+    await page.fill("#new-price-value", "10");
+    await page.click("#btn-add-row");
+    await expect(page.locator("#save-msg")).toBeVisible();
+
+    // Drugi papier, w trybie relatywnym: bazowy=Kreda, +20%, ta sama ilość.
+    await page.selectOption("#new-price-prefix", { label: "Nowa, niezależna podkategoria…" });
+    await page.fill("#new-price-subgroup", "ZZZ-E2E-Satyna-250g");
+    await page.selectOption("#new-price-mode", "relative");
+    await page.selectOption("#new-price-base-variant", { label: "ZZZ-E2E-Kreda-250g" });
+    await page.fill("#new-price-qty", "100");
+    await page.selectOption("#new-price-relative-op", "percent");
+    await page.fill("#new-price-relative-value", "20");
+
+    await expect(page.locator("#new-price-value")).toHaveValue("12");
+
+    await page.click("#btn-add-row");
+    await expect(page.locator("#save-msg")).toBeVisible();
+    await savePrices(page);
+
+    const prices = await page.evaluate(() =>
+      JSON.parse(localStorage.getItem("razdwa_prices") ?? "{}")
+    );
+    // prices[key] to tylko snapshot dla tabeli/eksportu — świeżo policzony przy
+    // "Zapisz cennik" — nie jest to, co kalkulator klienta faktycznie czyta.
+    expect(prices["dyplomy-zzz-e2e-kreda-250g-100"]).toBe(10);
+    expect(prices["dyplomy-zzz-e2e-satyna-250g-100"]).toBe(12);
+
+    // Właściciel poprosił o ŻYWĄ relację (nie jednorazowe wyliczenie) — zapisany
+    // wariant musi nieść priceFormula wskazującą na papier bazowy, żeby
+    // klasyfikacja mogła ją przeliczyć na nowo przy każdej zmianie ceny bazy.
+    const variants = await readVariants(page);
+    const relativeVariant = variants.find(
+      (v: any) => v.key === "dyplomy-zzz-e2e-satyna-250g-100"
+    );
+    expect(relativeVariant?.priceFormula).toEqual({
+      baseCategoryId: "dyplomy",
+      basePrefix: "dyplomy-zzz-e2e-kreda-250g-",
+      op: "percent",
+      value: 20,
+    });
+  });
+
+  test("ŻYWY ZWIĄZEK: zmiana ceny bazowej PO zapisie automatycznie zmienia cenę pochodną, bez dotykania jej wiersza", async ({
+    page,
+  }) => {
+    await openSettings(page);
+    await page.selectOption("#new-price-category", "dyplomy");
+
+    await page.selectOption("#new-price-prefix", { label: "Nowa, niezależna podkategoria…" });
+    await page.fill("#new-price-subgroup", "ZZZ-E2E-Live-Kreda");
+    await page.fill("#new-price-qty", "100");
+    await page.fill("#new-price-value", "10");
+    await page.click("#btn-add-row");
+    await expect(page.locator("#save-msg")).toBeVisible();
+
+    await page.selectOption("#new-price-prefix", { label: "Nowa, niezależna podkategoria…" });
+    await page.fill("#new-price-subgroup", "ZZZ-E2E-Live-Satyna");
+    await page.selectOption("#new-price-mode", "relative");
+    await page.selectOption("#new-price-base-variant", { label: "ZZZ-E2E-Live-Kreda" });
+    await page.fill("#new-price-qty", "100");
+    await page.selectOption("#new-price-relative-op", "percent");
+    await page.fill("#new-price-relative-value", "20");
+    await page.click("#btn-add-row");
+    await expect(page.locator("#save-msg")).toBeVisible();
+    await savePrices(page);
+
+    const derivedInput = page.locator('tr[data-key="dyplomy-zzz-e2e-live-satyna-100"] input[data-field="unitPrice"]');
+    await expect(derivedInput).toBeDisabled();
+    await expect(derivedInput).toHaveValue("12.00");
+
+    // Admin zmienia TYLKO cenę bazową (kredy), nigdy nie dotyka wiersza pochodnego.
+    await page
+      .locator('tr[data-key="dyplomy-zzz-e2e-live-kreda-100"] input[data-field="unitPrice"]')
+      .fill("50");
+    await savePrices(page);
+
+    const prices = await page.evaluate(() =>
+      JSON.parse(localStorage.getItem("razdwa_prices") ?? "{}")
+    );
+    expect(prices["dyplomy-zzz-e2e-live-kreda-100"]).toBe(50);
+    expect(prices["dyplomy-zzz-e2e-live-satyna-100"]).toBe(60); // 50 * 1.2, przeliczone automatycznie
+    await expect(derivedInput).toHaveValue("60.00");
+  });
+
+  test("brak progu bazowego dla wybranej ilości pokazuje czytelny błąd i nie wypełnia ceny", async ({
+    page,
+  }) => {
+    await openSettings(page);
+    await page.selectOption("#new-price-category", "dyplomy");
+
+    await page.selectOption("#new-price-prefix", { label: "Nowa, niezależna podkategoria…" });
+    await page.fill("#new-price-subgroup", "ZZZ-E2E-Bazowy2");
+    await page.fill("#new-price-qty", "100");
+    await page.fill("#new-price-value", "10");
+    await page.click("#btn-add-row");
+    await expect(page.locator("#save-msg")).toBeVisible();
+
+    await page.selectOption("#new-price-prefix", { label: "Nowa, niezależna podkategoria…" });
+    await page.fill("#new-price-subgroup", "ZZZ-E2E-Pochodny2");
+    await page.selectOption("#new-price-mode", "relative");
+    await page.selectOption("#new-price-base-variant", { label: "ZZZ-E2E-Bazowy2" });
+    await page.fill("#new-price-qty", "999"); // brak progu 999 u bazowego
+    await page.selectOption("#new-price-relative-op", "percent");
+    await page.fill("#new-price-relative-value", "20");
+
+    await expect(page.locator("#new-price-relative-error")).toBeVisible();
+    await expect(page.locator("#new-price-relative-error")).toContainText("Brak ceny papieru bazowego");
+    await expect(page.locator("#new-price-value")).toHaveValue("");
+  });
+});
+
+test.describe("Nowy wariant faktycznie renderuje się u klienta (route id vs price-category id)", () => {
+  test.beforeEach(async ({ page }) => {
+    await neutralizeReloadTriggers(page);
+    await seedAdminSession(page);
+    await stubAppsScript(page);
+  });
+
+  const cases: Array<{ categoryId: string; route: string; label: string }> = [
+    { categoryId: "zaproszenia", route: "zaproszenia-kreda", label: "ZZZ-M0-ZAP" },
+    { categoryId: "wizytowki", route: "wizytowki-druk-cyfrowy", label: "ZZZ-M0-WIZ" },
+    { categoryId: "ulotki", route: "ulotki-cyfrowe", label: "ZZZ-M0-ULO" },
+  ];
+
+  for (const c of cases) {
+    test(`kategoria "${c.categoryId}" -> widok "#/${c.route}"`, async ({ page }) => {
+      // Regresja: mountDynamicSubgroupsFor() w router.ts szukał kategorii
+      // cenowej po id TRASY, nie po id kategorii — dla tych trzech widoków
+      // id się różnią, więc generyczny renderer podgrup nigdy się nie
+      // montował i nowo dodany wariant był całkowicie niewidoczny dla
+      // klienta, niezależnie od trybu ceny.
+      await openSettings(page);
+      await page.selectOption("#new-price-category", c.categoryId);
+      await page.selectOption("#new-price-prefix", { label: "Nowa, niezależna podkategoria…" });
+      await page.fill("#new-price-subgroup", c.label);
+      await page.fill("#new-price-qty", "100");
+      await page.fill("#new-price-value", "10");
+      await page.click("#btn-add-row");
+      await expect(page.locator("#save-msg")).toBeVisible();
+      await savePrices(page);
+
+      await page.goto(`/#/${c.route}`);
+      await expect(page.locator("body")).toContainText(c.label);
+    });
+  }
+});
+
+test.describe("broszury-katalogi: nowy papier z ilością zwykłą (nie zakresem) renderuje się u klienta", () => {
+  test.beforeEach(async ({ page }) => {
+    await neutralizeReloadTriggers(page);
+    await seedAdminSession(page);
+    await stubAppsScript(page);
+  });
+
+  test("formularz nie wymusza już formatu zakresu (np. 51-1000) dla nowej podkategorii", async ({
+    page,
+  }) => {
+    // Regresja 2026-09-14: formularz "Dodaj wariant" wymuszał dla
+    // broszury-katalogi format "51-1000", którego classifyVariantsIntoProducts
+    // nie umie zinterpolować jako liczbę — każdy nowy papier był całkowicie
+    // niewidoczny u klienta, niezależnie od trybu ceny. Naprawione usunięciem
+    // specjalnego przypadku w ustawienia.ts; kategoria teraz zachowuje się
+    // jak każda inna kategoria ilościowa (dyplomy/ulotki/zaproszenia).
+    await openSettings(page);
+    await page.selectOption("#new-price-category", "broszury-katalogi");
+    await page.selectOption("#new-price-prefix", { label: "Nowa, niezależna podkategoria…" });
+
+    await expect(page.locator("#new-price-qty-label")).toHaveText("3. Ilość (szt.)");
+    await expect(page.locator("#new-price-qty")).toHaveAttribute("placeholder", "np. 500");
+
+    await page.fill("#new-price-subgroup", "ZZZ-BROSZURY-KREDA350");
+    await page.fill("#new-price-qty", "100");
+    await page.fill("#new-price-value", "4");
+    await page.click("#btn-add-row");
+    await expect(page.locator("#save-msg")).toBeVisible();
+    await savePrices(page);
+
+    await page.goto("/#/broszury-katalogi");
+    await expect(page.locator("body")).toContainText("ZZZ-BROSZURY-KREDA350");
+  });
+});

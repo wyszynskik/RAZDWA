@@ -22,6 +22,24 @@ async function loadCadExtraOptions(): Promise<any[]> {
   return data.items || [];
 }
 
+/**
+ * Guards against re-entrant mount()/initLogic() calls. Observed in practice:
+ * the router can invoke mount() on this view more than once for a single
+ * navigation (e.g. overlapping handleRoute() calls during startup). Because
+ * initLogic() is async with an await before it queries most of its DOM refs
+ * (foldAllCheck, scanAllCheck, tableBody, ...), multiple overlapping calls
+ * would all resolve their querySelector() against whichever container.innerHTML
+ * happened to be current AFTER they all yielded — landing on the SAME live
+ * elements and registering duplicate listeners with independent, mostly-stale
+ * `files` closures. Symptom: clicking "select all" (fold/scan) silently
+ * reverted itself, because a stale listener's syncHeaderChecks() (computed
+ * from its own empty `files`) ran after the real one and reset the checkbox.
+ * Each mount() call stamps container.dataset.cadMountGen with a fresh token;
+ * any continuation that finds it stale after an await aborts instead of
+ * wiring up listeners on a DOM state it no longer owns.
+ */
+let cadUploadMountCounter = 0;
+
 const MAX_CAD_FILES = 50;
 const CAD_UPLOAD_CONCURRENCY = 4;
 const CAD_FILE_WARN_MB = 25;
@@ -34,17 +52,22 @@ export const CadUploadView: View = {
   name: "CAD Upload plików",
 
   async mount(container: HTMLElement, ctx: ViewContext) {
+    const mountToken = String(++cadUploadMountCounter);
+    container.dataset.cadMountGen = mountToken;
     try {
       const response = await fetch("categories/cad-upload.html");
       if (!response.ok) throw new Error("Failed to load template");
+      if (container.dataset.cadMountGen !== mountToken) return; // superseded while fetching template
       container.innerHTML = await response.text();
       this.initLogic?.(container, ctx);
     } catch (err) {
+      if (container.dataset.cadMountGen !== mountToken) return;
       container.innerHTML = `<div class="error">Błąd ładowania: ${err}</div>`;
     }
   },
 
   async initLogic(container: HTMLElement, ctx: ViewContext) {
+    const mountToken = container.dataset.cadMountGen;
     // DOM elements
     const dropZone =
       container.querySelector<HTMLElement>("#cadDropZone") ||
@@ -59,6 +82,7 @@ export const CadUploadView: View = {
     const optEmail = container.querySelector<HTMLInputElement>("#optEmail");
     // Dynamically render extra CAD options from JSON
     const extraOptions = await loadCadExtraOptions();
+    if (container.dataset.cadMountGen !== mountToken) return; // superseded while awaiting — do not wire up listeners on a DOM state we no longer own
     const extraOptionsMap = Object.fromEntries(extraOptions.map((opt) => [opt.id, opt]));
 
     // Render extra options in the UI

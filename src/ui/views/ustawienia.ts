@@ -19,7 +19,16 @@ import {
   isQtyTieredSubgroupCategory,
   hasNativeSubgroupRenderer,
   normalizePricePrefix,
+  slugifyKeySegment,
+  buildTierSuffix,
+  MATERIAL_ASSIGNMENT_PREFIX,
 } from "../../core/variantKeys";
+import {
+  getCombinedMaterials,
+  buildMaterialAssignmentKey,
+  materialTierKeyPrefix,
+  type DynamicMaterialCategoryId,
+} from "../../core/dynamicMaterials";
 import {
   getCustomSubgroupDefinitions,
   type PrefixOption,
@@ -45,6 +54,7 @@ import {
   deleteVariantDefinition,
   variantsToPriceLabels,
   type VariantCalcScheme,
+  type VariantPriceFormula,
   nextVariantSortOrderInSubgroup,
   mergeVariantSubgroupsIntoRegistry,
   createSubgroupRegistryEntry,
@@ -83,6 +93,7 @@ import {
 } from "../../services/catalogSync";
 import { writeAppliedRevision, writeAppliedUpdatedAt } from "../../services/catalogRevision";
 import { warmPriceCache, getZeroPriceLabels, getZeroPriceDefaults } from "../../core/compat";
+import { classifyVariantsIntoProducts } from "../../core/productModel";
 import type { PriceRecord } from "../../types/price-schema";
 import {
   pushPricesToGas,
@@ -186,6 +197,46 @@ export function resolveFormCalcScheme(
 
 function isValidCalcScheme(value: string): value is VariantCalcScheme {
   return value === "interpolated" || value === "flat-per-unit" || value === "flat-rate";
+}
+
+/**
+ * Mirrors resolveFormCalcScheme(): a priceFormula is a whole-subgroup
+ * property (denormalized across every tier sharing a subcategoryPrefix), so
+ * adding a tier to an EXISTING relative subgroup must inherit its formula
+ * unconditionally rather than let the mode toggle override it per-tier —
+ * doing otherwise would immediately trip agreedPriceFormula()'s conflict
+ * check in productModel.ts.
+ *
+ * Deliberate divergence from resolveFormCalcScheme's call site: callers here
+ * MUST pass merged saved+draft variants, not saved-only. resolveFormCalcScheme
+ * can miss a same-session draft sibling and softly fall back to a category
+ * default; missing one here would silently drop the relationship the very
+ * next click (adding tier #2 to a brand-new, still-unsaved relative
+ * subgroup) — a real correctness bug, not a cosmetic default gap.
+ *
+ * Exported for unit tests only.
+ */
+export function resolveFormPriceFormula(
+  categoryId: string,
+  selectedPrefixValue: string,
+  form: { mode: string; basePrefix: string; op: string; rawValue: string },
+  existingVariants: VariantDefinition[]
+): VariantPriceFormula | undefined {
+  if (!isQuantityBasedCategory(categoryId)) return undefined;
+  if (selectedPrefixValue === CUSTOM_PREFIX_VALUE) {
+    if (form.mode !== "relative" || !form.basePrefix) return undefined;
+    const value = Number.parseFloat(form.rawValue.replace(",", "."));
+    if (!Number.isFinite(value)) return undefined;
+    return {
+      baseCategoryId: categoryId,
+      basePrefix: form.basePrefix,
+      op: form.op === "fixed" ? "fixed" : "percent",
+      value,
+    };
+  }
+  return existingVariants.find(
+    (v) => v.categoryId === categoryId && v.subcategoryPrefix === selectedPrefixValue
+  )?.priceFormula;
 }
 
 /**
@@ -2951,19 +3002,61 @@ export const UstawieniaView: View = {
 
         const qtyLabelEl = qtyWrapper.querySelector<HTMLElement>("#new-price-qty-label");
         if (qtyLabelEl && qtyInput) {
-          if (chosenCatId === "broszury-katalogi") {
-            qtyLabelEl.textContent = "3. Zakres ilości (np. 51-1000)";
-            qtyInput.placeholder = "np. 51-1000";
-          } else {
-            qtyLabelEl.textContent = "3. Ilość (szt.)";
-            qtyInput.placeholder = "np. 500";
-          }
+          qtyLabelEl.textContent = "3. Ilość (szt.)";
+          qtyInput.placeholder = "np. 500";
         }
 
         if (labelDescEl) {
           labelDescEl.textContent = isQtyBased
             ? "Opis (opcjonalnie)"
             : "3. Nazwa wariantu / produktu";
+        }
+      }
+
+      // Cena relatywna do innego papieru — jednorazowe wyliczenie (nie żywy
+      // związek), dostępne tylko dla kategorii ilościowych, bo tam mechanizm
+      // buildQuantityKey daje wprost porównywalny klucz ceny dla tej samej
+      // ilości u papieru bazowego i pochodnego.
+      const priceModeWrapper = container.querySelector<HTMLElement>("#new-price-mode-wrapper");
+      const priceModeSelect = container.querySelector<HTMLSelectElement>("#new-price-mode");
+      const relativeWrapper = container.querySelector<HTMLElement>("#new-price-relative-wrapper");
+      const baseVariantSelect = container.querySelector<HTMLSelectElement>(
+        "#new-price-base-variant"
+      );
+      if (priceModeWrapper && priceModeSelect && relativeWrapper && baseVariantSelect) {
+        const chosenCatId = addCategorySelect.value;
+        const showModeToggle = isQuantityBasedCategory(chosenCatId);
+        priceModeWrapper.style.display = showModeToggle ? "" : "none";
+        if (!showModeToggle) {
+          priceModeSelect.value = "manual";
+          relativeWrapper.style.display = "none";
+        }
+
+        const previousBaseVariant = baseVariantSelect.value;
+        const currentPrefix = addPrefixSelect.value;
+        const draftForCategory = _draftVariantDefs.filter((v) => v.categoryId === chosenCatId);
+        const savedForCategory = getVariantDefinitions().filter(
+          (v) => v.categoryId === chosenCatId
+        );
+        const basePrefixes = new Map<string, string>();
+        for (const v of [...savedForCategory, ...draftForCategory]) {
+          if (v.subcategoryPrefix === currentPrefix) continue; // papier nie może być bazowy dla samego siebie
+          if (v.priceFormula) continue; // łańcuchowanie zablokowane — patrz resolveEntryPrice w productModel.ts
+          basePrefixes.set(v.subcategoryPrefix, v.subgroupLabel || v.label || v.subcategoryPrefix);
+        }
+        const baseOptions = [...basePrefixes.entries()].sort((a, b) => a[1].localeCompare(b[1]));
+        baseVariantSelect.innerHTML = baseOptions
+          .map(([prefix, label]) => `<option value="${escapeHtml(prefix)}">${escapeHtml(label)}</option>`)
+          .join("");
+        if (baseOptions.some(([prefix]) => prefix === previousBaseVariant)) {
+          baseVariantSelect.value = previousBaseVariant;
+        }
+
+        if (showModeToggle && priceModeSelect.value === "relative" && baseOptions.length > 0) {
+          relativeWrapper.style.display = "";
+        } else if (baseOptions.length === 0) {
+          relativeWrapper.style.display = "none";
+          priceModeSelect.value = "manual";
         }
       }
     }
@@ -3029,6 +3122,26 @@ export const UstawieniaView: View = {
       let isBoldGroup = false;
 
       const variantsByKey = new Map(getVariantDefinitions().map((v) => [v.key, v]));
+
+      // Wiersze z priceFormula (żywa cena relatywna) pokazują świeżo wyliczoną
+      // wartość, nie prices[key] wprost — ten sam rezolwer co kalkulator
+      // klienta, żeby panel nigdy nie pokazywał nieaktualnej/pustej liczby dla
+      // wariantu, którego baza właśnie się zmieniła w tej samej sesji, przed
+      // "Zapisz cennik" (kiedy prices[key] dostaje trwały snapshot).
+      const hasAnyPriceFormula = [...variantsByKey.values()].some((v) => v.priceFormula);
+      const liveResolvedByKey = hasAnyPriceFormula
+        ? (() => {
+            const report = classifyVariantsIntoProducts(
+              [...getVariantDefinitions(), ..._draftVariantDefs],
+              prices
+            );
+            const byKey = new Map<string, number | null>();
+            for (const product of report.migrated) {
+              for (const entry of product.entries) byKey.set(entry.key, entry.price);
+            }
+            return byKey;
+          })()
+        : null;
 
       const rows: string[] = [];
       keys.forEach((key) => {
@@ -3233,8 +3346,17 @@ export const UstawieniaView: View = {
             ? isLaminowanieEmphasizedRow(key) ||
               (previousLaminowanieSection === "BINDOWANIE" && isBoldGroup)
             : isBoldGroup;
-        const displayPrice =
-          typeof value === "number" && Number.isFinite(value) ? value.toFixed(2) : "";
+
+        const priceFormula = variantsByKey.get(key)?.priceFormula;
+        const liveResolved = priceFormula ? liveResolvedByKey?.get(key) : undefined;
+        const displayPrice = priceFormula
+          ? typeof liveResolved === "number"
+            ? liveResolved.toFixed(2)
+            : ""
+          : typeof value === "number" && Number.isFinite(value)
+            ? value.toFixed(2)
+            : "";
+        const isUnresolvedFormula = Boolean(priceFormula) && typeof liveResolved !== "number";
 
         const rowClasses = ["settings-price-row"];
         if (active.id === "zaproszenia") {
@@ -3251,9 +3373,10 @@ export const UstawieniaView: View = {
           <td class="settings-td-product">
             <span class="settings-product-label${useAltLabel ? " settings-product-label--alt" : ""}" title="${escapeHtml(label)}">${escapeHtml(label)}</span>
             ${materialSizeText ? `<span class="settings-product-materialsize" style="display:block; font-size:0.8em; color:#7a8a9a;">${escapeHtml(materialSizeText)}</span>` : ""}
+            ${priceFormula ? `<span class="settings-product-materialsize" style="display:block; font-size:0.8em; color:#7a8a9a;" title="Cena liczona na żywo od innego papieru">🔗 ${priceFormula.op === "percent" ? `${priceFormula.value >= 0 ? "+" : ""}${priceFormula.value}%` : `${priceFormula.value >= 0 ? "+" : ""}${priceFormula.value} zł`} od bazowego</span>` : ""}
           </td>
           <td class="settings-td-price">
-            <input data-field="unitPrice" type="number" step="0.01" min="0" value="${displayPrice}" placeholder="—" class="settings-input settings-input--price">
+            <input data-field="unitPrice" type="number" step="0.01" min="0" value="${displayPrice}" placeholder="${isUnresolvedFormula ? "brak bazy" : "—"}" class="settings-input settings-input--price"${priceFormula ? ` disabled title="${isUnresolvedFormula ? "Brak progu bazowego dla tej ilości — sprawdź papier bazowy albo edytuj ręcznie po usunięciu formuły" : "Cena liczona na żywo — edytuj cenę papieru bazowego"}" style="${isUnresolvedFormula ? "border-color:#dc2626;color:#dc2626;" : "opacity:0.75;"}"` : ""}>
           </td>
           <td class="settings-td-del">
             <button type="button" data-action="delete" data-key="${escapeHtml(key)}" class="settings-btn-del" title="Usuń pozycję">✕</button>
@@ -3805,6 +3928,27 @@ export const UstawieniaView: View = {
                   <input id="new-price-label" type="text" class="settings-input" placeholder="np. 2000 szt.">
                 </label>
 
+                <div id="new-price-mode-wrapper" class="settings-field" style="display:none">
+                  <span class="settings-action-label">Sposób wpisania ceny</span>
+                  <select id="new-price-mode" class="settings-input">
+                    <option value="manual">Ręcznie</option>
+                    <option value="relative">Relatywnie do innego papieru</option>
+                  </select>
+                </div>
+
+                <div id="new-price-relative-wrapper" class="settings-field" style="display:none">
+                  <span class="settings-action-label">Papier bazowy</span>
+                  <select id="new-price-base-variant" class="settings-input"></select>
+                  <div style="display:flex; gap:6px; margin-top:6px;">
+                    <select id="new-price-relative-op" class="settings-input" style="flex:1;">
+                      <option value="percent">% od ceny bazowej</option>
+                      <option value="fixed">kwota do ceny bazowej (zł)</option>
+                    </select>
+                    <input id="new-price-relative-value" type="number" step="0.01" class="settings-input" style="width:100px;" placeholder="np. 20">
+                  </div>
+                  <div id="new-price-relative-error" class="hint" style="display:none; color:#dc2626; margin-top:4px;"></div>
+                </div>
+
                 <label class="settings-field">
                   <span class="settings-action-label">Cena (zł) — opcjonalnie</span>
                   <input id="new-price-value" type="number" min="0" step="0.01" class="settings-input" placeholder="np. 45.00">
@@ -3821,6 +3965,44 @@ export const UstawieniaView: View = {
                 </div>
 
                 <button id="btn-add-row" type="button" class="btn-success settings-action-btn">+ Dodaj wariant</button>
+              </div>
+
+              <hr class="settings-divider">
+
+              <div class="settings-add-group" id="add-material-group">
+                <div class="settings-wizard-header">
+                  <span class="settings-wizard-title">Nowy materiał (kilka kategorii naraz)</span>
+                </div>
+                <div class="hint" style="margin-bottom:8px;">
+                  Dodaje materiał (np. nowy papier) od razu do wybranych kategorii — pojawi się
+                  w ich formularzach bez ręcznej edycji HTML.
+                </div>
+
+                <label class="settings-field">
+                  <span class="settings-action-label">Nazwa materiału</span>
+                  <input id="new-material-name" type="text" class="settings-input" placeholder="np. Papier 250g mat">
+                </label>
+
+                <div class="settings-field">
+                  <span class="settings-action-label">Dostępny w kategoriach</span>
+                  <label style="display:flex; align-items:center; gap:8px; margin:4px 0;">
+                    <input type="checkbox" class="new-material-category" value="banner"> Bannery
+                  </label>
+                  <label style="display:flex; align-items:center; gap:8px; margin:4px 0;">
+                    <input type="checkbox" class="new-material-category" value="solwentPlakaty"> Solwent - Plakaty
+                  </label>
+                  <label style="display:flex; align-items:center; gap:8px; margin:4px 0;">
+                    <input type="checkbox" class="new-material-category" value="foliaSzroniona"> Folia szroniona / OWV
+                  </label>
+                </div>
+
+                <div class="settings-field">
+                  <span class="settings-action-label">Progi cenowe (od m² / do m² — puste = bez górnej granicy / cena zł)</span>
+                  <div id="new-material-tiers"></div>
+                  <button type="button" id="btn-add-material-tier" class="btn-secondary settings-action-btn">+ Dodaj próg</button>
+                </div>
+
+                <button id="btn-add-material" type="button" class="btn-success settings-action-btn">+ Dodaj materiał</button>
               </div>
 
               <hr class="settings-divider">
@@ -4134,6 +4316,83 @@ export const UstawieniaView: View = {
     addQtyInput?.addEventListener("input", updateKeyPreview);
     addLabelInput?.addEventListener("input", updateKeyPreview);
 
+    // Cena relatywna do papieru bazowego — jednorazowe wyliczenie (patrz komentarz
+    // przy syncAddCategorySelection). Wypełnia #new-price-value tak jak admin
+    // wpisałby cenę ręcznie; pole zostaje edytowalne, to tylko autouzupełnienie.
+    function recomputeRelativePrice(): void {
+      const modeSelect = container.querySelector<HTMLSelectElement>("#new-price-mode");
+      const relativeError = container.querySelector<HTMLElement>("#new-price-relative-error");
+      if (!modeSelect || modeSelect.value !== "relative") {
+        if (relativeError) relativeError.style.display = "none";
+        return;
+      }
+
+      const chosenCategoryId = addCategorySelect?.value || activeCategory;
+      const baseVariantSelect = container.querySelector<HTMLSelectElement>(
+        "#new-price-base-variant"
+      );
+      const opSelect = container.querySelector<HTMLSelectElement>("#new-price-relative-op");
+      const valueInput = container.querySelector<HTMLInputElement>("#new-price-relative-value");
+      const qty = addQtyInput?.value.trim() || "";
+      const basePrefix = baseVariantSelect?.value || "";
+      const op = opSelect?.value === "fixed" ? "fixed" : "percent";
+      const rawValue = valueInput?.value.trim() || "";
+
+      if (!basePrefix || !qty || rawValue === "") {
+        if (relativeError) relativeError.style.display = "none";
+        return;
+      }
+
+      const coefficient = Number.parseFloat(rawValue.replace(",", "."));
+      if (!Number.isFinite(coefficient)) {
+        if (relativeError) {
+          relativeError.textContent = "⚠️ Wpisz poprawną liczbę.";
+          relativeError.style.display = "";
+        }
+        return;
+      }
+
+      const baseKey = buildQuantityKey(chosenCategoryId, basePrefix, qty);
+      const basePrice = prices[baseKey];
+
+      if (typeof basePrice !== "number" || !Number.isFinite(basePrice)) {
+        if (relativeError) {
+          relativeError.textContent = `⚠️ Brak ceny papieru bazowego dla ilości "${qty}" — wpisz cenę ręcznie albo wybierz inną ilość.`;
+          relativeError.style.display = "";
+        }
+        return;
+      }
+
+      if (relativeError) relativeError.style.display = "none";
+      const computed =
+        op === "percent" ? basePrice * (1 + coefficient / 100) : basePrice + coefficient;
+      if (addPriceInput) addPriceInput.value = String(parseFloat(computed.toFixed(2)));
+      updateKeyPreview();
+    }
+
+    const priceModeSelectEl = container.querySelector<HTMLSelectElement>("#new-price-mode");
+    const baseVariantSelectEl = container.querySelector<HTMLSelectElement>(
+      "#new-price-base-variant"
+    );
+    const relativeOpSelectEl = container.querySelector<HTMLSelectElement>(
+      "#new-price-relative-op"
+    );
+    const relativeValueInputEl = container.querySelector<HTMLInputElement>(
+      "#new-price-relative-value"
+    );
+
+    priceModeSelectEl?.addEventListener("change", () => {
+      const relativeWrapper = container.querySelector<HTMLElement>("#new-price-relative-wrapper");
+      if (relativeWrapper) {
+        relativeWrapper.style.display = priceModeSelectEl.value === "relative" ? "" : "none";
+      }
+      recomputeRelativePrice();
+    });
+    baseVariantSelectEl?.addEventListener("change", recomputeRelativePrice);
+    relativeOpSelectEl?.addEventListener("change", recomputeRelativePrice);
+    relativeValueInputEl?.addEventListener("input", recomputeRelativePrice);
+    addQtyInput?.addEventListener("input", recomputeRelativePrice);
+
     container.querySelector("#btn-add-row")?.addEventListener("click", () => {
       flushInputs();
       const chosenCategoryId = addCategorySelect?.value || activeCategory;
@@ -4169,6 +4428,27 @@ export const UstawieniaView: View = {
         isCustomSubgroupForCategory,
         effectiveScheme
       );
+      const priceModeSelectForSubmit = container.querySelector<HTMLSelectElement>("#new-price-mode");
+      const baseVariantSelectForSubmit = container.querySelector<HTMLSelectElement>(
+        "#new-price-base-variant"
+      );
+      const relativeOpSelectForSubmit = container.querySelector<HTMLSelectElement>(
+        "#new-price-relative-op"
+      );
+      const relativeValueInputForSubmit = container.querySelector<HTMLInputElement>(
+        "#new-price-relative-value"
+      );
+      const effectivePriceFormula = resolveFormPriceFormula(
+        chosenCategoryId,
+        selectedPrefix,
+        {
+          mode: priceModeSelectForSubmit?.value ?? "manual",
+          basePrefix: baseVariantSelectForSubmit?.value ?? "",
+          op: relativeOpSelectForSubmit?.value ?? "percent",
+          rawValue: relativeValueInputForSubmit?.value.trim() ?? "",
+        },
+        [...getVariantDefinitions(), ..._draftVariantDefs]
+      );
       // A custom subgroup handled by the generic renderer (not artykuly/uslugi).
       // Carries a calcScheme and, optionally, material/size — both denormalized
       // across every tier of the subgroup.
@@ -4195,23 +4475,7 @@ export const UstawieniaView: View = {
           addQtyInput?.focus();
           return;
         }
-        if (chosenCategoryId === "broszury-katalogi") {
-          if (!/^\d+-\d+$/.test(qtyValue)) {
-            logVariantOperation({
-              action: "skip",
-              key: "",
-              categoryId: chosenCategoryId,
-              prefix: selectedPrefix,
-              label: productLabel,
-              qty: qtyValue,
-              price: null,
-              timestamp: new Date().toISOString(),
-            });
-            showStatus("⚠️ Wpisz zakres ilości w formacie: 51-1000.", "error");
-            addQtyInput?.focus();
-            return;
-          }
-        } else if (!/^\d+$/.test(qtyValue)) {
+        if (!/^\d+$/.test(qtyValue)) {
           logVariantOperation({
             action: "skip",
             key: "",
@@ -4346,6 +4610,7 @@ export const UstawieniaView: View = {
               addSubgroupSizeInput?.value ?? ""
             )
           : existingDef?.materialSizeOptions,
+        priceFormula: effectivePriceFormula,
       };
       _draftVariantDefs = _draftVariantDefs
         .filter((d) => d.key !== _variantDef.key)
@@ -4377,7 +4642,11 @@ export const UstawieniaView: View = {
           siblingDefs,
           _variantDef.materialSizeOptions,
           _now
-        ).map((v) => ({ ...v, calcScheme: _variantDef.calcScheme }));
+        ).map((v) => ({
+          ...v,
+          calcScheme: _variantDef.calcScheme,
+          priceFormula: _variantDef.priceFormula,
+        }));
         for (const updated of updatedSiblings) {
           _draftVariantDefs = _draftVariantDefs
             .filter((d) => d.key !== updated.key)
@@ -4417,6 +4686,16 @@ export const UstawieniaView: View = {
       if (addPriceInput) addPriceInput.value = "";
       if (addLegendInput) addLegendInput.value = "";
       if (addQtyInput) addQtyInput.value = "";
+      const priceModeSelectAfterAdd = container.querySelector<HTMLSelectElement>("#new-price-mode");
+      if (priceModeSelectAfterAdd) priceModeSelectAfterAdd.value = "manual";
+      const relativeWrapperAfterAdd = container.querySelector<HTMLElement>(
+        "#new-price-relative-wrapper"
+      );
+      if (relativeWrapperAfterAdd) relativeWrapperAfterAdd.style.display = "none";
+      const relativeValueAfterAdd = container.querySelector<HTMLInputElement>(
+        "#new-price-relative-value"
+      );
+      if (relativeValueAfterAdd) relativeValueAfterAdd.value = "";
       updateKeyPreview();
 
       const priceInputs = container.querySelectorAll<HTMLInputElement>(
@@ -4429,6 +4708,158 @@ export const UstawieniaView: View = {
       } else {
         addLabelInput?.focus();
       }
+    });
+
+    // ── "Dodaj materiał" — przypisanie jednego materiału do kilku kategorii ──
+    // Osobny, samodzielny formularz (nie dzieli stanu z "Dodaj wariant"), bo
+    // to inny kształt danych: jeden materiał -> N wpisów VariantDefinition
+    // (sentinel, patrz dynamicMaterials.ts) + N zestawów kluczy cenowych,
+    // po jednym na zaznaczoną kategorię. Zero zmian w Google Apps Script —
+    // każdy sentinel-wpis leci istniejącym kanałem catalog.save jak zwykły
+    // wariant, a jego ceny progów lecą płaską mapą defaultPrices.
+    const materialTiersContainer = container.querySelector<HTMLElement>("#new-material-tiers");
+    const materialNameInput = container.querySelector<HTMLInputElement>("#new-material-name");
+
+    function addMaterialTierRow(): void {
+      if (!materialTiersContainer) return;
+      const row = document.createElement("div");
+      row.className = "material-tier-row";
+      row.style.cssText = "display:flex; gap:6px; margin-bottom:6px; align-items:center;";
+      row.innerHTML = `
+        <input type="number" min="0" step="1" class="settings-input tier-min" placeholder="od" style="width:80px;">
+        <input type="number" min="0" step="1" class="settings-input tier-max" placeholder="do (puste = +)" style="width:110px;">
+        <input type="number" min="0" step="0.01" class="settings-input tier-price" placeholder="cena zł" style="width:100px;">
+        <button type="button" class="btn-secondary settings-icon-btn btn-remove-material-tier" title="Usuń próg">✕</button>
+      `;
+      row.querySelector(".btn-remove-material-tier")?.addEventListener("click", () => {
+        if (materialTiersContainer.children.length > 1) row.remove();
+      });
+      materialTiersContainer.appendChild(row);
+    }
+
+    function resetMaterialForm(): void {
+      if (materialNameInput) materialNameInput.value = "";
+      container
+        .querySelectorAll<HTMLInputElement>(".new-material-category")
+        .forEach((cb) => (cb.checked = false));
+      if (materialTiersContainer) materialTiersContainer.innerHTML = "";
+      addMaterialTierRow();
+    }
+
+    addMaterialTierRow();
+    container.querySelector("#btn-add-material-tier")?.addEventListener("click", addMaterialTierRow);
+
+    container.querySelector("#btn-add-material")?.addEventListener("click", () => {
+      const name = (materialNameInput?.value ?? "").trim();
+      if (!name) {
+        showStatus("⚠️ Wpisz nazwę materiału.", "error");
+        materialNameInput?.focus();
+        return;
+      }
+
+      const materialId = slugifyKeySegment(name);
+      if (!materialId) {
+        showStatus("⚠️ Nazwa materiału musi zawierać przynajmniej jedną literę lub cyfrę.", "error");
+        materialNameInput?.focus();
+        return;
+      }
+
+      const checkedCategories = Array.from(
+        container.querySelectorAll<HTMLInputElement>(".new-material-category:checked")
+      ).map((cb) => cb.value as DynamicMaterialCategoryId);
+      if (checkedCategories.length === 0) {
+        showStatus("⚠️ Zaznacz przynajmniej jedną kategorię.", "error");
+        return;
+      }
+
+      const tierRows = materialTiersContainer?.querySelectorAll<HTMLElement>(".material-tier-row") ?? [];
+      const tiers: Array<{ min: number; max: number | null; price: number }> = [];
+      for (const row of tierRows) {
+        const minRaw = row.querySelector<HTMLInputElement>(".tier-min")?.value ?? "";
+        const maxRaw = row.querySelector<HTMLInputElement>(".tier-max")?.value ?? "";
+        const priceRaw = row.querySelector<HTMLInputElement>(".tier-price")?.value ?? "";
+        if (minRaw === "" || priceRaw === "") continue;
+
+        const min = Number.parseInt(minRaw, 10);
+        const max = maxRaw === "" ? null : Number.parseInt(maxRaw, 10);
+        const price = Number.parseFloat(priceRaw);
+        if (!Number.isFinite(min) || min < 0) continue;
+        if (max !== null && (!Number.isFinite(max) || max <= min)) continue;
+        if (!Number.isFinite(price) || price < 0) continue;
+
+        tiers.push({ min, max, price });
+      }
+
+      if (tiers.length === 0) {
+        showStatus("⚠️ Dodaj przynajmniej jeden poprawny próg cenowy (od / cena).", "error");
+        return;
+      }
+
+      // Sprawdzamy zarówno zapisany stan (getCombinedMaterials, czyta
+      // getVariantDefinitions z localStorage) JAK I niezapisany draft
+      // (_draftVariantDefs) — inaczej dwukrotne "Dodaj materiał" dla tej
+      // samej nazwy w JEDNEJ sesji przed "Zapisz cennik" przechodziłoby
+      // walidację, a stare klucze cen progów z pierwszego wpisu (inny
+      // podział progów) zostawałyby osierocone w `prices`, dając w efekcie
+      // wewnętrznie sprzeczny cennik po zapisie.
+      const collisions = checkedCategories.filter(
+        (categoryId) =>
+          getCombinedMaterials(categoryId).some((m) => m.id === materialId) ||
+          _draftVariantDefs.some(
+            (d) => d.categoryId === categoryId && d.key === buildMaterialAssignmentKey(categoryId, materialId)
+          )
+      );
+      if (collisions.length > 0) {
+        showStatus(
+          `⚠️ Materiał o takiej nazwie już istnieje/jest w niezapisanym drafcie w: ${collisions.join(", ")}. ` +
+            "Wybierz inną nazwę albo najpierw kliknij „Zapisz cennik”, jeśli chcesz poprawić ceny.",
+          "error"
+        );
+        return;
+      }
+
+      const now = new Date().toISOString();
+      for (const categoryId of checkedCategories) {
+        const key = buildMaterialAssignmentKey(categoryId, materialId);
+        const variantDef: VariantDefinition = {
+          key,
+          categoryId,
+          subcategoryPrefix: MATERIAL_ASSIGNMENT_PREFIX,
+          subgroupLabel: "",
+          label: name,
+          legend: "",
+          visibleInSettings: true,
+          visibleInCalculator: true,
+          sortOrder: 0,
+          createdAt: now,
+          updatedAt: now,
+        };
+        _draftVariantDefs = _draftVariantDefs.filter((d) => d.key !== key).concat(variantDef);
+
+        const tierKeyPrefix = materialTierKeyPrefix(categoryId, materialId);
+        for (const tier of tiers) {
+          prices[`${tierKeyPrefix}${buildTierSuffix(tier.min, tier.max)}`] = tier.price;
+        }
+      }
+
+      logVariantOperation({
+        action: "add",
+        key: buildMaterialAssignmentKey(checkedCategories[0], materialId),
+        categoryId: checkedCategories.join(","),
+        prefix: MATERIAL_ASSIGNMENT_PREFIX,
+        label: name,
+        qty: "",
+        price: tiers[0]?.price ?? null,
+        timestamp: now,
+      });
+
+      showStatus(
+        `✓ Dodano materiał (niezapisany): "${name}" w ${checkedCategories.length} ${checkedCategories.length === 1 ? "kategorii" : "kategoriach"}`
+      );
+      updateDraftIndicator();
+      renderTable();
+      ctx?.emit?.("prices-updated", { timestamp: Date.now() });
+      resetMaterialForm();
     });
 
     // Zwraca wyłącznie warianty z rejestru (upsertVariantDefinition).
@@ -4464,6 +4895,29 @@ export const UstawieniaView: View = {
           // _draftVariantDefs NIE jest czyszczone tutaj — dopiero po potwierdzeniu GAS.
           for (const dv of _draftVariantDefs) {
             upsertVariantDefinition(dv);
+          }
+
+          // Snapshot świeżo wyliczonej ceny dla wariantów z priceFormula (żywa cena
+          // relatywna). Kalkulator klienta ZAWSZE liczy na żywo przez
+          // classifyVariantsIntoProducts i nigdy nie czyta tego zapisanego numeru —
+          // ale tabela cen w tym panelu i eksport do arkusza czytają prices[key]
+          // wprost, więc muszą mieć aktualną liczbę, nie pustkę ani nieaktualną
+          // wartość sprzed ewentualnej zmiany ceny papieru bazowego.
+          const allVariantsForSnapshot = getVariantDefinitions();
+          const formulaVariants = allVariantsForSnapshot.filter((v) => v.priceFormula);
+          if (formulaVariants.length > 0) {
+            const snapshotReport = classifyVariantsIntoProducts(allVariantsForSnapshot, prices);
+            const resolvedByKey = new Map<string, number | null>();
+            for (const product of snapshotReport.migrated) {
+              for (const entry of product.entries) {
+                resolvedByKey.set(entry.key, entry.price);
+              }
+            }
+            for (const v of formulaVariants) {
+              if (resolvedByKey.has(v.key)) {
+                prices[v.key] = resolvedByKey.get(v.key) ?? null;
+              }
+            }
           }
 
           // Iterujemy pełne prices (wszystkie kategorie), nie tylko widoczne wiersze DOM.

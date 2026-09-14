@@ -2,10 +2,20 @@ import { View, ViewContext } from "../types";
 import { autoCalc } from "../autoCalc";
 import { calculateSolwentPlakaty } from "../../categories/solwent-plakaty";
 import { formatPLN } from "../../core/money";
-import { getPrice } from "../../services/priceService";
 import { resolveStoredPrice } from "../../core/compat";
+import { getCombinedMaterials } from "../../core/dynamicMaterials";
 
-const data: any = getPrice("solwentPlakaty");
+function populateMaterialSelect(container: HTMLElement): void {
+  const materials = getCombinedMaterials("solwentPlakaty");
+  const materialSelect = container.querySelector("#material") as HTMLSelectElement;
+  const previousValue = materialSelect.value;
+  materialSelect.innerHTML =
+    '<option value="" disabled selected>— wybierz materiał —</option>' +
+    materials.map((m) => `<option value="${m.name}">${m.name}</option>`).join("");
+  if (previousValue && materials.some((m) => m.name === previousValue)) {
+    materialSelect.value = previousValue;
+  }
+}
 
 export const SolwentPlakatyView: View = {
   id: "solwent-plakaty",
@@ -16,12 +26,7 @@ export const SolwentPlakatyView: View = {
       if (!response.ok) throw new Error("Failed to load template");
       container.innerHTML = await response.text();
 
-      const tableData = data as any;
-      const materials = tableData.materials;
-      const materialSelect = container.querySelector("#material") as HTMLSelectElement;
-      materialSelect.innerHTML =
-        '<option value="" disabled selected>— wybierz materiał —</option>' +
-        materials.map((m: any) => `<option value="${m.name}">${m.name}</option>`).join("");
+      populateMaterialSelect(container);
 
       this.initLogic?.(container, ctx);
     } catch (err) {
@@ -51,11 +56,7 @@ export const SolwentPlakatyView: View = {
         resultDisplay.insertAdjacentElement("afterend", legend);
       }
 
-      const materials = (data.materials ?? []) as Array<{
-        id: string;
-        name: string;
-        tiers: Array<{ min: number; max: number | null; price: number }>;
-      }>;
+      const materials = getCombinedMaterials("solwentPlakaty");
       const selectedMaterial = materialSelect.value;
 
       legend.innerHTML = `
@@ -137,6 +138,7 @@ export const SolwentPlakatyView: View = {
 
     materialSelect.addEventListener("change", ensureLegend);
     ctx?.on?.("prices-updated", () => {
+      populateMaterialSelect(container);
       ensureLegend();
       performCalculation();
     });

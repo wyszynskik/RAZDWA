@@ -103,7 +103,11 @@ export function hasNativeSubgroupRenderer(categoryId: string): boolean {
 
 /**
  * Builds a deterministic base key for quantity-based categories.
- * qty – raw quantity value, e.g. "100" or "51-1000" (broszury range).
+ * qty – raw quantity value, e.g. "100". broszury-katalogi's built-in a4/a5/dl
+ * tiers still use legacy "51-1000" range suffixes in prices.json, but the
+ * "Dodaj wariant" form (ustawienia.ts) only ever produces plain-integer qty
+ * for this category too — a range suffix can't be interpolated as a numeric
+ * quantity by classifyVariantsIntoProducts, so it was never renderable.
  */
 export function buildQuantityKey(categoryId: string, prefix: string, qty: string): string {
   const q = qty.trim();
@@ -178,6 +182,46 @@ export function findVariantBySignature(
  * @param existingKeys        - full prices map (for key collision detection)
  * @param existingPrefixes    - current category's custom prefix map (optional)
  */
+/**
+ * Reserved subcategoryPrefix marking a VariantDefinition row as a
+ * material-assignment record (see src/core/dynamicMaterials.ts), not a real
+ * customer-facing product/subgroup. Never emitted by slugifyKeySegment or
+ * buildUniqueSubgroupPrefix (they only ever produce hyphen-separated
+ * segments), so it can never collide with an admin-created subgroup prefix.
+ */
+export const MATERIAL_ASSIGNMENT_PREFIX = "__material__";
+
+/**
+ * Builds the tier-price key suffix, matching the convention read by
+ * overrideTiersWithStoredPrices() in src/core/compat.ts: `{min}+` for
+ * open-ended tiers (max === null or max > 50000), otherwise `{min}-{max}`.
+ */
+export function buildTierSuffix(min: number, max: number | null): string {
+  return max === null || max > 50000 ? `${min}+` : `${min}-${max}`;
+}
+
+/**
+ * Inverse of buildTierSuffix(). Returns null for anything that isn't exactly
+ * `{min}+` or `{min}-{max}` with finite non-negative integers — callers must
+ * drop unparseable keys rather than guess.
+ */
+export function parseTierSuffix(suffix: string): { min: number; max: number | null } | null {
+  const openEnded = suffix.match(/^(\d+)\+$/);
+  if (openEnded) {
+    return { min: Number(openEnded[1]), max: null };
+  }
+
+  const ranged = suffix.match(/^(\d+)-(\d+)$/);
+  if (ranged) {
+    const min = Number(ranged[1]);
+    const max = Number(ranged[2]);
+    if (max < min) return null;
+    return { min, max };
+  }
+
+  return null;
+}
+
 export function buildUniqueSubgroupPrefix(
   basePrefix: string,
   subgroupLabel: string,

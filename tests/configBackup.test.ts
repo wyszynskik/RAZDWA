@@ -110,6 +110,29 @@ describe("parseConfigImport - akceptacja", () => {
     }
   });
 
+  it("przyjmuje wpis-sentinel materiału (subcategoryPrefix='__material__', subgroupLabel='')", () => {
+    // dynamicMaterials.ts: przypisanie materiał->kategoria jeździ jako zwykły
+    // VariantDefinition z pustym subgroupLabel i zarezerwowanym prefiksem —
+    // schemat nie może tego odrzucić, inaczej eksport/import kopii
+    // zapasowej gubiłby materiały dodane przez nową funkcję.
+    const sentinel = makeVariant({
+      key: "mat__banner__papier-250g",
+      categoryId: "banner",
+      subcategoryPrefix: "__material__",
+      subgroupLabel: "",
+      label: "Papier 250g mat",
+      subgroupSortOrder: undefined,
+    });
+    const original = makeData({ variants: [sentinel] });
+
+    const result = parseConfigImport(serializeConfigExport(buildConfigExport(original)));
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.file.data.variants[0]).toEqual(sentinel);
+    }
+  });
+
   it("describeConfigImport podaje liczniki", () => {
     const summary = describeConfigImport(buildConfigExport(makeData()));
     expect(summary).toContain("Ceny: 2");

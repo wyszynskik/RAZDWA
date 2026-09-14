@@ -377,6 +377,21 @@ describe("getRenderableProducts", () => {
     expect(getRenderableProducts("plakaty-a4-a3")).toEqual([]);
   });
 
+  it("a material-assignment sentinel (dynamicMaterials.ts) never renders as a phantom product card — even on 'banner', where categoryId happens to match the router's BASE_PRICE_CATEGORIES.id", () => {
+    setVariantDefinitions([
+      makeVariant({
+        key: "mat__banner__papier-250g",
+        categoryId: "banner",
+        subcategoryPrefix: "__material__",
+        subgroupLabel: "",
+        label: "Papier 250g mat",
+      }),
+    ]);
+    setPrice("defaultPrices", { "banner-papier-250g-1-9": 10 });
+
+    expect(getRenderableProducts("banner")).toEqual([]);
+  });
+
   it("excludes variants with visibleInCalculator set to false (plakaty-a4-a3)", () => {
     setVariantDefinitions([
       makeVariant({

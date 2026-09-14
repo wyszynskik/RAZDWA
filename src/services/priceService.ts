@@ -589,6 +589,36 @@ export interface VariantDefinition {
    * subgroupBackfill.ts fills it for existing data.
    */
   subgroupSortOrder?: number;
+  /**
+   * Optional: live price relationship for this subgroup's tiers, denormalized
+   * across all tiers sharing a subcategoryPrefix (same pattern as calcScheme/
+   * materialSizeOptions/subgroupSortOrder). When present, this subgroup's
+   * price is resolved fresh at every classifyVariantsIntoProducts() call from
+   * the base subgroup's CURRENT price at the same quantity tier —
+   * prices[key] is no longer authoritative for it (see
+   * core/productModel.ts resolveEntryPrice; a snapshot is still written into
+   * prices[key] on save for the admin price table / GAS export, but the
+   * customer-facing calculator never reads it for a formula-carrying
+   * variant). Chaining (a base that itself carries a priceFormula) is not
+   * supported: resolveEntryPrice() treats it as unresolvable rather than
+   * recursing, and the "Dodaj wariant" form never offers such a subgroup as
+   * a base — this is also what makes cycles structurally impossible.
+   */
+  priceFormula?: VariantPriceFormula;
+}
+
+export type VariantPriceFormulaOp = "percent" | "fixed";
+
+export interface VariantPriceFormula {
+  /** categoryId of the base subgroup — stored explicitly, not inferred, so
+   *  the resolver never has to assume same-category even though today's
+   *  form only ever offers a same-category base. */
+  baseCategoryId: string;
+  /** subcategoryPrefix of the base subgroup. */
+  basePrefix: string;
+  op: VariantPriceFormulaOp;
+  /** percent: derived = base*(1+value/100); fixed: derived = base+value. Can be negative (a discount). */
+  value: number;
 }
 
 export function getVariantDefinitions(): VariantDefinition[] {

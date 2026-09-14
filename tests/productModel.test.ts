@@ -8,6 +8,7 @@ import {
   type MigrationReport,
 } from "../src/core/productModel";
 import type { OrphanedPriceKey } from "../src/core/orphanedPriceKeys";
+import { MATERIAL_ASSIGNMENT_PREFIX } from "../src/core/variantKeys";
 import {
   setVariantDefinitions,
   setPrice,
@@ -80,6 +81,83 @@ describe("classifyVariantsIntoProducts — numeric-suffix clusters (interpolated
     const report = classifyVariantsIntoProducts(variants, {});
     expect(report.migrated).toEqual([]);
     expect(report.needsReview).toHaveLength(1);
+  });
+
+  it("wizytowki's own 'Nszt' key suffix (buildQuantityKey convention) IS treated as a numeric tier, not rejected as text-suffixed", () => {
+    // Bug found while building live relative pricing: a brand-new custom
+    // subgroup in wizytowki (admin-declared calcScheme: "interpolated", the
+    // only path QUANTITY_BASED_CATEGORIES get it via) never rendered to
+    // customers, because buildQuantityKey's wizytowki case appends "szt"
+    // (`${prefix}${qty}szt`) and the old isPureIntegerSuffix regex rejected
+    // any trailing text — including this deliberate, category-specific
+    // convention, not just genuine garbage like "10abc" (see the sibling
+    // test above, which must still reject that).
+    const variants = [
+      makeVariant({
+        key: "wizytowki-zzz-100szt",
+        categoryId: "wizytowki",
+        subcategoryPrefix: "wizytowki-zzz-",
+        calcScheme: "interpolated",
+      }),
+      makeVariant({
+        key: "wizytowki-zzz-500szt",
+        categoryId: "wizytowki",
+        subcategoryPrefix: "wizytowki-zzz-",
+        calcScheme: "interpolated",
+      }),
+    ];
+    const prices = { "wizytowki-zzz-100szt": 50, "wizytowki-zzz-500szt": 200 };
+
+    const report = classifyVariantsIntoProducts(variants, prices);
+
+    expect(report.needsReview).toEqual([]);
+    expect(report.migrated).toHaveLength(1);
+    expect(report.migrated[0].entries).toEqual([
+      { key: "wizytowki-zzz-100szt", qty: 100, price: 50 },
+      { key: "wizytowki-zzz-500szt", qty: 500, price: 200 },
+    ]);
+  });
+
+  it("broszury-katalogi custom subgroup with plain-integer qty (post-fix form output) renders as a normal interpolated product", () => {
+    // Bug found 2026-09-14: the "Dodaj wariant" form (ustawienia.ts) forced
+    // admins to type a "51-1000" RANGE for this category specifically,
+    // mirroring the legacy built-in a4/a5/dl prices.json convention. But
+    // classifyVariantsIntoProducts needs a single numeric qty per tier to
+    // interpolate — a range string can't parse as one, so every custom
+    // broszury-katalogi variant silently never reached the customer,
+    // regardless of calcScheme. Fixed by making the form emit a plain
+    // integer for this category too, exactly like dyplomy/ulotki/zaproszenia.
+    // This test locks in that a plain-integer key (what the form now
+    // produces) classifies correctly — it is not testing the legacy range
+    // keys, which remain untouched in prices.json for the built-in a4/a5/dl
+    // dropdown (broszury-katalogi.ts's own bespoke resolveTierPrice()).
+    const variants = [
+      makeVariant({
+        key: "broszury-katalogi-kreda350g-100",
+        categoryId: "broszury-katalogi",
+        subcategoryPrefix: "broszury-katalogi-kreda350g-",
+        calcScheme: "interpolated",
+      }),
+      makeVariant({
+        key: "broszury-katalogi-kreda350g-500",
+        categoryId: "broszury-katalogi",
+        subcategoryPrefix: "broszury-katalogi-kreda350g-",
+        calcScheme: "interpolated",
+      }),
+    ];
+    const prices = {
+      "broszury-katalogi-kreda350g-100": 4.0,
+      "broszury-katalogi-kreda350g-500": 3.0,
+    };
+
+    const report = classifyVariantsIntoProducts(variants, prices);
+
+    expect(report.needsReview).toEqual([]);
+    expect(report.migrated).toHaveLength(1);
+    expect(report.migrated[0].entries).toEqual([
+      { key: "broszury-katalogi-kreda350g-100", qty: 100, price: 4.0 },
+      { key: "broszury-katalogi-kreda350g-500", qty: 500, price: 3.0 },
+    ]);
   });
 
   it("CORE AUDIT FIX: a numeric-suffix key in artykuly/uslugi is classified as flat-per-unit, NOT interpolated", () => {
@@ -674,5 +752,292 @@ describe("classifyVariantsIntoProducts — explicit calcScheme (admin-declared)"
     expect(report.migrated).toEqual([]);
     expect(report.skipped).toHaveLength(1);
     expect(report.skipped[0].categoryId).toBe("banner");
+  });
+});
+
+describe("classifyVariantsIntoProducts — material-assignment sentinel (dynamicMaterials.ts)", () => {
+  it("a variant with subcategoryPrefix === MATERIAL_ASSIGNMENT_PREFIX never appears in migrated/skipped/needsReview", () => {
+    const variants = [
+      makeVariant({
+        key: "mat__banner__papier-250g",
+        categoryId: "banner",
+        subcategoryPrefix: MATERIAL_ASSIGNMENT_PREFIX,
+        subgroupLabel: "",
+        label: "Papier 250g mat",
+      }),
+    ];
+
+    const report = classifyVariantsIntoProducts(variants, {});
+
+    expect(report.migrated).toEqual([]);
+    expect(report.skipped).toEqual([]);
+    expect(report.needsReview).toEqual([]);
+  });
+
+  it("does not get flagged by the malformedKeys check even though its key never starts with the sentinel prefix", () => {
+    // mat__banner__papier-250g does not start with "__material__" — proves
+    // the sentinel guard runs BEFORE the malformedKeys check, not after.
+    const variants = [
+      makeVariant({
+        key: "mat__banner__papier-250g",
+        categoryId: "banner",
+        subcategoryPrefix: MATERIAL_ASSIGNMENT_PREFIX,
+      }),
+    ];
+
+    const report = classifyVariantsIntoProducts(variants, {});
+
+    expect(report.needsReview).toEqual([]);
+  });
+
+  it("a real product cluster in the same category is still classified normally alongside a sentinel row", () => {
+    const variants = [
+      makeVariant({
+        key: "mat__banner__papier-250g",
+        categoryId: "banner",
+        subcategoryPrefix: MATERIAL_ASSIGNMENT_PREFIX,
+      }),
+      makeVariant({
+        key: "banner-custom-10",
+        categoryId: "banner",
+        subcategoryPrefix: "banner-custom-",
+        calcScheme: "flat-rate",
+      }),
+    ];
+
+    const report = classifyVariantsIntoProducts(variants, { "banner-custom-10": 100 });
+
+    expect(report.migrated).toHaveLength(1);
+    expect(report.migrated[0].productId).toContain("banner-custom-");
+    expect(report.skipped).toEqual([]);
+    expect(report.needsReview).toEqual([]);
+  });
+});
+
+describe("classifyVariantsIntoProducts — priceFormula (żywa cena relatywna)", () => {
+  function makeFormulaVariant(overrides: Partial<VariantDefinition>): VariantDefinition {
+    return makeVariant({
+      categoryId: "dyplomy",
+      subcategoryPrefix: "dyplomy-pochodny-",
+      calcScheme: "interpolated",
+      priceFormula: {
+        baseCategoryId: "dyplomy",
+        basePrefix: "dyplomy-bazowy-",
+        op: "percent",
+        value: 20,
+      },
+      ...overrides,
+    });
+  }
+
+  function makeBaseVariant(overrides: Partial<VariantDefinition>): VariantDefinition {
+    return makeVariant({
+      categoryId: "dyplomy",
+      subcategoryPrefix: "dyplomy-bazowy-",
+      calcScheme: "interpolated",
+      ...overrides,
+    });
+  }
+
+  it("prosty percent: pochodna cena = baza * (1 + value/100)", () => {
+    const variants = [
+      makeBaseVariant({ key: "dyplomy-bazowy-100" }),
+      makeFormulaVariant({ key: "dyplomy-pochodny-100" }),
+    ];
+    const prices = { "dyplomy-bazowy-100": 10 };
+
+    const report = classifyVariantsIntoProducts(variants, prices);
+
+    const derived = report.migrated.find((p) => p.subcategoryPrefix === "dyplomy-pochodny-");
+    expect(derived?.entries).toEqual([{ key: "dyplomy-pochodny-100", qty: 100, price: 12 }]);
+  });
+
+  it("prosty fixed: pochodna cena = baza + value", () => {
+    const variants = [
+      makeBaseVariant({ key: "dyplomy-bazowy-100" }),
+      makeFormulaVariant({
+        key: "dyplomy-pochodny-100",
+        priceFormula: {
+          baseCategoryId: "dyplomy",
+          basePrefix: "dyplomy-bazowy-",
+          op: "fixed",
+          value: 3,
+        },
+      }),
+    ];
+    const prices = { "dyplomy-bazowy-100": 10 };
+
+    const report = classifyVariantsIntoProducts(variants, prices);
+
+    const derived = report.migrated.find((p) => p.subcategoryPrefix === "dyplomy-pochodny-");
+    expect(derived?.entries).toEqual([{ key: "dyplomy-pochodny-100", qty: 100, price: 13 }]);
+  });
+
+  it("żywotność: nieaktualna/błędna wartość we własnym prices[key] pochodnej jest całkowicie ignorowana", () => {
+    const variants = [
+      makeBaseVariant({ key: "dyplomy-bazowy-100" }),
+      makeFormulaVariant({ key: "dyplomy-pochodny-100" }),
+    ];
+    // Wartość 999 pod własnym kluczem pochodnej — gdyby resolveEntryPrice
+    // kiedykolwiek czytał ją zamiast zawsze liczyć na nowo z bazy, ten test
+    // by to złapał.
+    const prices = { "dyplomy-bazowy-100": 10, "dyplomy-pochodny-100": 999 };
+
+    const report = classifyVariantsIntoProducts(variants, prices);
+
+    const derived = report.migrated.find((p) => p.subcategoryPrefix === "dyplomy-pochodny-");
+    expect(derived?.entries[0].price).toBe(12);
+  });
+
+  it("nowy próg dodany do pochodnej podgrupy rozwiązuje się automatycznie, bez zmiany formuły", () => {
+    const variants = [
+      makeBaseVariant({ key: "dyplomy-bazowy-100" }),
+      makeBaseVariant({ key: "dyplomy-bazowy-500" }),
+      makeFormulaVariant({ key: "dyplomy-pochodny-100" }),
+      makeFormulaVariant({ key: "dyplomy-pochodny-500" }),
+    ];
+    const prices = { "dyplomy-bazowy-100": 10, "dyplomy-bazowy-500": 40 };
+
+    const report = classifyVariantsIntoProducts(variants, prices);
+
+    const derived = report.migrated.find((p) => p.subcategoryPrefix === "dyplomy-pochodny-");
+    expect(derived?.entries).toEqual([
+      { key: "dyplomy-pochodny-100", qty: 100, price: 12 },
+      { key: "dyplomy-pochodny-500", qty: 500, price: 48 },
+    ]);
+  });
+
+  it("brak progu bazowego o tej ilości -> null na JEDNYM wpisie, reszta podgrupy migruje normalnie (nie needsReview)", () => {
+    const variants = [
+      makeBaseVariant({ key: "dyplomy-bazowy-100" }), // brak progu 500 u bazy
+      makeFormulaVariant({ key: "dyplomy-pochodny-100" }),
+      makeFormulaVariant({ key: "dyplomy-pochodny-500" }),
+    ];
+    const prices = { "dyplomy-bazowy-100": 10 };
+
+    const report = classifyVariantsIntoProducts(variants, prices);
+
+    expect(report.needsReview).toEqual([]);
+    const derived = report.migrated.find((p) => p.subcategoryPrefix === "dyplomy-pochodny-");
+    expect(derived?.entries).toEqual([
+      { key: "dyplomy-pochodny-100", qty: 100, price: 12 },
+      { key: "dyplomy-pochodny-500", qty: 500, price: null },
+    ]);
+  });
+
+  it("łańcuchowanie zablokowane: C relatywne do B, B relatywne do A -> C się nie rozwiązuje (bez rekurencji/zawieszenia)", () => {
+    const variants = [
+      makeVariant({
+        key: "dyplomy-a-100",
+        categoryId: "dyplomy",
+        subcategoryPrefix: "dyplomy-a-",
+        calcScheme: "interpolated",
+      }),
+      makeVariant({
+        key: "dyplomy-b-100",
+        categoryId: "dyplomy",
+        subcategoryPrefix: "dyplomy-b-",
+        calcScheme: "interpolated",
+        priceFormula: { baseCategoryId: "dyplomy", basePrefix: "dyplomy-a-", op: "percent", value: 10 },
+      }),
+      makeVariant({
+        key: "dyplomy-c-100",
+        categoryId: "dyplomy",
+        subcategoryPrefix: "dyplomy-c-",
+        calcScheme: "interpolated",
+        priceFormula: { baseCategoryId: "dyplomy", basePrefix: "dyplomy-b-", op: "percent", value: 10 },
+      }),
+    ];
+    const prices = { "dyplomy-a-100": 100 };
+
+    const report = classifyVariantsIntoProducts(variants, prices);
+
+    const b = report.migrated.find((p) => p.subcategoryPrefix === "dyplomy-b-");
+    const c = report.migrated.find((p) => p.subcategoryPrefix === "dyplomy-c-");
+    expect(b?.entries[0].price).toBe(110); // B->A jest jednym poziomem, rozwiązuje się
+    expect(c?.entries[0].price).toBeNull(); // C->B zablokowane, bo B samo ma formułę
+  });
+
+  it("cykl A<->B -> oba null, bez zawieszenia", () => {
+    const variants = [
+      makeVariant({
+        key: "dyplomy-a-100",
+        categoryId: "dyplomy",
+        subcategoryPrefix: "dyplomy-a-",
+        calcScheme: "interpolated",
+        priceFormula: { baseCategoryId: "dyplomy", basePrefix: "dyplomy-b-", op: "percent", value: 10 },
+      }),
+      makeVariant({
+        key: "dyplomy-b-100",
+        categoryId: "dyplomy",
+        subcategoryPrefix: "dyplomy-b-",
+        calcScheme: "interpolated",
+        priceFormula: { baseCategoryId: "dyplomy", basePrefix: "dyplomy-a-", op: "percent", value: 10 },
+      }),
+    ];
+    const prices = { "dyplomy-a-100": 100, "dyplomy-b-100": 100 };
+
+    const report = classifyVariantsIntoProducts(variants, prices);
+
+    const a = report.migrated.find((p) => p.subcategoryPrefix === "dyplomy-a-");
+    const b = report.migrated.find((p) => p.subcategoryPrefix === "dyplomy-b-");
+    expect(a?.entries[0].price).toBeNull();
+    expect(b?.entries[0].price).toBeNull();
+  });
+
+  it("konflikt formuł między progami tej samej podgrupy -> needsReview", () => {
+    const variants = [
+      makeBaseVariant({ key: "dyplomy-bazowy-100" }),
+      makeFormulaVariant({ key: "dyplomy-pochodny-100" }),
+      makeFormulaVariant({
+        key: "dyplomy-pochodny-500",
+        priceFormula: {
+          baseCategoryId: "dyplomy",
+          basePrefix: "dyplomy-bazowy-",
+          op: "percent",
+          value: 30, // inna wartość niż siostrzany próg -100
+        },
+      }),
+    ];
+    const prices = { "dyplomy-bazowy-100": 10 };
+
+    const report = classifyVariantsIntoProducts(variants, prices);
+
+    expect(report.needsReview).toHaveLength(1);
+    expect(report.needsReview[0].reason).toMatch(/priceFormula/);
+  });
+
+  it("wynik <= 0 (żywa baza spadła, formuła to duży rabat) -> null, nigdy ujemna/zerowa cena", () => {
+    const variants = [
+      makeBaseVariant({ key: "dyplomy-bazowy-100" }),
+      makeFormulaVariant({
+        key: "dyplomy-pochodny-100",
+        priceFormula: {
+          baseCategoryId: "dyplomy",
+          basePrefix: "dyplomy-bazowy-",
+          op: "fixed",
+          value: -15,
+        },
+      }),
+    ];
+    const prices = { "dyplomy-bazowy-100": 10 };
+
+    const report = classifyVariantsIntoProducts(variants, prices);
+
+    const derived = report.migrated.find((p) => p.subcategoryPrefix === "dyplomy-pochodny-");
+    expect(derived?.entries[0].price).toBeNull();
+  });
+
+  it("idempotentność: dwa wywołania na tych samych danych dają identyczny wynik", () => {
+    const variants = [
+      makeBaseVariant({ key: "dyplomy-bazowy-100" }),
+      makeFormulaVariant({ key: "dyplomy-pochodny-100" }),
+    ];
+    const prices = { "dyplomy-bazowy-100": 10 };
+
+    const reportA = classifyVariantsIntoProducts(variants, prices);
+    const reportB = classifyVariantsIntoProducts(variants, prices);
+
+    expect(reportA).toEqual(reportB);
   });
 });

@@ -1,5 +1,8 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, afterEach, vi } from "vitest";
 import { calculateFoliaSzroniona } from "../src/categories/folia-szroniona";
+import { buildMaterialAssignmentKey, materialTierKeyPrefix } from "../src/core/dynamicMaterials";
+import { MATERIAL_ASSIGNMENT_PREFIX } from "../src/core/variantKeys";
+import { setVariantDefinitions, setPrice, resetPrices } from "../src/services/priceService";
 
 describe("Folia Szroniona Category", () => {
   it("should calculate material-only for 1m2 (min. rule)", () => {
@@ -136,5 +139,56 @@ describe("Folia Szroniona Category", () => {
     });
     expect(result.isCustom).toBe(false);
     expect(result.totalPrice).toBe(2400);
+  });
+});
+
+describe("Folia Szroniona — usługa/materiał dodana dynamicznie (dynamicMaterials.ts)", () => {
+  let storage: Record<string, string> = {};
+
+  afterEach(() => {
+    resetPrices();
+    setVariantDefinitions([]);
+    vi.unstubAllGlobals();
+  });
+
+  it("calculateFoliaSzroniona liczy nową usługę dodaną przez panel 'Dodaj materiał'", () => {
+    storage = {};
+    vi.stubGlobal("localStorage", {
+      getItem: (k: string) => storage[k] ?? null,
+      setItem: (k: string, v: string) => {
+        storage[k] = String(v);
+      },
+      removeItem: (k: string) => {
+        delete storage[k];
+      },
+    });
+
+    const materialId = "nowa-usluga-testowa";
+    setVariantDefinitions([
+      {
+        key: buildMaterialAssignmentKey("foliaSzroniona", materialId),
+        categoryId: "foliaSzroniona",
+        subcategoryPrefix: MATERIAL_ASSIGNMENT_PREFIX,
+        subgroupLabel: "",
+        label: "Nowa usługa testowa",
+        legend: "",
+        visibleInSettings: true,
+        visibleInCalculator: true,
+        sortOrder: 0,
+        createdAt: "2026-01-01T00:00:00.000Z",
+        updatedAt: "2026-01-01T00:00:00.000Z",
+      },
+    ]);
+    const prefix = materialTierKeyPrefix("foliaSzroniona", materialId);
+    setPrice(`defaultPrices.${prefix}1+`, 20);
+
+    const result = calculateFoliaSzroniona({
+      widthMm: 1000,
+      heightMm: 1000,
+      serviceId: materialId,
+      express: false,
+    });
+
+    expect(result.totalPrice).toBe(20);
   });
 });

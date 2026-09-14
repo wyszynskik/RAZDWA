@@ -2,8 +2,8 @@ import { View, ViewContext } from "../types";
 import { autoCalc } from "../autoCalc";
 import { calculateFoliaSzroniona } from "../../categories/folia-szroniona";
 import { formatPLN } from "../../core/money";
-import { getPrice } from "../../services/priceService";
 import { resolveStoredPrice } from "../../core/compat";
+import { getCombinedMaterials } from "../../core/dynamicMaterials";
 
 type BreakdownRow = {
   label: string;
@@ -61,7 +61,6 @@ export const FoliaSzronionaView: View = {
   },
 
   initLogic(container: HTMLElement, ctx: ViewContext) {
-    const tableData = getPrice("foliaSzroniona") as any;
     const serviceSelect = container.querySelector("#fs-service") as HTMLSelectElement;
     const widthInput = container.querySelector("#fs-width") as HTMLInputElement;
     const heightInput = container.querySelector("#fs-height") as HTMLInputElement;
@@ -78,6 +77,20 @@ export const FoliaSzronionaView: View = {
     let currentResult: any = null;
     let currentOptions: any = null;
 
+    // Świeże na każdym wywołaniu — nigdy nie cache'ować na poziomie modułu
+    // (to była przyczyna "zamrożonej" listy usług/materiałów).
+    const populateServiceSelect = () => {
+      const materials = getCombinedMaterials("foliaSzroniona");
+      const previousValue = serviceSelect.value;
+      const placeholder = '<option value="" disabled selected>— wybierz usługę —</option>';
+      serviceSelect.innerHTML =
+        placeholder +
+        materials.map((m) => `<option value="${m.id}">${(m as any).title ?? m.name}</option>`).join("");
+      if (previousValue && materials.some((m) => m.id === previousValue)) {
+        serviceSelect.value = previousValue;
+      }
+    };
+
     const ensureLegend = () => {
       let legend = container.querySelector<HTMLElement>("#folia-dynamic-legend");
       if (!legend) {
@@ -88,7 +101,7 @@ export const FoliaSzronionaView: View = {
         (breakdownDisplay ?? resultDisplay).insertAdjacentElement("afterend", legend);
       }
 
-      const materials = (tableData.materials ?? []) as Array<{
+      const materials = getCombinedMaterials("foliaSzroniona") as Array<{
         id: string;
         storageId?: string;
         name: string;
@@ -202,9 +215,11 @@ export const FoliaSzronionaView: View = {
         ctx.showToast?.("Wybierz usługę przed dodaniem do koszyka.", "error");
       }
     });
+    populateServiceSelect();
     ensureLegend();
     serviceSelect.addEventListener("change", ensureLegend);
     ctx?.on?.("prices-updated", () => {
+      populateServiceSelect();
       ensureLegend();
       performCalculation();
     });

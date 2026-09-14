@@ -2,6 +2,7 @@ import { calculatePrice } from "../core/pricing";
 import { PriceTable, CalculationResult } from "../core/types";
 import { getPrice } from "../services/priceService";
 import { overrideTiersWithStoredPrices, resolveStoredPrice } from "../core/compat";
+import { getCombinedMaterials } from "../core/dynamicMaterials";
 
 export interface BannerOptions {
   material: string;
@@ -12,7 +13,7 @@ export interface BannerOptions {
 
 export function calculateBanner(options: BannerOptions): CalculationResult {
   const tableData = getPrice("banner") as any;
-  const materialData = tableData.materials.find((m: any) => m.id === options.material);
+  const materialData = getCombinedMaterials("banner").find((m) => m.id === options.material);
 
   if (!materialData) {
     throw new Error(`Unknown material: ${options.material}`);
