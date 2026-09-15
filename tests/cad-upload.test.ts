@@ -6,6 +6,7 @@ import {
   calculatePriceFromDimensions,
   calculateCadScanningPrice,
   calculateCadFoldingPrice,
+  calculateCadPrintPrice,
   updateCadFileEntry,
   CAD_PDF_WARN_PAGES,
   CAD_PDF_HARD_PAGES,
@@ -308,5 +309,31 @@ describe("G — Guardy wydajnościowe CAD Upload", () => {
       type: "application/pdf",
     });
     await expect(updateCadFileEntry(file, true)).rejects.toThrow("READ_ERROR");
+  });
+});
+
+// ─── Odświeżanie cen bez ponownego importu modułu (regresja: compat.ts) ───────
+// Wcześniej PRICE/CAD_PRICE/CAD_BASE/FOLD_PRICE/WF_SCAN_PRICE_PER_CM były
+// odczytane raz przy imporcie modułu compat.ts — nowy próg dodany w panelu
+// (setPrice) nigdy by się tu nie pojawił bez przeładowania strony.
+describe("compat.ts — ceny CAD czytane na żywo, nie zamrożone przy imporcie", () => {
+  it("nowy format składania dodany przez setPrice jest widoczny bez reimportu modułu", () => {
+    const before = calculateCadFoldingPrice("TESTFMT", false, 0, 0, true, 2);
+    expect(before).toBe(0);
+
+    setPrice("drukCAD.fold.TESTFMT", 7.5);
+
+    const after = calculateCadFoldingPrice("TESTFMT", false, 0, 0, true, 2);
+    expect(after).toBe(15);
+  });
+
+  it("zmiana stawki druku CAD (formatowe) jest widoczna bez reimportu modułu", () => {
+    const original = calculateCadPrintPrice("A0", false);
+    expect(original).toBeGreaterThan(0);
+
+    setPrice("drukCAD.price.bw.formatowe.A0", original + 100);
+
+    const updated = calculateCadPrintPrice("A0", false);
+    expect(updated).toBe(original + 100);
   });
 });

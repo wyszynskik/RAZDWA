@@ -1,9 +1,8 @@
 import {
-  CAD_BASE,
-  CAD_PRICE,
-  FOLD_PRICE,
-  FORMAT_TOLERANCE_MM,
-  WF_SCAN_PRICE_PER_CM,
+  getCadBase,
+  getCadPrice,
+  getFoldPrice,
+  getWfScanPricePerCm,
   resolveStoredPrice,
 } from "../core/compat";
 import { money } from "../core/compat";
@@ -69,7 +68,7 @@ function detectFormatDetailsFromDimensions(widthMm: number, heightMm: number): C
   else if (inRange(shorter, 914)) matchedFormat = "A0p";
 
   if (matchedFormat) {
-    const baseLength = CAD_BASE[matchedFormat]?.l;
+    const baseLength = getCadBase()[matchedFormat]?.l;
     const isFormatowy =
       typeof baseLength === "number"
         ? Math.abs(longer - baseLength) <= FORMAT_TOLERANCE_CLASSIFY
@@ -170,7 +169,7 @@ export function calculateCadUpload(options: {
  */
 export function calculateCadPrintPrice(format: string, isColor: boolean): number {
   const mode: "bw" | "color" = isColor ? "color" : "bw";
-  const prices = CAD_PRICE[mode];
+  const prices = getCadPrice()[mode];
 
   const formatPrice = prices.formatowe[format];
   if (formatPrice) return formatPrice;
@@ -198,7 +197,7 @@ function calculateCadPrintPriceWithDimensions(
   mode: "bw" | "color",
   qty: number
 ): number {
-  const prices = CAD_PRICE[mode];
+  const prices = getCadPrice()[mode];
 
   if (isFormatowy) {
     const basePrice = prices.formatowe[format];
@@ -241,7 +240,8 @@ export function calculateCadFoldingPrice(
   if (!folding) return 0;
 
   const storageKey = FOLD_STORAGE_KEY[format];
-  const defaultPrice = typeof FOLD_PRICE?.[format] === "number" ? FOLD_PRICE[format] : 0;
+  const foldPrice = getFoldPrice();
+  const defaultPrice = typeof foldPrice?.[format] === "number" ? foldPrice[format] : 0;
   const unitPrice = storageKey ? resolveStoredPrice(storageKey, defaultPrice) : defaultPrice;
   return unitPrice > 0 ? qty * unitPrice : 0;
 }
@@ -275,7 +275,7 @@ export function calculateCadScanningPrice(
   // Do rozliczenia skanowania liczy się dłuższy wymiar (długość przejazdu przez skaner)
   const lengthCm = Math.round(longerSideMm / 10);
 
-  const scanPerCm = resolveStoredPrice("cad-skanowanie", WF_SCAN_PRICE_PER_CM || 0.08);
+  const scanPerCm = resolveStoredPrice("cad-skanowanie", getWfScanPricePerCm() || 0.08);
   return qty * lengthCm * scanPerCm;
 }
 

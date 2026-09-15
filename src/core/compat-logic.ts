@@ -1,10 +1,10 @@
 import {
-  PRICE,
-  CAD_PRICE,
-  CAD_BASE,
-  FORMAT_TOLERANCE_MM,
-  FOLD_PRICE,
-  WF_SCAN_PRICE_PER_CM,
+  getPRICE,
+  getCadPrice,
+  getCadBase,
+  getFormatToleranceMm,
+  getFoldPrice,
+  getWfScanPricePerCm,
   BIZ,
   pickTier,
   resolveStoredPrice,
@@ -36,6 +36,7 @@ export function calculateSimplePrint(options: {
   ink25: boolean;
   ink25Qty: number;
 }) {
+  const PRICE = getPRICE();
   if (options.pages <= 0) {
     return {
       unitPrice: 0,
@@ -89,7 +90,7 @@ export function calculateSimplePrint(options: {
 /** A4/A3 Scan calculation logic */
 export function calculateSimpleScan(options: { type: "auto" | "manual"; pages: number }) {
   if (options.pages <= 0) return { unitPrice: 0, total: 0 };
-  const tiers = (PRICE.scan as any)[options.type];
+  const tiers = (getPRICE().scan as any)[options.type];
   const tier = pickTier(tiers, options.pages);
   if (!tier) throw new Error("Brak progu cenowego dla skanowania.");
 
@@ -110,13 +111,13 @@ export function calculateCad(options: {
   lengthMm: number;
   qty: number;
 }) {
-  const base = CAD_BASE[options.format];
+  const base = getCadBase()[options.format];
   if (!base) throw new Error("Nieznany format CAD.");
 
-  const isFormatowe = Math.abs(options.lengthMm - base.l) <= FORMAT_TOLERANCE_MM;
+  const isFormatowe = Math.abs(options.lengthMm - base.l) <= getFormatToleranceMm();
   const detectedType = isFormatowe ? "formatowe" : "mb";
 
-  const rate = CAD_PRICE[options.mode][detectedType][options.format];
+  const rate = getCadPrice()[options.mode][detectedType][options.format];
   if (rate == null) throw new Error("Brak stawki w cenniku dla CAD.");
 
   // Map to storage key: druk-cad-{bw|kolor}-{fmt|mb}-{format}
@@ -158,7 +159,7 @@ const FOLD_STORAGE_KEY: Record<string, string> = {
 
 /** CAD Folding logic */
 export function calculateCadFold(options: { format: string; qty: number }) {
-  const defaultUnit = FOLD_PRICE[options.format];
+  const defaultUnit = getFoldPrice()[options.format];
   if (defaultUnit == null) throw new Error("Brak stawki składania.");
   const storageKey = FOLD_STORAGE_KEY[options.format];
   const unit = storageKey ? resolveStoredPrice(storageKey, defaultUnit) : defaultUnit;
@@ -171,7 +172,7 @@ export function calculateCadFold(options: { format: string; qty: number }) {
 /** WF Scan logic */
 export function calculateWfScan(options: { lengthMm: number; qty: number }) {
   const cmRounded = Math.round(options.lengthMm / 10);
-  const unitPrice = cmRounded * WF_SCAN_PRICE_PER_CM;
+  const unitPrice = cmRounded * getWfScanPricePerCm();
   return {
     cmRounded,
     unitPrice,
