@@ -41,6 +41,12 @@ export class Router {
   private categories: any[] = [];
   private previousHash: string = "#/";
   private currentCategoryPath: string | null = null;
+  // Serializuje nawigacje — bez tego dwie szybkie zmiany hasha (klik A, potem
+  // B zanim A skończy await fetch()+innerHTML wewnątrz view.mount()) mogły
+  // nakładać się na siebie i dawać podwójnie podpięte listenery albo starszy,
+  // wolniejszy mount nadpisujący nowszy. B startuje dopiero gdy A w pełni się
+  // skończy, więc ostatnie kliknięcie zawsze maluje na końcu.
+  private navInFlight: Promise<void> = Promise.resolve();
 
   private isSettingsAuthenticated(): boolean {
     return isAdminSession();
@@ -307,8 +313,23 @@ export class Router {
     this.routes.set(view.id, view);
   }
 
-  async handleRoute() {
+  handleRoute(): Promise<void> {
+    // Hash MUSI być odczytany tu, synchronicznie, w momencie wywołania —
+    // nie wewnątrz _handleRouteInner(), bo ta uruchamia się dopiero gdy
+    // przyjdzie jej kolej w kolejce. Gdyby czytała window.location.hash
+    // dopiero wtedy, dwie szybkie zmiany hasha (A, potem B) sprawiłyby, że
+    // KAŻDA zakolejkowana nawigacja odczytałaby już finalny hash B — i obie
+    // zamontowałyby B, zamiast A i potem B.
     const hash = window.location.hash || "#/";
+    const result = this.navInFlight.then(() => this._handleRouteInner(hash));
+    this.navInFlight = result.then(
+      () => undefined,
+      () => undefined
+    );
+    return result;
+  }
+
+  private async _handleRouteInner(hash: string): Promise<void> {
     let path = hash.startsWith("#/") ? hash.slice(2) : "";
     path = path.replace(/^\/+/, "");
 
