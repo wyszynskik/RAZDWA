@@ -60,6 +60,8 @@ import {
   createSubgroupRegistryEntry,
   updateSubgroupLabel,
   applySubgroupToVariants,
+  resetLocalStorageWriteFailureFlag,
+  hadLocalStorageWriteFailure,
 } from "../../services/priceService";
 import {
   markConfigDirty,
@@ -4889,6 +4891,10 @@ export const UstawieniaView: View = {
         showStatus("⏳ Zapisywanie lokalnie…", "pending", true);
 
         try {
+          // Reset na starcie tej konkretnej operacji zapisu — inaczej nieskonsumowany
+          // błąd z zupełnie innego, wcześniejszego zapisu fałszywie obniżyłby komunikat
+          // sukcesu tutaj, mimo że TEN zapis się w pełni powiódł.
+          resetLocalStorageWriteFailureFlag();
           flushInputs();
 
           // Commit draft variant definitions do localStorage przed zapisem cennika.
@@ -5117,11 +5123,19 @@ export const UstawieniaView: View = {
             _subgroupOrderBackfillPending = false;
             updateDraftIndicator();
             ctx?.emit?.("prices-updated", { timestamp: Date.now() });
-            showStatus(
-              `✓ Cennik zapisany lokalnie i zsynchronizowany z arkuszem.${backfillNote}`,
-              "success",
-              true
-            );
+            if (hadLocalStorageWriteFailure()) {
+              showStatus(
+                `⚠️ Zapisano na serwerze, ale lokalny zapis w tej przeglądarce mógł się nie udać (np. brak miejsca). Odśwież stronę i zweryfikuj cennik.${backfillNote}`,
+                "error",
+                true
+              );
+            } else {
+              showStatus(
+                `✓ Cennik zapisany lokalnie i zsynchronizowany z arkuszem.${backfillNote}`,
+                "success",
+                true
+              );
+            }
           } else {
             renderPricesSync("unsynced", errorDetail);
             updateDraftIndicator();

@@ -27,6 +27,25 @@ function isSafePathSegment(segment: string): boolean {
   return Boolean(segment) && !FORBIDDEN_PATH_KEYS.has(segment);
 }
 
+// Śledzi, czy w trakcie bieżącej operacji zapisu localStorage.setItem rzucił
+// wyjątek (np. QuotaExceededError) — bez tego panel Ustawień pokazywał
+// "✓ zapisano lokalnie" nawet gdy zapis się faktycznie nie powiódł.
+let _localStorageWriteFailed = false;
+
+function markLocalStorageWriteFailed(): void {
+  _localStorageWriteFailed = true;
+}
+
+/** Wywołać na starcie operacji zapisu, przed pierwszym setPrice/setVariantDefinitions. */
+export function resetLocalStorageWriteFailureFlag(): void {
+  _localStorageWriteFailed = false;
+}
+
+/** Sprawdzić na końcu operacji zapisu, przed pokazaniem komunikatu sukcesu. */
+export function hadLocalStorageWriteFailure(): boolean {
+  return _localStorageWriteFailed;
+}
+
 function cloneToNullPrototype<T>(value: T): T {
   if (Array.isArray(value)) {
     return value.map((item) => cloneToNullPrototype(item)) as T;
@@ -85,7 +104,7 @@ function writeStoredJsonMap(storageKey: string, value: Record<string, string>): 
     if (typeof localStorage === "undefined") return;
     localStorage.setItem(storageKey, JSON.stringify(value));
   } catch {
-    // ignore
+    markLocalStorageWriteFailed();
   }
 }
 
@@ -166,7 +185,7 @@ export function setPrice(path: string, value: any): void {
         localStorage.setItem(PRICES_STORAGE_KEY, JSON.stringify(root.defaultPrices ?? {}));
       }
     } catch {
-      // ignore
+      markLocalStorageWriteFailed();
     }
 
     markConfigDirty();
@@ -295,7 +314,7 @@ export function setPriceSubgroups(groups: PriceSubgroupsInput): void {
       localStorage.setItem(PRICE_SUBGROUPS_STORAGE_KEY, JSON.stringify(cleaned));
     }
   } catch {
-    // ignore
+    markLocalStorageWriteFailed();
   }
 
   markConfigDirty();
@@ -642,7 +661,7 @@ export function setVariantDefinitions(variants: VariantDefinition[]): void {
     if (typeof localStorage === "undefined") return;
     localStorage.setItem(VARIANTS_STORAGE_KEY, JSON.stringify(variants));
   } catch {
-    // ignore
+    markLocalStorageWriteFailed();
   }
   markConfigDirty();
   notifyPricesUpdated("variants");
