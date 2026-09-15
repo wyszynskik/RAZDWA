@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import {
   buildOrderExportPayload,
+  computeOrderRequestId,
   fetchCatalogRevision,
   getOrderExportConfig,
   ORDER_EXPORT_CONFIG_KEY,
@@ -64,6 +65,57 @@ describe("orderExportService", () => {
     expect(payload.summary.total).toBe(113);
     expect(payload.summary.hasExpress).toBe(true);
     expect(payload.customer.name).toBe("Jan Kowalski");
+  });
+
+  describe("computeOrderRequestId — dedup dwóch zakładek", () => {
+    const FIXED_NOW = 1_000_000_000_000;
+
+    it("ten sam payload z różnym createdAt daje ten sam requestId", () => {
+      const a = buildOrderExportPayload(sampleItems, sampleCustomer);
+      const b = buildOrderExportPayload(sampleItems, sampleCustomer);
+      b.createdAt = new Date(Date.parse(a.createdAt) + 5000).toISOString();
+
+      expect(computeOrderRequestId(a, FIXED_NOW)).toBe(computeOrderRequestId(b, FIXED_NOW));
+    });
+
+    it("inna ilość w pozycji daje inny requestId", () => {
+      const a = buildOrderExportPayload(sampleItems, sampleCustomer);
+      const changedItems = sampleItems.map((i, idx) =>
+        idx === 0 ? { ...i, quantity: i.quantity + 1 } : i
+      );
+      const b = buildOrderExportPayload(changedItems, sampleCustomer);
+
+      expect(computeOrderRequestId(a, FIXED_NOW)).not.toBe(computeOrderRequestId(b, FIXED_NOW));
+    });
+
+    it("inny klient daje inny requestId", () => {
+      const a = buildOrderExportPayload(sampleItems, sampleCustomer);
+      const b = buildOrderExportPayload(sampleItems, { ...sampleCustomer, phone: "+48 111 222 333" });
+
+      expect(computeOrderRequestId(a, FIXED_NOW)).not.toBe(computeOrderRequestId(b, FIXED_NOW));
+    });
+
+    it("kolejność pozycji w koszyku nie wpływa na requestId", () => {
+      const a = buildOrderExportPayload(sampleItems, sampleCustomer);
+      const b = buildOrderExportPayload([...sampleItems].reverse(), sampleCustomer);
+
+      expect(computeOrderRequestId(a, FIXED_NOW)).toBe(computeOrderRequestId(b, FIXED_NOW));
+    });
+
+    it("ten sam payload poza oknem dedupu (90s) daje inny requestId", () => {
+      const a = buildOrderExportPayload(sampleItems, sampleCustomer);
+
+      expect(computeOrderRequestId(a, FIXED_NOW)).not.toBe(
+        computeOrderRequestId(a, FIXED_NOW + 91000)
+      );
+    });
+
+    it("różne notatki dają inny requestId", () => {
+      const a = buildOrderExportPayload(sampleItems, sampleCustomer);
+      const b = buildOrderExportPayload(sampleItems, { ...sampleCustomer, notes: "Inna notatka" });
+
+      expect(computeOrderRequestId(a, FIXED_NOW)).not.toBe(computeOrderRequestId(b, FIXED_NOW));
+    });
   });
 
   it("set/get config persists to localStorage", () => {

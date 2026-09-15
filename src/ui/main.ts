@@ -37,6 +37,7 @@ import { buildLegacyBasketCartItem } from "../core/legacyCartAdapter";
 import { downloadExcel } from "./excel";
 import {
   buildOrderExportPayload,
+  computeOrderRequestId,
   getOrderExportConfig,
   sendOrderToAppsScript,
   fetchStateFromAppsScript,
@@ -2021,10 +2022,7 @@ document.addEventListener("DOMContentLoaded", () => {
       if (lastSendRequestId !== null) {
         payload.requestId = lastSendRequestId;
       } else {
-        payload.requestId =
-          typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
-            ? crypto.randomUUID()
-            : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+        payload.requestId = computeOrderRequestId(payload);
         lastSendRequestId = payload.requestId;
       }
 

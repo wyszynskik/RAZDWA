@@ -347,6 +347,74 @@ export function buildOrderExportPayload(
   };
 }
 
+const ORDER_DEDUP_WINDOW_MS = 90000;
+
+function fnv1aHex(input: string): string {
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < input.length; i++) {
+    hash ^= input.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return (hash >>> 0).toString(16).padStart(8, "0");
+}
+
+/**
+ * Requesty z dwóch niezależnych zakładek dla tego samego zamówienia mają
+ * dostać identyczny requestId, żeby wpaść w istniejący dedup po RequestID
+ * w handleOrderSave (Code.gs) — bez żadnej komunikacji między zakładkami.
+ * Dlatego pomijamy pola różniące się między zakładkami mimo tej samej
+ * treści (createdAt, requestId) i kubełkujemy czas zamiast go liczyć dokładnie.
+ */
+export function computeOrderRequestId(
+  payload: OrderExportPayload,
+  now: number = Date.now()
+): string {
+  const customer = payload.customer;
+  const items = [...payload.items]
+    .map((item) => ({
+      category: String(item.category ?? "")
+        .trim()
+        .toLowerCase(),
+      name: String(item.name ?? "")
+        .trim()
+        .toLowerCase(),
+      optionsHint: String(item.optionsHint ?? "")
+        .trim()
+        .toLowerCase(),
+      quantity: Number(item.quantity || 0),
+      unitPrice: Number(item.unitPrice || 0).toFixed(2),
+      isExpress: !!item.isExpress,
+    }))
+    .sort((a, b) =>
+      `${a.category}|${a.name}|${a.optionsHint}`.localeCompare(
+        `${b.category}|${b.name}|${b.optionsHint}`
+      )
+    );
+
+  const fingerprint = {
+    name: String(customer.name ?? "")
+      .trim()
+      .toLowerCase(),
+    phone: normalizePhoneDigits(String(customer.phone ?? "")),
+    email: String(customer.email ?? "")
+      .trim()
+      .toLowerCase(),
+    company: String(customer.company ?? "")
+      .trim()
+      .toLowerCase(),
+    nip: String(customer.nip ?? "").trim(),
+    notes: String(customer.notes ?? "")
+      .trim()
+      .toLowerCase(),
+    items,
+    total: Number(payload.summary.total || 0).toFixed(2),
+    hasExpress: !!payload.summary.hasExpress,
+    timeBucket: Math.floor(now / ORDER_DEDUP_WINDOW_MS),
+  };
+
+  return `order-${fnv1aHex(JSON.stringify(fingerprint))}`;
+}
+
 async function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
