@@ -1374,13 +1374,21 @@ document.addEventListener("DOMContentLoaded", () => {
     if (orderSummary) {
       orderSummary.classList.toggle("is-express", globalExpress.checked);
     }
-    const currentHash = window.location.hash;
-    window.location.hash = "";
-    window.location.hash = currentHash;
+    // Re-mount przez router zamiast dublowania hash (hash="" -> hash=poprzedni):
+    // ten trik generował DWA zdarzenia hashchange, więc każda zmiana trybu
+    // Express montowała bieżący widok kategorii dwukrotnie z rzędu. Przy
+    // async initLogic() (np. CAD Upload czeka na fetch przed podpięciem
+    // listenerów) nakładające się montowania zostawiały zduplikowane
+    // listenery na checkboxach "zaznacz wszystkie".
+    router.handleRoute().catch(() => {});
   };
 
   const setExpressMode = (on: boolean, _source: "global" | "priority" | "init"): void => {
     if (isApplyingExpress) return;
+    // Wywołania "init" tylko synchronizują stan przy starcie strony —
+    // jeśli i tak niczego nie zmieniają, pomijamy render (uniknięcie
+    // zbędnego re-mountu bieżącego widoku na każdym załadowaniu strony).
+    if (_source === "init" && on === globalExpress.checked) return;
     isApplyingExpress = true;
     try {
       const priorityEl = document.getElementById("custPriority") as HTMLSelectElement | null;
