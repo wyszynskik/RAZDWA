@@ -41,9 +41,10 @@ import {
   type VariantDefinition,
   type MaterialSizeOption,
   type VariantCalcScheme,
+  type VariantPriceFormula,
 } from "../services/priceService";
 import { getDefaultPricesMap } from "./compat";
-import { isQtyTieredSubgroupCategory } from "./variantKeys";
+import { isQtyTieredSubgroupCategory, MATERIAL_ASSIGNMENT_PREFIX } from "./variantKeys";
 import type { OrphanedPriceKey } from "./orphanedPriceKeys";
 
 /**
@@ -117,18 +118,123 @@ function qtySuffix(key: string, subcategoryPrefix: string): string | null {
 }
 
 /**
- * Strict: the whole suffix must be digits, unlike Number.parseInt() (which
- * getDynamicSubgroups() uses today and which would accept "10abc" as 10).
- * Deliberately stricter here so a genuinely text-suffixed key never gets
- * misclassified as a quantity tier.
+ * Strict: the whole suffix must be digits, optionally followed by the exact,
+ * known "szt" marker buildQuantityKey() appends for the wizytowki category
+ * (`${prefix}${qty}szt`) — anything else (e.g. "10abc") still fails. Unlike
+ * Number.parseInt() (which getDynamicSubgroups() uses today and which would
+ * accept "10abc" as 10), deliberately stricter here so a genuinely
+ * text-suffixed key never gets misclassified as a quantity tier, while still
+ * accepting wizytowki's own deliberate key convention.
  */
 function isPureIntegerSuffix(suffix: string): boolean {
-  return /^\d+$/.test(suffix);
+  return /^\d+(szt)?$/.test(suffix);
 }
 
 function priceFor(prices: Record<string, number | null | undefined>, key: string): number | null {
   const value = prices[key];
   return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function sameFormula(a?: VariantPriceFormula, b?: VariantPriceFormula): boolean {
+  if (!a || !b) return a === b;
+  return (
+    a.baseCategoryId === b.baseCategoryId &&
+    a.basePrefix === b.basePrefix &&
+    a.op === b.op &&
+    a.value === b.value
+  );
+}
+
+/**
+ * Same denormalization-agreement pattern as agreedCalcScheme(): every tier
+ * sharing a subcategoryPrefix is expected to carry the identical formula (or
+ * none). Compared field-by-field, not via JSON.stringify — key order isn't
+ * guaranteed to survive every future write path (hand-edited GAS row,
+ * restored backup), and a false "conflict" would silently drop the whole
+ * subgroup.
+ */
+function agreedPriceFormula(clusterVariants: VariantDefinition[]): {
+  formula?: VariantPriceFormula;
+  conflict?: boolean;
+} {
+  const withFormula = clusterVariants.filter((v) => v.priceFormula);
+  if (withFormula.length === 0) return {};
+  const first = withFormula[0].priceFormula!;
+  const allAgree =
+    withFormula.length === clusterVariants.length &&
+    withFormula.every((v) => sameFormula(v.priceFormula, first));
+  return allAgree ? { formula: first } : { conflict: true };
+}
+
+/**
+ * "categoryId::subcategoryPrefix" -> "raw qty suffix string" -> the variant
+ * at that tier. Built once per classifyVariantsIntoProducts() call so
+ * resolveEntryPrice() never re-scans the full variants array per entry.
+ * Keyed by the RAW suffix string (not a parsed number) so every category's
+ * own key convention (plain digits, wizytowki's "Nszt", broszury-katalogi's
+ * "51-1000" ranges) is directly comparable between a derived variant and its
+ * base without any per-category special-casing here.
+ */
+function buildQtyIndex(variants: VariantDefinition[]): Map<string, Map<string, VariantDefinition>> {
+  const index = new Map<string, Map<string, VariantDefinition>>();
+  // Sorted first so the index never depends on input array order — matches
+  // this module's existing idempotency contract (see module doc).
+  const sorted = [...variants].sort((a, b) => a.key.localeCompare(b.key));
+  for (const v of sorted) {
+    const suffix = qtySuffix(v.key, v.subcategoryPrefix);
+    if (suffix === null) continue;
+    const outer = subgroupIdFor(v.categoryId, v.subcategoryPrefix);
+    let inner = index.get(outer);
+    if (!inner) index.set(outer, (inner = new Map()));
+    inner.set(suffix, v);
+  }
+  return index;
+}
+
+function roundToCents(n: number): number {
+  return Math.round(n * 100) / 100;
+}
+
+/**
+ * Resolves one PriceEntry's price. Without a priceFormula, this is exactly
+ * priceFor(prices, variant.key) — today's behavior, unchanged. With one, the
+ * price is computed LIVE from the base variant's CURRENT prices[key] at the
+ * same quantity tier, every time this function runs — never cached, never
+ * read from this variant's own prices[key] (see VariantDefinition.priceFormula
+ * doc for why that key is a write-time snapshot only, not authoritative).
+ *
+ * Chaining is deliberately unsupported: if the base variant itself carries a
+ * priceFormula, this returns null rather than recursing. This is the only
+ * guard needed against both multi-hop chains and A<->B cycles — there is no
+ * recursion anywhere in this function, so neither can ever hang the browser.
+ * The "Dodaj wariant" form independently prevents creating such a chain by
+ * never offering a formula-carrying subgroup as a base (ustawienia.ts); this
+ * check exists for data that could arrive another way (restored backup,
+ * hand-edited sheet).
+ */
+function resolveEntryPrice(
+  variant: VariantDefinition,
+  ownSuffix: string | null,
+  formula: VariantPriceFormula | undefined,
+  prices: Record<string, number | null | undefined>,
+  qtyIndex: Map<string, Map<string, VariantDefinition>>
+): number | null {
+  if (!formula) return priceFor(prices, variant.key);
+  if (ownSuffix === null) return null;
+
+  const baseVariant = qtyIndex
+    .get(subgroupIdFor(formula.baseCategoryId, formula.basePrefix))
+    ?.get(ownSuffix);
+  if (!baseVariant) return null; // no matching tier at the base — this one entry is unresolvable
+  if (baseVariant.priceFormula) return null; // chaining blocked — also closes cycles, see doc above
+
+  const basePrice = priceFor(prices, baseVariant.key);
+  if (basePrice === null) return null;
+
+  const derived =
+    formula.op === "percent" ? basePrice * (1 + formula.value / 100) : basePrice + formula.value;
+  const rounded = roundToCents(derived);
+  return rounded > 0 ? rounded : null; // never quote a customer a price <= 0
 }
 
 /**
@@ -188,6 +294,7 @@ export function classifyVariantsIntoProducts(
   const skipped: SkippedCluster[] = [];
   const needsReview: NeedsReviewCluster[] = [];
 
+  const qtyIndex = buildQtyIndex(variants);
   const byCategory = groupByPrefix(variants);
   const categoryIds = [...byCategory.keys()].sort();
 
@@ -211,6 +318,13 @@ export function classifyVariantsIntoProducts(
         continue;
       }
 
+      // Material-assignment sentinel (see dynamicMaterials.ts): a pure data
+      // carrier for cross-category material definitions, never a real
+      // product/subgroup. Dropped silently — not migrated, not skipped, not
+      // needs-review — before the malformedKeys check below, since its key
+      // (mat__{categoryId}__{materialId}) never starts with this prefix.
+      if (subcategoryPrefix === MATERIAL_ASSIGNMENT_PREFIX) continue;
+
       const malformedKeys = clusterVariants.filter((v) => !v.key.startsWith(subcategoryPrefix));
       if (malformedKeys.length > 0) {
         needsReview.push({
@@ -230,6 +344,18 @@ export function classifyVariantsIntoProducts(
           keys: clusterVariants.map((v) => v.key),
           reason:
             "tiers sharing this prefix declare different calcScheme values — cannot pick one without guessing",
+        });
+        continue;
+      }
+
+      const declaredFormula = agreedPriceFormula(clusterVariants);
+      if (declaredFormula.conflict) {
+        needsReview.push({
+          categoryId,
+          subcategoryPrefix,
+          keys: clusterVariants.map((v) => v.key),
+          reason:
+            "tiers sharing this prefix declare different priceFormula values — cannot pick one without guessing",
         });
         continue;
       }
@@ -293,7 +419,13 @@ export function classifyVariantsIntoProducts(
             .map((variant, i) => ({
               key: variant.key,
               qty: Number.parseInt(suffixes[i], 10),
-              price: priceFor(prices, variant.key),
+              price: resolveEntryPrice(
+                variant,
+                suffixes[i],
+                declaredFormula.formula,
+                prices,
+                qtyIndex
+              ),
             }))
             .sort((a, b) => a.qty - b.qty),
         });
@@ -320,7 +452,13 @@ export function classifyVariantsIntoProducts(
             {
               key: variant.key,
               qty: null,
-              price: priceFor(prices, variant.key),
+              price: resolveEntryPrice(
+                variant,
+                qtySuffix(variant.key, subcategoryPrefix),
+                declaredFormula.formula,
+                prices,
+                qtyIndex
+              ),
             },
           ],
         });

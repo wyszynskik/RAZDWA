@@ -59,17 +59,34 @@ export function getInterpolatedPrice(
   return last.price;
 }
 
-export const PRICE: any = getPrice("drukA4A3") as any;
+/**
+ * Funkcje zamiast zamrożonych stałych — poprzednio odczytane raz przy imporcie
+ * modułu, więc nowy próg/format dodany w panelu nigdy by się nie pojawił bez
+ * przeładowania strony (ten sam bug co naprawiony wcześniej dla banner.ts).
+ */
+export function getPRICE(): any {
+  return getPrice("drukA4A3") as any;
+}
 
-export const CAD_PRICE: any = getPrice("drukCAD.price") as any;
+export function getCadPrice(): any {
+  return getPrice("drukCAD.price") as any;
+}
 
-export const CAD_BASE: any = getPrice("drukCAD.base") as any;
+export function getCadBase(): any {
+  return getPrice("drukCAD.base") as any;
+}
 
-export const FORMAT_TOLERANCE_MM = getPrice("drukCAD.tolerance") as number;
+export function getFormatToleranceMm(): number {
+  return getPrice("drukCAD.tolerance") as number;
+}
 
-export const FOLD_PRICE: any = getPrice("drukCAD.fold") as any;
+export function getFoldPrice(): any {
+  return getPrice("drukCAD.fold") as any;
+}
 
-export const WF_SCAN_PRICE_PER_CM = getPrice("drukCAD.wfScanPerCm") as number;
+export function getWfScanPricePerCm(): number {
+  return getPrice("drukCAD.wfScanPerCm") as number;
+}
 
 /** Read user-overridden prices from localStorage. Returns empty object on error or if not set. */
 export function readStoredPrices(): Record<string, number> {

@@ -3,7 +3,7 @@ import { autoCalc } from "../autoCalc";
 import { calculateDrukA4A3Skan } from "../../categories/druk-a4-a3-skan";
 import { formatPLN } from "../../core/money";
 import categories from "../../../data/categories.json";
-import { PRICE, resolveStoredPrice } from "../../core/compat";
+import { getPRICE, resolveStoredPrice } from "../../core/compat";
 
 type BreakdownRow = {
   label: string;
@@ -90,6 +90,7 @@ export const DrukA4A3SkanView: View = {
     const renderDynamicLegend = () => {
       if (!pricingLegend) return;
 
+      const PRICE = getPRICE();
       const drukPricing = PRICE?.print ?? pricing;
       const scanPricing = PRICE?.scan ?? pricing;
 
@@ -275,7 +276,7 @@ export const DrukA4A3SkanView: View = {
       const result = calculateDrukA4A3Skan(currentOptions, pricing);
       currentResult = result;
 
-      const sleeveUnit = Number(PRICE?.sleeve_price ?? 0.8);
+      const sleeveUnit = Number(getPRICE()?.sleeve_price ?? 0.8);
       const printQtySafe = Math.max(0, Number(currentOptions.printQty) || 0);
       const surchargeQtySafe = Math.max(0, Number(currentOptions.surchargeQty) || 0);
       const normalQty = Math.max(0, printQtySafe - surchargeQtySafe);

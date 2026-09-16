@@ -4,6 +4,7 @@ import { calculateBanner } from "../../categories/banner";
 import { formatPLN } from "../../core/money";
 import { getPrice } from "../../services/priceService";
 import { resolveStoredPrice } from "../../core/compat";
+import { getCombinedMaterials } from "../../core/dynamicMaterials";
 
 type BreakdownRow = {
   label: string;
@@ -39,8 +40,6 @@ function renderBreakdownRows(target: HTMLElement, rows: BreakdownRow[]): void {
   }
 }
 
-const bannerData: any = getPrice("banner");
-
 export const BannerView: View = {
   id: "banner",
   name: "Bannery",
@@ -71,6 +70,19 @@ export const BannerView: View = {
     const computedAreaInfo = container.querySelector("#b-computed-area-info") as HTMLElement | null;
     const expressHint = container.querySelector("#b-express-hint") as HTMLElement;
 
+    // Świeże na każdym wywołaniu — nigdy nie cache'ować na poziomie modułu
+    // (to była przyczyna "zamrożonej" listy materiałów, patrz dynamicMaterials.ts).
+    const populateMaterialSelect = () => {
+      const materials = getCombinedMaterials("banner");
+      const previousValue = materialSelect.value;
+      materialSelect.innerHTML = materials
+        .map((m) => `<option value="${m.id}">${m.name}</option>`)
+        .join("");
+      if (previousValue && materials.some((m) => m.id === previousValue)) {
+        materialSelect.value = previousValue;
+      }
+    };
+
     const ensureLegend = () => {
       let legend = container.querySelector<HTMLElement>("#b-dynamic-legend");
       if (!legend) {
@@ -81,10 +93,10 @@ export const BannerView: View = {
         breakdownDisplay.insertAdjacentElement("afterend", legend);
       }
 
-      const rows = (bannerData.materials ?? [])
-        .map((material: any) => {
+      const rows = getCombinedMaterials("banner")
+        .map((material) => {
           const tiers = (material.tiers ?? [])
-            .map((tier: any) => {
+            .map((tier) => {
               const suffix = tier.max == null ? `${tier.min}+` : `${tier.min}-${tier.max}`;
               const value = resolveStoredPrice(`banner-${material.id}-${suffix}`, tier.price);
               const label = tier.max == null ? `${tier.min}+ m²` : `${tier.min}-${tier.max} m²`;
@@ -101,6 +113,7 @@ export const BannerView: View = {
       `;
     };
 
+    populateMaterialSelect();
     ensureLegend();
 
     let currentResult: any = null;
@@ -148,10 +161,11 @@ export const BannerView: View = {
     heightInput.addEventListener("input", syncAreaFromDimensions);
 
     const renderBreakdown = (result: any, options: any) => {
-      const materialData = bannerData.materials.find((m: any) => m.id === options.material);
+      const materialData = getCombinedMaterials("banner").find((m) => m.id === options.material);
       const materialName = materialData?.name ?? options.material;
-      const oczkowanieModifier = bannerData.modifiers.find((m: any) => m.id === "oczkowanie");
-      const expressModifier = bannerData.modifiers.find((m: any) => m.id === "express");
+      const bannerModifiers = (getPrice("banner") as any)?.modifiers ?? [];
+      const oczkowanieModifier = bannerModifiers.find((m: any) => m.id === "oczkowanie");
+      const expressModifier = bannerModifiers.find((m: any) => m.id === "express");
       const oczkowanieRate = oczkowanieModifier
         ? resolveStoredPrice("banner-oczkowanie", oczkowanieModifier.value)
         : 0;
@@ -240,6 +254,7 @@ export const BannerView: View = {
     autoCalc({ root: container, calc: performCalculation, cancelOn: [addToCartBtn] });
 
     ctx?.on?.("prices-updated", () => {
+      populateMaterialSelect();
       ensureLegend();
       performCalculation();
     });

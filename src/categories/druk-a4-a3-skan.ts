@@ -1,6 +1,6 @@
 import { CategoryModule } from "../ui/router";
 import { calculateSimplePrint, calculateSimpleScan } from "../core/compat-logic";
-import { PRICE, resolveStoredPrice } from "../core/compat";
+import { getPRICE, resolveStoredPrice } from "../core/compat";
 import { getPrice } from "../services/priceService";
 
 export interface DrukA4A3SkanOptions {
@@ -76,7 +76,7 @@ function getPricePerPage(
 ): number {
   // Use PRICE from compat.ts (same data, no duplication) and apply stored overrides.
   const modeKey = color === "czarnoBialy" ? "bw" : "color";
-  const tiers = (PRICE.print as any)[modeKey][format];
+  const tiers = (getPRICE().print as any)[modeKey][format];
 
   let selectedTier = tiers[tiers.length - 1];
   for (const tier of tiers) {
@@ -286,7 +286,7 @@ export const drukA4A3Category: CategoryModule = {
       const format = formatSelect.value as "A4" | "A3";
       const color = getSelectedColor();
       const modeKey = color === "czarnoBialy" ? "bw" : "color";
-      const tiers = (PRICE.print as any)[modeKey][format];
+      const tiers = (getPRICE().print as any)[modeKey][format];
 
       if (tiersList) {
         tiersList.innerHTML = tiers

@@ -8,6 +8,8 @@ import {
   getVariantDefinitions,
   VARIANTS_STORAGE_KEY,
   type VariantDefinition,
+  resetLocalStorageWriteFailureFlag,
+  hadLocalStorageWriteFailure,
 } from "../src/services/priceService";
 import { eventBus } from "../src/bootstrap";
 import type { PriceChangedEvent } from "../src/core/contracts/Events";
@@ -164,5 +166,46 @@ describe("setVariantDefinitions", () => {
     expect(typedEvents[0].type).toBe("price-changed");
     expect(typedEvents[0].path).toBe("variants");
     expect(typedEvents[0].source).toBe("ui");
+  });
+});
+
+describe("hadLocalStorageWriteFailure — flaga cichego błędu zapisu", () => {
+  afterEach(() => {
+    delete (globalThis as any).localStorage;
+    resetLocalStorageWriteFailureFlag();
+  });
+
+  it("pozostaje false, gdy zapis się udaje", () => {
+    resetLocalStorageWriteFailureFlag();
+    setVariantDefinitions([]);
+    expect(hadLocalStorageWriteFailure()).toBe(false);
+  });
+
+  it("ustawia się na true, gdy localStorage.setItem rzuca wyjątek", () => {
+    (globalThis as any).localStorage = {
+      getItem: () => null,
+      setItem: () => {
+        throw new Error("QuotaExceededError");
+      },
+      removeItem: () => {},
+    };
+    resetLocalStorageWriteFailureFlag();
+    setVariantDefinitions([]);
+    expect(hadLocalStorageWriteFailure()).toBe(true);
+  });
+
+  it("resetLocalStorageWriteFailureFlag czyści flagę z poprzedniej, niezwiązanej operacji", () => {
+    (globalThis as any).localStorage = {
+      getItem: () => null,
+      setItem: () => {
+        throw new Error("QuotaExceededError");
+      },
+      removeItem: () => {},
+    };
+    setVariantDefinitions([]);
+    expect(hadLocalStorageWriteFailure()).toBe(true);
+
+    resetLocalStorageWriteFailureFlag();
+    expect(hadLocalStorageWriteFailure()).toBe(false);
   });
 });

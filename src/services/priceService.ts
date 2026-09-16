@@ -27,6 +27,25 @@ function isSafePathSegment(segment: string): boolean {
   return Boolean(segment) && !FORBIDDEN_PATH_KEYS.has(segment);
 }
 
+// Śledzi, czy w trakcie bieżącej operacji zapisu localStorage.setItem rzucił
+// wyjątek (np. QuotaExceededError) — bez tego panel Ustawień pokazywał
+// "✓ zapisano lokalnie" nawet gdy zapis się faktycznie nie powiódł.
+let _localStorageWriteFailed = false;
+
+function markLocalStorageWriteFailed(): void {
+  _localStorageWriteFailed = true;
+}
+
+/** Wywołać na starcie operacji zapisu, przed pierwszym setPrice/setVariantDefinitions. */
+export function resetLocalStorageWriteFailureFlag(): void {
+  _localStorageWriteFailed = false;
+}
+
+/** Sprawdzić na końcu operacji zapisu, przed pokazaniem komunikatu sukcesu. */
+export function hadLocalStorageWriteFailure(): boolean {
+  return _localStorageWriteFailed;
+}
+
 function cloneToNullPrototype<T>(value: T): T {
   if (Array.isArray(value)) {
     return value.map((item) => cloneToNullPrototype(item)) as T;
@@ -85,7 +104,7 @@ function writeStoredJsonMap(storageKey: string, value: Record<string, string>): 
     if (typeof localStorage === "undefined") return;
     localStorage.setItem(storageKey, JSON.stringify(value));
   } catch {
-    // ignore
+    markLocalStorageWriteFailed();
   }
 }
 
@@ -166,7 +185,7 @@ export function setPrice(path: string, value: any): void {
         localStorage.setItem(PRICES_STORAGE_KEY, JSON.stringify(root.defaultPrices ?? {}));
       }
     } catch {
-      // ignore
+      markLocalStorageWriteFailed();
     }
 
     markConfigDirty();
@@ -295,7 +314,7 @@ export function setPriceSubgroups(groups: PriceSubgroupsInput): void {
       localStorage.setItem(PRICE_SUBGROUPS_STORAGE_KEY, JSON.stringify(cleaned));
     }
   } catch {
-    // ignore
+    markLocalStorageWriteFailed();
   }
 
   markConfigDirty();
@@ -589,6 +608,36 @@ export interface VariantDefinition {
    * subgroupBackfill.ts fills it for existing data.
    */
   subgroupSortOrder?: number;
+  /**
+   * Optional: live price relationship for this subgroup's tiers, denormalized
+   * across all tiers sharing a subcategoryPrefix (same pattern as calcScheme/
+   * materialSizeOptions/subgroupSortOrder). When present, this subgroup's
+   * price is resolved fresh at every classifyVariantsIntoProducts() call from
+   * the base subgroup's CURRENT price at the same quantity tier —
+   * prices[key] is no longer authoritative for it (see
+   * core/productModel.ts resolveEntryPrice; a snapshot is still written into
+   * prices[key] on save for the admin price table / GAS export, but the
+   * customer-facing calculator never reads it for a formula-carrying
+   * variant). Chaining (a base that itself carries a priceFormula) is not
+   * supported: resolveEntryPrice() treats it as unresolvable rather than
+   * recursing, and the "Dodaj wariant" form never offers such a subgroup as
+   * a base — this is also what makes cycles structurally impossible.
+   */
+  priceFormula?: VariantPriceFormula;
+}
+
+export type VariantPriceFormulaOp = "percent" | "fixed";
+
+export interface VariantPriceFormula {
+  /** categoryId of the base subgroup — stored explicitly, not inferred, so
+   *  the resolver never has to assume same-category even though today's
+   *  form only ever offers a same-category base. */
+  baseCategoryId: string;
+  /** subcategoryPrefix of the base subgroup. */
+  basePrefix: string;
+  op: VariantPriceFormulaOp;
+  /** percent: derived = base*(1+value/100); fixed: derived = base+value. Can be negative (a discount). */
+  value: number;
 }
 
 export function getVariantDefinitions(): VariantDefinition[] {
@@ -612,7 +661,7 @@ export function setVariantDefinitions(variants: VariantDefinition[]): void {
     if (typeof localStorage === "undefined") return;
     localStorage.setItem(VARIANTS_STORAGE_KEY, JSON.stringify(variants));
   } catch {
-    // ignore
+    markLocalStorageWriteFailed();
   }
   markConfigDirty();
   notifyPricesUpdated("variants");
