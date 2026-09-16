@@ -222,14 +222,17 @@ function resolveEntryPrice(
   if (!formula) return priceFor(prices, variant.key);
   if (ownSuffix === null) return null;
 
-  const baseVariant = qtyIndex.get(subgroupIdFor(formula.baseCategoryId, formula.basePrefix))?.get(ownSuffix);
+  const baseVariant = qtyIndex
+    .get(subgroupIdFor(formula.baseCategoryId, formula.basePrefix))
+    ?.get(ownSuffix);
   if (!baseVariant) return null; // no matching tier at the base — this one entry is unresolvable
   if (baseVariant.priceFormula) return null; // chaining blocked — also closes cycles, see doc above
 
   const basePrice = priceFor(prices, baseVariant.key);
   if (basePrice === null) return null;
 
-  const derived = formula.op === "percent" ? basePrice * (1 + formula.value / 100) : basePrice + formula.value;
+  const derived =
+    formula.op === "percent" ? basePrice * (1 + formula.value / 100) : basePrice + formula.value;
   const rounded = roundToCents(derived);
   return rounded > 0 ? rounded : null; // never quote a customer a price <= 0
 }
@@ -416,7 +419,13 @@ export function classifyVariantsIntoProducts(
             .map((variant, i) => ({
               key: variant.key,
               qty: Number.parseInt(suffixes[i], 10),
-              price: resolveEntryPrice(variant, suffixes[i], declaredFormula.formula, prices, qtyIndex),
+              price: resolveEntryPrice(
+                variant,
+                suffixes[i],
+                declaredFormula.formula,
+                prices,
+                qtyIndex
+              ),
             }))
             .sort((a, b) => a.qty - b.qty),
         });

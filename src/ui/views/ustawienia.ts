@@ -3022,9 +3022,8 @@ export const UstawieniaView: View = {
       const priceModeWrapper = container.querySelector<HTMLElement>("#new-price-mode-wrapper");
       const priceModeSelect = container.querySelector<HTMLSelectElement>("#new-price-mode");
       const relativeWrapper = container.querySelector<HTMLElement>("#new-price-relative-wrapper");
-      const baseVariantSelect = container.querySelector<HTMLSelectElement>(
-        "#new-price-base-variant"
-      );
+      const baseVariantSelect =
+        container.querySelector<HTMLSelectElement>("#new-price-base-variant");
       if (priceModeWrapper && priceModeSelect && relativeWrapper && baseVariantSelect) {
         const chosenCatId = addCategorySelect.value;
         const showModeToggle = isQuantityBasedCategory(chosenCatId);
@@ -3048,7 +3047,10 @@ export const UstawieniaView: View = {
         }
         const baseOptions = [...basePrefixes.entries()].sort((a, b) => a[1].localeCompare(b[1]));
         baseVariantSelect.innerHTML = baseOptions
-          .map(([prefix, label]) => `<option value="${escapeHtml(prefix)}">${escapeHtml(label)}</option>`)
+          .map(
+            ([prefix, label]) =>
+              `<option value="${escapeHtml(prefix)}">${escapeHtml(label)}</option>`
+          )
           .join("");
         if (baseOptions.some(([prefix]) => prefix === previousBaseVariant)) {
           baseVariantSelect.value = previousBaseVariant;
@@ -4330,9 +4332,8 @@ export const UstawieniaView: View = {
       }
 
       const chosenCategoryId = addCategorySelect?.value || activeCategory;
-      const baseVariantSelect = container.querySelector<HTMLSelectElement>(
-        "#new-price-base-variant"
-      );
+      const baseVariantSelect =
+        container.querySelector<HTMLSelectElement>("#new-price-base-variant");
       const opSelect = container.querySelector<HTMLSelectElement>("#new-price-relative-op");
       const valueInput = container.querySelector<HTMLInputElement>("#new-price-relative-value");
       const qty = addQtyInput?.value.trim() || "";
@@ -4373,12 +4374,9 @@ export const UstawieniaView: View = {
     }
 
     const priceModeSelectEl = container.querySelector<HTMLSelectElement>("#new-price-mode");
-    const baseVariantSelectEl = container.querySelector<HTMLSelectElement>(
-      "#new-price-base-variant"
-    );
-    const relativeOpSelectEl = container.querySelector<HTMLSelectElement>(
-      "#new-price-relative-op"
-    );
+    const baseVariantSelectEl =
+      container.querySelector<HTMLSelectElement>("#new-price-base-variant");
+    const relativeOpSelectEl = container.querySelector<HTMLSelectElement>("#new-price-relative-op");
     const relativeValueInputEl = container.querySelector<HTMLInputElement>(
       "#new-price-relative-value"
     );
@@ -4430,13 +4428,12 @@ export const UstawieniaView: View = {
         isCustomSubgroupForCategory,
         effectiveScheme
       );
-      const priceModeSelectForSubmit = container.querySelector<HTMLSelectElement>("#new-price-mode");
-      const baseVariantSelectForSubmit = container.querySelector<HTMLSelectElement>(
-        "#new-price-base-variant"
-      );
-      const relativeOpSelectForSubmit = container.querySelector<HTMLSelectElement>(
-        "#new-price-relative-op"
-      );
+      const priceModeSelectForSubmit =
+        container.querySelector<HTMLSelectElement>("#new-price-mode");
+      const baseVariantSelectForSubmit =
+        container.querySelector<HTMLSelectElement>("#new-price-base-variant");
+      const relativeOpSelectForSubmit =
+        container.querySelector<HTMLSelectElement>("#new-price-relative-op");
       const relativeValueInputForSubmit = container.querySelector<HTMLInputElement>(
         "#new-price-relative-value"
       );
@@ -4749,7 +4746,9 @@ export const UstawieniaView: View = {
     }
 
     addMaterialTierRow();
-    container.querySelector("#btn-add-material-tier")?.addEventListener("click", addMaterialTierRow);
+    container
+      .querySelector("#btn-add-material-tier")
+      ?.addEventListener("click", addMaterialTierRow);
 
     container.querySelector("#btn-add-material")?.addEventListener("click", () => {
       const name = (materialNameInput?.value ?? "").trim();
@@ -4761,7 +4760,10 @@ export const UstawieniaView: View = {
 
       const materialId = slugifyKeySegment(name);
       if (!materialId) {
-        showStatus("⚠️ Nazwa materiału musi zawierać przynajmniej jedną literę lub cyfrę.", "error");
+        showStatus(
+          "⚠️ Nazwa materiału musi zawierać przynajmniej jedną literę lub cyfrę.",
+          "error"
+        );
         materialNameInput?.focus();
         return;
       }
@@ -4774,7 +4776,8 @@ export const UstawieniaView: View = {
         return;
       }
 
-      const tierRows = materialTiersContainer?.querySelectorAll<HTMLElement>(".material-tier-row") ?? [];
+      const tierRows =
+        materialTiersContainer?.querySelectorAll<HTMLElement>(".material-tier-row") ?? [];
       const tiers: Array<{ min: number; max: number | null; price: number }> = [];
       for (const row of tierRows) {
         const minRaw = row.querySelector<HTMLInputElement>(".tier-min")?.value ?? "";
@@ -4808,7 +4811,9 @@ export const UstawieniaView: View = {
         (categoryId) =>
           getCombinedMaterials(categoryId).some((m) => m.id === materialId) ||
           _draftVariantDefs.some(
-            (d) => d.categoryId === categoryId && d.key === buildMaterialAssignmentKey(categoryId, materialId)
+            (d) =>
+              d.categoryId === categoryId &&
+              d.key === buildMaterialAssignmentKey(categoryId, materialId)
           )
       );
       if (collisions.length > 0) {

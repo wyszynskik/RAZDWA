@@ -71,7 +71,10 @@ describe("getCombinedMaterials", () => {
   it("jeden materiał dynamiczny z 3 progami jest poprawnie zrekonstruowany i posortowany", () => {
     const materialId = "nowy-papier";
     setVariantDefinitions([
-      makeMaterialRow({ key: buildMaterialAssignmentKey("banner", materialId), label: "Nowy papier" }),
+      makeMaterialRow({
+        key: buildMaterialAssignmentKey("banner", materialId),
+        label: "Nowy papier",
+      }),
     ]);
     const prefix = materialTierKeyPrefix("banner", materialId);
     setPrice(`defaultPrices.${prefix}51+`, 40);

@@ -46,7 +46,11 @@ test.describe("Odśwież ceny nie kasuje wpisanych danych klienta", () => {
       route.fulfill({
         status: 200,
         contentType: "application/json",
-        body: JSON.stringify({ ok: true, catalogRevision: 2, catalogUpdatedAt: "2026-01-01T00:00:00.000Z" }),
+        body: JSON.stringify({
+          ok: true,
+          catalogRevision: 2,
+          catalogUpdatedAt: "2026-01-01T00:00:00.000Z",
+        }),
       })
     );
     await page.route(/script\.google\.com.*action=getState/, (route) =>
@@ -63,7 +67,9 @@ test.describe("Odśwież ceny nie kasuje wpisanych danych klienta", () => {
     );
   });
 
-  test("wpisane wymiary w bannerze przeżywają klik 'Odśwież ceny', a popup znika", async ({ page }) => {
+  test("wpisane wymiary w bannerze przeżywają klik 'Odśwież ceny', a popup znika", async ({
+    page,
+  }) => {
     await page.goto("/#/banner");
     await page.waitForSelector("#catalogUpdateBanner", { timeout: 10000 });
 

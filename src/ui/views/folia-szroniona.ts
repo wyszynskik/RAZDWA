@@ -85,7 +85,9 @@ export const FoliaSzronionaView: View = {
       const placeholder = '<option value="" disabled selected>— wybierz usługę —</option>';
       serviceSelect.innerHTML =
         placeholder +
-        materials.map((m) => `<option value="${m.id}">${(m as any).title ?? m.name}</option>`).join("");
+        materials
+          .map((m) => `<option value="${m.id}">${(m as any).title ?? m.name}</option>`)
+          .join("");
       if (previousValue && materials.some((m) => m.id === previousValue)) {
         serviceSelect.value = previousValue;
       }

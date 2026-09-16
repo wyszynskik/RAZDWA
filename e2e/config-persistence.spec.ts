@@ -385,9 +385,7 @@ test.describe("Cena relatywna do innego papieru (kategorie ilościowe)", () => {
     // wariant musi nieść priceFormula wskazującą na papier bazowy, żeby
     // klasyfikacja mogła ją przeliczyć na nowo przy każdej zmianie ceny bazy.
     const variants = await readVariants(page);
-    const relativeVariant = variants.find(
-      (v: any) => v.key === "dyplomy-zzz-e2e-satyna-250g-100"
-    );
+    const relativeVariant = variants.find((v: any) => v.key === "dyplomy-zzz-e2e-satyna-250g-100");
     expect(relativeVariant?.priceFormula).toEqual({
       baseCategoryId: "dyplomy",
       basePrefix: "dyplomy-zzz-e2e-kreda-250g-",
@@ -420,7 +418,9 @@ test.describe("Cena relatywna do innego papieru (kategorie ilościowe)", () => {
     await expect(page.locator("#save-msg")).toBeVisible();
     await savePrices(page);
 
-    const derivedInput = page.locator('tr[data-key="dyplomy-zzz-e2e-live-satyna-100"] input[data-field="unitPrice"]');
+    const derivedInput = page.locator(
+      'tr[data-key="dyplomy-zzz-e2e-live-satyna-100"] input[data-field="unitPrice"]'
+    );
     await expect(derivedInput).toBeDisabled();
     await expect(derivedInput).toHaveValue("12.00");
 
@@ -460,7 +460,9 @@ test.describe("Cena relatywna do innego papieru (kategorie ilościowe)", () => {
     await page.fill("#new-price-relative-value", "20");
 
     await expect(page.locator("#new-price-relative-error")).toBeVisible();
-    await expect(page.locator("#new-price-relative-error")).toContainText("Brak ceny papieru bazowego");
+    await expect(page.locator("#new-price-relative-error")).toContainText(
+      "Brak ceny papieru bazowego"
+    );
     await expect(page.locator("#new-price-value")).toHaveValue("");
   });
 });

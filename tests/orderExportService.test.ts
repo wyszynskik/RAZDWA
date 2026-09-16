@@ -90,7 +90,10 @@ describe("orderExportService", () => {
 
     it("inny klient daje inny requestId", () => {
       const a = buildOrderExportPayload(sampleItems, sampleCustomer);
-      const b = buildOrderExportPayload(sampleItems, { ...sampleCustomer, phone: "+48 111 222 333" });
+      const b = buildOrderExportPayload(sampleItems, {
+        ...sampleCustomer,
+        phone: "+48 111 222 333",
+      });
 
       expect(computeOrderRequestId(a, FIXED_NOW)).not.toBe(computeOrderRequestId(b, FIXED_NOW));
     });

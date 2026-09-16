@@ -938,14 +938,24 @@ describe("classifyVariantsIntoProducts — priceFormula (żywa cena relatywna)",
         categoryId: "dyplomy",
         subcategoryPrefix: "dyplomy-b-",
         calcScheme: "interpolated",
-        priceFormula: { baseCategoryId: "dyplomy", basePrefix: "dyplomy-a-", op: "percent", value: 10 },
+        priceFormula: {
+          baseCategoryId: "dyplomy",
+          basePrefix: "dyplomy-a-",
+          op: "percent",
+          value: 10,
+        },
       }),
       makeVariant({
         key: "dyplomy-c-100",
         categoryId: "dyplomy",
         subcategoryPrefix: "dyplomy-c-",
         calcScheme: "interpolated",
-        priceFormula: { baseCategoryId: "dyplomy", basePrefix: "dyplomy-b-", op: "percent", value: 10 },
+        priceFormula: {
+          baseCategoryId: "dyplomy",
+          basePrefix: "dyplomy-b-",
+          op: "percent",
+          value: 10,
+        },
       }),
     ];
     const prices = { "dyplomy-a-100": 100 };
@@ -965,14 +975,24 @@ describe("classifyVariantsIntoProducts — priceFormula (żywa cena relatywna)",
         categoryId: "dyplomy",
         subcategoryPrefix: "dyplomy-a-",
         calcScheme: "interpolated",
-        priceFormula: { baseCategoryId: "dyplomy", basePrefix: "dyplomy-b-", op: "percent", value: 10 },
+        priceFormula: {
+          baseCategoryId: "dyplomy",
+          basePrefix: "dyplomy-b-",
+          op: "percent",
+          value: 10,
+        },
       }),
       makeVariant({
         key: "dyplomy-b-100",
         categoryId: "dyplomy",
         subcategoryPrefix: "dyplomy-b-",
         calcScheme: "interpolated",
-        priceFormula: { baseCategoryId: "dyplomy", basePrefix: "dyplomy-a-", op: "percent", value: 10 },
+        priceFormula: {
+          baseCategoryId: "dyplomy",
+          basePrefix: "dyplomy-a-",
+          op: "percent",
+          value: 10,
+        },
       }),
     ];
     const prices = { "dyplomy-a-100": 100, "dyplomy-b-100": 100 };

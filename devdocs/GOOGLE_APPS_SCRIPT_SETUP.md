@@ -1541,13 +1541,13 @@ function parsePriceFormula(raw) {
 **Krok 4 — `readVariants` (sekcja 8.3): dopisz na końcu, po `materialSizeOptions`:**
 
 ```javascript
-      const materialSizeOptions = parseMaterialSizeOptions(row[13]);
-      if (materialSizeOptions) variant.materialSizeOptions = materialSizeOptions;
+const materialSizeOptions = parseMaterialSizeOptions(row[13]);
+if (materialSizeOptions) variant.materialSizeOptions = materialSizeOptions;
 
-      const priceFormula = parsePriceFormula(row[14]);
-      if (priceFormula) variant.priceFormula = priceFormula;
+const priceFormula = parsePriceFormula(row[14]);
+if (priceFormula) variant.priceFormula = priceFormula;
 
-      return variant;
+return variant;
 ```
 
 **Bez zmian:** `handleVariantsUpdate`/`handleCatalogSave`/`doGet`/`doPost` (sekcje
