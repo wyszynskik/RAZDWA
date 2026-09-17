@@ -457,4 +457,7 @@ export const DEFAULT_PRICES: Record<string, number> = getPrice("defaultPrices") 
   number
 >;
 
-export const BIZ: any = getPrice("wizytowki") as any;
+/** Getter zamiast zamrożonej stałej — patrz getPRICE()/getCadBase() wyżej, ten sam bug/naprawa. */
+export function getBIZ(): any {
+  return getPrice("wizytowki") as any;
+}

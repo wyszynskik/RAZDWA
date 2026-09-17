@@ -5,7 +5,7 @@ import {
   getFormatToleranceMm,
   getFoldPrice,
   getWfScanPricePerCm,
-  BIZ,
+  getBIZ,
   pickTier,
   resolveStoredPrice,
   money,
@@ -189,6 +189,7 @@ export function calculateBusinessCards(options: {
   deluxeOpt?: "uv3d_softtouch" | "uv3d_gold_softtouch";
   qty: number;
 }) {
+  const BIZ = getBIZ();
   let table: any;
   if (options.family === "deluxe") {
     if (!options.deluxeOpt) {
