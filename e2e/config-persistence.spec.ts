@@ -537,3 +537,83 @@ test.describe("broszury-katalogi: nowy papier z ilością zwykłą (nie zakresem
     await expect(page.locator("body")).toContainText("ZZZ-BROSZURY-KREDA350");
   });
 });
+
+test.describe("Dyplomy Ekonomiczne: dwie niezależne przyczyny, dla których nowy próg/podgrupa nigdy nie docierały do klienta", () => {
+  test.beforeEach(async ({ page }) => {
+    await neutralizeReloadTriggers(page);
+    await seedAdminSession(page);
+    await stubAppsScript(page);
+  });
+
+  test("nowy próg ilościowy (A4) — formularz pokazuje pole Ilość i cena trafia do cennika klienta", async ({
+    page,
+  }) => {
+    // Regresja: "dyplomy-eko" brakowało w QUANTITY_BASED_CATEGORIES, więc
+    // formularz pokazywał pole "Nazwa produktu" zamiast "Ilość" dla opcji
+    // jawnie nazwanej "nowy próg ilościowy". Nawet gdyby klucz powstał
+    // poprawnie, getResolvedDyplomyEkoTiers() nigdy nie skanował nowych
+    // kluczy w defaultPrices (w przeciwieństwie do zwykłych Dyplomów) —
+    // nowy próg był całkowicie niewidoczny u klienta.
+    await openSettings(page);
+    await page.selectOption("#new-price-category", "dyplomy-eko");
+    await page.selectOption("#new-price-prefix", {
+      label: "Dyplomy Ekonomiczny A4 – nowy próg ilościowy",
+    });
+
+    await expect(page.locator("#new-price-qty-wrapper")).toBeVisible();
+
+    await page.fill("#new-price-qty", "777");
+    await page.fill("#new-price-value", "321");
+    await page.click("#btn-add-row");
+    await expect(page.locator("#save-msg")).toBeVisible();
+    await savePrices(page);
+    // savePrices() czeka tylko na WIDOCZNOŚĆ #save-msg — pod obciążeniem to
+    // może złapać przejściowy "⏳ Zapisywanie lokalnie…" zamiast finalnego
+    // stanu. GAS jest zaślepiony (stubAppsScript), więc finalny stan to zawsze
+    // komunikat "zapisano lokalnie, ale nie w arkuszu" — czekamy na niego
+    // wprost, żeby mieć pewność że zapis do localStorage faktycznie się
+    // zakończył zanim nawigujemy dalej.
+    await expect(page.locator("#save-msg")).toContainText("zapisano lokalnie");
+
+    await page.goto("/#/dyplomy");
+    await expect(page.locator("#eko-legend-rows")).toContainText("777 szt");
+    await expect(page.locator("#eko-legend-rows")).toContainText("321");
+  });
+
+  test("nowa, niezależna podkategoria — renderuje się w zakładce Ekonomiczny", async ({ page }) => {
+    // Regresja, dwie warstwy tego samego problemu:
+    // 1) "dyplomy-eko" jest osobną kategorią cenową dzielącą trasę "dyplomy"
+    //    ze zwykłymi Dyplomami — router montuje generyczne podgrupy
+    //    automatycznie tylko dla JEDNEJ kategorii per trasa ("dyplomy"), więc
+    //    bez ręcznego montowania w dyplomy.ts podgrupa nigdy by się nie
+    //    pojawiła.
+    // 2) Po dodaniu ręcznego montowania ujawnił się DRUGI, głębszy problem:
+    //    mountDynamicSubgroupContainers() używał sztywnego, wspólnego ID hosta
+    //    ("dyn-subgroups-host"). querySelector(container) szuka w całym
+    //    poddrzewie, nie tylko bezpośrednich dzieciach — routerowe
+    //    mountDynamicSubgroupsFor("dyplomy") (container=cała strona) znajdował
+    //    WŁAŚNIE TEN sam host (zagnieżdżony w #dypTab-eko, wciąż w jego
+    //    poddrzewie), czyścił go i zostawiał pusty, bo dla kategorii "dyplomy"
+    //    nie ma żadnych podgrup do pokazania. Naprawione osobnym hostId
+    //    ("dyn-subgroups-host-eko") przekazanym jako 7. argument.
+    await openSettings(page);
+    await page.selectOption("#new-price-category", "dyplomy-eko");
+    await page.selectOption("#new-price-prefix", { label: "Nowa, niezależna podkategoria…" });
+    await page.fill("#new-price-subgroup", "ZZZ-DYPEKO-TEST");
+    await page.fill("#new-price-qty", "100");
+    await page.fill("#new-price-value", "55");
+    await page.click("#btn-add-row");
+    await expect(page.locator("#save-msg")).toBeVisible();
+    await savePrices(page);
+
+    await page.goto("/#/dyplomy");
+    // Czekamy na element unikalny dla strony Dyplomów, zanim sprawdzimy treść —
+    // page.goto() na zmianę samego hasha potrafi rozwiązać się PRZED tym, jak
+    // hashchange w routerze zdąży odmontować panel Ustawień i zamontować nowy
+    // widok. Bez tego czekania assercja mogła złapać starą treść panelu
+    // (np. tę samą nazwę podgrupy widoczną w dropdownie "Dodaj wariant") jako
+    // fałszywy pozytyw, zanim właściwa strona się w ogóle wyrenderowała.
+    await expect(page.locator("#dypTab-eko")).toBeAttached();
+    await expect(page.locator("body")).toContainText("ZZZ-DYPEKO-TEST");
+  });
+});

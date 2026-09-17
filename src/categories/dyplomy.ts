@@ -124,12 +124,28 @@ export interface DyplomyEkoOptions {
 export function getResolvedDyplomyEkoTiers(format: DyplomyEkoFormat): DyplomyTier[] {
   const ekoData = getPrice("dyplomy-eko") as Record<string, DyplomyTier[]> | undefined;
   const baseTiers = ekoData?.[format] ?? [];
-  return baseTiers
-    .map((tier) => ({
+  const tiersByQty = new Map<number, DyplomyTier>();
+
+  for (const tier of baseTiers) {
+    tiersByQty.set(tier.qty, {
       qty: tier.qty,
       price: resolveStoredPrice(`dyplomy-eko-${format}-qty-${tier.qty}`, tier.price),
-    }))
-    .sort((a, b) => a.qty - b.qty);
+    });
+  }
+
+  const keyPrefix = `dyplomy-eko-${format}-qty-`;
+  const storedPrices = getDefaultPricesMap();
+  for (const [key, priceValue] of Object.entries(storedPrices)) {
+    if (typeof priceValue !== "number" || !key.startsWith(keyPrefix)) continue;
+
+    const label = getStoredPriceLabel(key);
+    const quantity = extractQuantityFromText(label) ?? extractQuantityFromText(key);
+    if (!quantity) continue;
+
+    tiersByQty.set(quantity, { qty: quantity, price: priceValue });
+  }
+
+  return [...tiersByQty.values()].sort((a, b) => a.qty - b.qty);
 }
 
 export function calculateDyplomyEko(options: DyplomyEkoOptions) {

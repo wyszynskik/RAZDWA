@@ -49,6 +49,7 @@ export function buildUniquePriceKey(
 
 export const QUANTITY_BASED_CATEGORIES: ReadonlySet<string> = new Set([
   "dyplomy",
+  "dyplomy-eko",
   "vouchery",
   "ulotki",
   "zaproszenia",

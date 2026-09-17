@@ -362,4 +362,24 @@ describe("Dyplomy Ekonomiczny", () => {
     const result = calculateDyplomyEko({ format: "A4", qty: 1, isSatin: false, express: false });
     expect(result.basePrice).toBe(20);
   });
+
+  it("dodanie nowego progu ilościowego dla A4 pojawia się w wyniku legendy", () => {
+    // Regresja: getResolvedDyplomyEkoTiers() wcześniej nigdy nie skanował
+    // defaultPrices w poszukiwaniu nowych kluczy — w przeciwieństwie do
+    // analogicznej getResolvedDyplomyTiers() dla zwykłych Dyplomów. Nowy próg
+    // dodany przez panel administratorki był całkowicie niewidoczny u klienta.
+    const prices = getPrice("defaultPrices") as Record<string, number | null>;
+    setPrice("defaultPrices", { ...prices, "dyplomy-eko-A4-qty-777": 321 });
+    const tiers = getResolvedDyplomyEkoTiers("A4");
+    const newTier = tiers.find((t) => t.qty === 777);
+    expect(newTier).toBeDefined();
+    expect(newTier!.price).toBe(321);
+  });
+
+  it("nowy próg dla formatu A4 nie wpływa na progi A5/A3", () => {
+    const prices = getPrice("defaultPrices") as Record<string, number | null>;
+    setPrice("defaultPrices", { ...prices, "dyplomy-eko-A4-qty-777": 321 });
+    const tiersA5 = getResolvedDyplomyEkoTiers("A5");
+    expect(tiersA5.find((t) => t.qty === 777)).toBeUndefined();
+  });
 });

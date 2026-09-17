@@ -10,6 +10,7 @@ import {
 } from "../../categories/dyplomy";
 import { formatPLN } from "../../core/money";
 import { resolveStoredPrice } from "../../core/compat";
+import { mountDynamicSubgroupContainers } from "../dynamicSubgroups";
 
 export const DyplomyView: View = {
   id: "dyplomy",
@@ -305,11 +306,45 @@ export const DyplomyView: View = {
       });
       updateEkoLegend("A4");
 
+      // "dyplomy-eko" jest osobną kategorią cenową (BASE_PRICE_CATEGORIES),
+      // ale dzieli tę samą trasę/stronę z "dyplomy" — router montuje generyczne
+      // podgrupy automatycznie tylko dla JEDNEJ kategorii per trasa (dla
+      // "dyplomy"). Bez tego wywołania admin-dodane niezależne podkategorie
+      // dla Dyplomów Ekonomicznych nigdy by się nie wyświetliły klientowi.
+      //
+      // Własny hostId ("dyn-subgroups-host-eko") jest KONIECZNY, nie tylko
+      // ostrożnościowy: querySelector(container) szuka w CAŁYM poddrzewie, nie
+      // tylko bezpośrednich dzieciach — routerowe mountDynamicSubgroupsFor()
+      // wywołuje tę samą funkcję z container=cała strona (kategoria "dyplomy"),
+      // więc bez osobnego ID router znajdowałby TEN host (zagnieżdżony w
+      // #dypTab-eko, więc wciąż w jego poddrzewie), czyścił go
+      // (host.replaceChildren()) i zostawiał pusty, bo dla kategorii "dyplomy"
+      // nie ma żadnych podgrup do pokazania. Znalezione empirycznie: test e2e
+      // zapisywał poprawne dane i mountDynamicSubgroupContainers("dyplomy-eko")
+      // poprawnie zwracał produkt, ale drugie, routerowe wywołanie zaraz potem
+      // nadpisywało pustką ten sam element DOM.
+      const ekoTab = container.querySelector<HTMLElement>("#dypTab-eko");
+      const ekoSubgroupsSlot = container.querySelector<HTMLElement>("#dyn-subgroups-slot-eko");
+      const mountEkoSubgroups = () => {
+        if (!ekoTab) return;
+        mountDynamicSubgroupContainers(
+          ekoTab,
+          ekoSubgroupsSlot ?? ekoTab,
+          "dyplomy-eko",
+          "Dyplomy Ekonomiczny",
+          ctx,
+          ekoSubgroupsSlot ? "beforebegin" : "beforeend",
+          "dyn-subgroups-host-eko"
+        );
+      };
+      mountEkoSubgroups();
+
       ctx?.on?.("prices-updated", () => {
         if (!container.isConnected) return;
         const activeFormat = (ekoFormatSel?.value as DyplomyEkoFormat) ?? "A5";
         updateEkoLegend(activeFormat);
         calculateEko();
+        mountEkoSubgroups();
       });
 
       ekoFormatSel?.addEventListener("change", () => {
