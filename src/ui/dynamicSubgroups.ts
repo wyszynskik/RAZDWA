@@ -483,9 +483,9 @@ export function mountDynamicSubgroupContainers(
   categoryId: string,
   categoryLabel: string,
   ctx: ViewContext,
-  placement: InsertPosition = "afterend"
+  placement: InsertPosition = "afterend",
+  hostId: string = "dyn-subgroups-host"
 ): void {
-  const hostId = "dyn-subgroups-host";
   let host = container.querySelector<HTMLElement>(`#${hostId}`);
   if (!host) {
     host = document.createElement("div");

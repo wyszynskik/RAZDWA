@@ -1,10 +1,11 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, afterEach } from "vitest";
 import {
   calculateSimplePrint,
   calculateCad,
   calculateBusinessCards,
   calculateSimpleScan,
 } from "../src/core/compat-logic";
+import { setPrice, resetPrices } from "../src/services/priceService";
 
 describe("Compatibility Tests (kalkulatorv2.html logic)", () => {
   it("Test 1: A4 czarno-biały, 25 stron", () => {
@@ -85,6 +86,34 @@ describe("Compatibility Tests (kalkulatorv2.html logic)", () => {
     });
     expect(res.qtyBilled).toBe(80);
     expect(res.total).toBe(71);
+  });
+
+  describe("BIZ (compat.ts) — cena czytana na żywo, nie zamrożona przy imporcie", () => {
+    afterEach(() => {
+      resetPrices();
+    });
+
+    it("zmiana stawki wizytówek jest widoczna bez reimportu modułu", () => {
+      const before = calculateBusinessCards({
+        family: "standard",
+        finish: "mat",
+        size: "85x55",
+        lam: "noLam",
+        qty: 50,
+      });
+      expect(before.total).toBe(65);
+
+      setPrice("wizytowki.cyfrowe.standardPrices.85x55.noLam.50", 999);
+
+      const after = calculateBusinessCards({
+        family: "standard",
+        finish: "mat",
+        size: "85x55",
+        lam: "noLam",
+        qty: 50,
+      });
+      expect(after.total).toBe(999);
+    });
   });
 
   it("Test 7: Skanowanie auto, 35 stron", () => {
