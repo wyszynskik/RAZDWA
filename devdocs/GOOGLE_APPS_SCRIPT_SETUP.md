@@ -750,6 +750,7 @@ function _validateOrderPayload(body) {
     return { valid: false, message: "Suma (PLN) musi być liczbą większą od zera." };
   }
 
+  var qtyNums = [];
   var qty = String(body["Ilosc sztuk"] || "").trim();
   if (qty) {
     var qtyParts = qty.split("|");
@@ -761,9 +762,11 @@ function _validateOrderPayload(body) {
           message: "Ilosc sztuk musi być liczbą co najmniej 1 dla każdej pozycji.",
         };
       }
+      qtyNums.push(q);
     }
   }
 
+  var cenaNums = [];
   var cena = String(body["Cena za sztukę"] || "").trim();
   if (cena) {
     var cenaParts = cena.split("|");
@@ -772,6 +775,33 @@ function _validateOrderPayload(body) {
       if (!isFinite(c) || c < 0) {
         return { valid: false, message: "Cena za sztukę nie może być wartością ujemną." };
       }
+      cenaNums.push(c);
+    }
+  }
+
+  // Kontrola spójności: Suma (PLN) musi odpowiadać Σ(ilość × cena) skorygowanej
+  // o ewentualny rabat/narzut z checkoutu. To NIE jest przeliczenie z żywego
+  // cennika — sprawdza wyłącznie wewnętrzną spójność przesłanych liczb (łapie
+  // błąd klienta lub zmanipulowany request). 1:1 executable spec i testy
+  // jednostkowe: src/services/orderSumValidation.ts (isOrderSumConsistent) w
+  // repo aplikacji — zmiana logiki tutaj bez zmiany tamtego pliku (albo
+  // odwrotnie) musi zostać wychwycona przy review jako niespójny diff.
+  if (qtyNums.length > 0 && qtyNums.length === cenaNums.length) {
+    var adjustmentPercent = parseFloat(body["Rabat/Doliczenie %"]);
+    if (!isFinite(adjustmentPercent)) adjustmentPercent = 0;
+
+    var rawSum = 0;
+    for (var k = 0; k < qtyNums.length; k++) {
+      rawSum += qtyNums[k] * cenaNums[k];
+    }
+    var expectedSum = rawSum * (1 + adjustmentPercent / 100);
+    var tolerance = Math.max(1, Math.abs(expectedSum) * 0.02);
+
+    if (Math.abs(suma - expectedSum) > tolerance) {
+      return {
+        valid: false,
+        message: "Suma nie zgadza się z ceną × ilość — odśwież stronę i spróbuj ponownie.",
+      };
     }
   }
 
@@ -893,6 +923,7 @@ function handleOrderSave(body) {
     normalizeExpress(body["Ekspres"]),
     orderId,
     String(body["RequestID"] || ""),
+    toNumberOrBlank(body["Rabat/Doliczenie %"]),
   ]);
 
   if (REQ_KEY) {
@@ -920,11 +951,12 @@ return handleOrderSave(body);
 
 ### 7.4 Schemat arkusza `orders` po zmianach
 
-| Kol        | Pole      | Uwagi                                                             |
-| ---------- | --------- | ----------------------------------------------------------------- |
-| A–R (1–18) | bez zmian | Data → Ekspres                                                    |
-| S (19)     | orderId   | np. `RZ-3A7F2B9C`, generowane przez GAS                           |
-| T (20)     | RequestID | UUID z frontendu — klucz idempotencji (historyczne wiersze puste) |
+| Kol        | Pole                | Uwagi                                                                                        |
+| ---------- | ------------------- | --------------------------------------------------------------------------------------------- |
+| A–R (1–18) | bez zmian           | Data → Ekspres                                                                                 |
+| S (19)     | orderId             | np. `RZ-3A7F2B9C`, generowane przez GAS                                                        |
+| T (20)     | RequestID           | UUID z frontendu — klucz idempotencji (historyczne wiersze puste)                              |
+| U (21)     | Rabat/Doliczenie %  | Liczba (dodatnia = narzut, ujemna = rabat, 0 = brak), używana przez kontrolę spójności sumy — 7.2 (historyczne wiersze puste) |
 
 ### 7.5 Indeks idempotencji — PropertiesService
 

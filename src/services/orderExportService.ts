@@ -89,6 +89,7 @@ interface AppsScriptCompactRowPayload {
   Priorytet: string;
   Ekspres: "TAK" | "NIE";
   RequestID: string;
+  "Rabat/Doliczenie %": number;
 }
 
 type AppsScriptResponseBody = {
@@ -259,6 +260,7 @@ function buildAppsScriptCompactRow(payload: OrderExportPayload): AppsScriptCompa
     Priorytet: String(payload.customer.priority ?? ""),
     Ekspres: payload.summary.hasExpress ? "TAK" : "NIE",
     RequestID: payload.requestId ?? "",
+    "Rabat/Doliczenie %": Number(payload.summary.adjustmentPercent ?? 0),
   };
 }
 

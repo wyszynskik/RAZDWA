@@ -212,6 +212,7 @@ describe("orderExportService", () => {
       "Priorytet",
       "Ekspres",
       "RequestID",
+      "Rabat/Doliczenie %",
     ]);
 
     expect(parsedBody["Data"]).toBeTypeOf("string");
@@ -227,10 +228,34 @@ describe("orderExportService", () => {
     expect(parsedBody["Cena za sztukę"]).toBe("75.00 | 0.19");
     expect(parsedBody["Materiał"]).toContain("Kreda 350g");
     expect(parsedBody["Uwagi"]).toBe("Do odbioru jutro");
+    expect(parsedBody["Rabat/Doliczenie %"]).toBe(0);
 
     expect(parsedBody.items).toBeUndefined();
     expect(parsedBody.summary).toBeUndefined();
     expect(parsedBody.customer).toBeUndefined();
+  });
+
+  it("sendOrderToAppsScript przekazuje adjustmentPercent jako czystą liczbę w Rabat/Doliczenie %", async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      headers: { get: () => "application/json" },
+      json: async () => ({ ok: true, message: "Saved to sheet" }),
+      text: async () => "",
+    }));
+    (globalThis as any).fetch = fetchMock;
+
+    const payload = buildOrderExportPayload(sampleItems, sampleCustomer);
+    payload.summary.adjustmentPercent = -5;
+    await sendOrderToAppsScript(payload, {
+      enabled: true,
+      appsScriptUrl: "https://script.google.com/macros/s/test/exec",
+      timeoutMs: 5000,
+    });
+
+    const requestBody = String((fetchMock.mock.calls[0] as any)?.[1]?.body ?? "{}");
+    const parsedBody = JSON.parse(requestBody);
+    expect(parsedBody["Rabat/Doliczenie %"]).toBe(-5);
   });
 
   it("includes addedBy as a separate column in the compact payload", async () => {
