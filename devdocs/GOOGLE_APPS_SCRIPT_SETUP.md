@@ -698,18 +698,22 @@ if (body.type === "prices.pull") {
 
 ## 7) Idempotencja zamówień — orderId, indeks PropertiesService (Etap 5)
 
-Dopisz poniższe funkcje do `Code.gs`, a następnie zastąp blok zapisu zamówień w `doPost` jednolinijkowym routingiem. Sekcja 1's arkusz `orders` otrzymuje 2 nowe kolumny — `ensureSheet()` doda je automatycznie.
+**Uwaga historyczna:** sekcje 7.1–7.4 poniżej były przez długi czas
+niezgodne z prawdziwym, żywym `Code.gs` — opisywały wcześniejszy,
+uproszczony projekt tej funkcji, podczas gdy produkcyjny kod ewoluował
+niezależnie (dodano wymóg RequestID, walidację e-maila, limity długości
+pól, sprawdzanie zgodności liczby pozycji Produkt/Ilość/Cena,
+`withScriptLock` wokół całego zapisu). Skorygowane 2026-09 na podstawie
+realnej treści `Code.gs` wklejonej przez właściciela — poniżej opisuje
+już zgodny z produkcją stan + dopisaną kontrolę spójności sumy.
 
-### 7.1 Zaktualizuj stałą HEADERS (zastąp istniejącą definicję)
-
-Już zaktualizowana wyżej w Sekcji 2. Jeśli masz inną wersję, użyj tej:
+### 7.1 `ORDER_HEADERS` — prawdziwa, aktualna kolejność kolumn
 
 ```javascript
-const HEADERS = [
+const ORDER_HEADERS = [
   "Data",
   "Godzina",
   "Firma",
-  "Kto dodał",
   "Imię",
   "Nazwisko",
   "NIP",
@@ -724,207 +728,83 @@ const HEADERS = [
   "Suma (PLN)",
   "Priorytet",
   "Ekspres",
+  "Kto dodał",
   "orderId",
   "RequestID",
+  "Rabat/Doliczenie %",
 ];
 ```
 
-> Stare wiersze w arkuszu zachowują swoje dane — kolumny 19 (`orderId`) i 20 (`RequestID`) będą puste dla historycznych zamówień.
+> Jedyna zmiana względem tego, co masz dziś wdrożone: dopisana ostatnia
+> pozycja `"Rabat/Doliczenie %"`. Reszta kolejności (D=Imię, R=Kto dodał —
+> nie D=Kto dodał, jak sugerowała wcześniejsza wersja tego dokumentu) to
+> Twój już-działający stan produkcyjny — nie zmieniaj jej.
 
-### 7.2 Nowe funkcje — dopisz do Code.gs
+### 7.2 `_validateOrderPayload` — dopisz kontrolę spójności sumy
+
+Znajdź w swoim `_validateOrderPayload` istniejącą pętlę walidującą
+`priceParts` (kończącą się komunikatem o zakresie 0–100000) i **tuż przed**
+`return { valid: true };` na końcu funkcji dopisz:
 
 ```javascript
-function _validateOrderPayload(body) {
-  var phone = String(body["Telefon"] || "").trim();
-  if (!phone || phone.replace(/\D/g, "").length < 9) {
-    return { valid: false, message: "Telefon jest wymagany i musi zawierać co najmniej 9 cyfr." };
-  }
-
-  var produkt = String(body["Produkt"] || "").trim();
-  if (!produkt) {
-    return { valid: false, message: "Pole Produkt nie może być puste." };
-  }
-
-  var suma = parseFloat(body["Suma (PLN)"]);
-  if (!isFinite(suma) || suma <= 0) {
-    return { valid: false, message: "Suma (PLN) musi być liczbą większą od zera." };
-  }
-
-  var qty = String(body["Ilosc sztuk"] || "").trim();
-  if (qty) {
-    var qtyParts = qty.split("|");
-    for (var i = 0; i < qtyParts.length; i++) {
-      var q = parseFloat(qtyParts[i].trim());
-      if (!isFinite(q) || q < 1) {
-        return {
-          valid: false,
-          message: "Ilosc sztuk musi być liczbą co najmniej 1 dla każdej pozycji.",
-        };
-      }
-    }
-  }
-
-  var cena = String(body["Cena za sztukę"] || "").trim();
-  if (cena) {
-    var cenaParts = cena.split("|");
-    for (var j = 0; j < cenaParts.length; j++) {
-      var c = parseFloat(cenaParts[j].trim());
-      if (!isFinite(c) || c < 0) {
-        return { valid: false, message: "Cena za sztukę nie może być wartością ujemną." };
-      }
-    }
-  }
-
-  return { valid: true };
-}
-
-function _generateOrderId() {
-  return "RZ-" + Utilities.getUuid().replace(/-/g, "").slice(0, 8).toUpperCase();
-}
-
-function _cleanStaleRequestIds() {
-  var props = PropertiesService.getScriptProperties();
-  var all = props.getProperties();
-  var now = Date.now();
-  var cutoff = 48 * 60 * 60 * 1000;
-  var deleted = 0;
-  for (var key in all) {
-    if (key.indexOf("req_") !== 0) continue;
-    try {
-      var entry = JSON.parse(all[key]);
-      if (!entry || !entry.at || now - new Date(entry.at).getTime() > cutoff) {
-        props.deleteProperty(key);
-        deleted++;
-        if (deleted >= 50) break;
-      }
-    } catch (e) {
-      props.deleteProperty(key);
-      deleted++;
-      if (deleted >= 50) break;
-    }
-  }
-}
-
-function _orderResponse(ok, orderId, requestId, message, retryable) {
-  var payload = { ok: ok, message: message };
-  if (orderId) payload.orderId = orderId;
-  if (retryable) payload.retryable = true;
-  return ContentService.createTextOutput(JSON.stringify(payload)).setMimeType(
-    ContentService.MimeType.JSON
+// Kontrola spójności: Suma (PLN) musi odpowiadać Σ(ilość × cena) skorygowanej
+// o ewentualny rabat/narzut z checkoutu. To NIE jest przeliczenie z żywego
+// cennika — sprawdza wyłącznie wewnętrzną spójność przesłanych liczb (łapie
+// błąd klienta lub zmanipulowany request). 1:1 executable spec i testy
+// jednostkowe: src/services/orderSumValidation.ts (isOrderSumConsistent) w
+// repo aplikacji — zmiana logiki tutaj bez zmiany tamtego pliku (albo
+// odwrotnie) musi zostać wychwycona przy review jako niespójny diff.
+if (qtyParts.length > 0 && priceParts.length > 0 && qtyParts.length === priceParts.length) {
+  var adjustmentPercent = Number(
+    String(body["Rabat/Doliczenie %"] || "0")
+      .replace(",", ".")
+      .trim()
   );
-}
+  if (!Number.isFinite(adjustmentPercent)) adjustmentPercent = 0;
 
-function handleOrderSave(body) {
-  _cleanStaleRequestIds();
-
-  var requestId = String(body["RequestID"] || "").trim();
-  var props = PropertiesService.getScriptProperties();
-  var now = new Date();
-  var REQ_KEY = requestId ? "req_" + requestId : null;
-
-  if (REQ_KEY) {
-    var existing = null;
-    try {
-      var raw = props.getProperty(REQ_KEY);
-      if (raw) existing = JSON.parse(raw);
-    } catch (e) {
-      existing = null;
-    }
-
-    if (existing) {
-      if (existing.status === "done" && existing.orderId) {
-        return _orderResponse(true, existing.orderId, requestId, "Zamówienie już zapisane.");
-      }
-      var pendingAge = now.getTime() - new Date(existing.at || 0).getTime();
-      if (existing.status === "pending" && pendingAge < 30000) {
-        return _orderResponse(
-          false,
-          null,
-          requestId,
-          "Zamówienie w trakcie zapisu — spróbuj za chwilę.",
-          true
-        );
-      }
-      if (existing.status === "pending" && pendingAge >= 30000) {
-        props.deleteProperty(REQ_KEY);
-      }
-    }
+  var rawSum = 0;
+  for (var k = 0; k < qtyParts.length; k++) {
+    var qk = Number(String(qtyParts[k]).replace(",", ".").trim());
+    var pk = Number(String(priceParts[k]).replace(",", ".").trim());
+    rawSum += qk * pk;
   }
+  var expectedSum = rawSum * (1 + adjustmentPercent / 100);
+  var tolerance = Math.max(1, Math.abs(expectedSum) * 0.02);
 
-  var validation = _validateOrderPayload(body);
-  if (!validation.valid) {
-    return ContentService.createTextOutput(
-      JSON.stringify({ ok: false, message: validation.message })
-    ).setMimeType(ContentService.MimeType.JSON);
+  if (Math.abs(total - expectedSum) > tolerance) {
+    return {
+      valid: false,
+      message: "Suma nie zgadza się z ceną × ilość — odśwież stronę i spróbuj ponownie.",
+    };
   }
-
-  if (REQ_KEY) {
-    try {
-      props.setProperty(
-        REQ_KEY,
-        JSON.stringify({ status: "pending", orderId: "", at: now.toISOString() })
-      );
-    } catch (e) {
-      Logger.log("[handleOrderSave] Phase 1 setProperty failed: " + e);
-    }
-  }
-
-  var orderId = _generateOrderId();
-  var sheet = ensureSheet();
-
-  sheet.appendRow([
-    body["Data"] || "",
-    body["Godzina"] || "",
-    body["Firma"] || "",
-    body["Kto dodał"] || "",
-    body["Imię"] || "",
-    body["Nazwisko"] || "",
-    body["NIP"] || "",
-    body["Telefon"] || "",
-    body["Email"] || "",
-    body["Materiał"] || "",
-    body["jedno/dwustronne"] || "",
-    body["Produkt"] || "",
-    toNumberOrBlank(body["Ilosc sztuk"]),
-    toNumberOrBlank(body["Cena za sztukę"]),
-    body["Uwagi"] || "",
-    toNumberOrBlank(body["Suma (PLN)"]),
-    body["Priorytet"] || "Normalny",
-    normalizeExpress(body["Ekspres"]),
-    orderId,
-    String(body["RequestID"] || ""),
-  ]);
-
-  if (REQ_KEY) {
-    try {
-      props.setProperty(
-        REQ_KEY,
-        JSON.stringify({ status: "done", orderId: orderId, at: now.toISOString() })
-      );
-    } catch (e) {
-      Logger.log("[handleOrderSave] Phase 3 setProperty failed: " + e);
-    }
-  }
-
-  return _orderResponse(true, orderId, requestId, "Zamówienie zapisane.");
 }
 ```
 
-### 7.3 Routing w doPost — zastąp blok zapisu zamówień
+Używa zmiennych `qtyParts`, `priceParts` i `total`, które Twoja istniejąca
+funkcja już buduje wcześniej (`splitPipe(body['Ilosc sztuk'])`,
+`splitPipe(body['Cena za sztukę'])`, `Number(totalRaw)`) — nic więcej nie
+trzeba dodawać ani zmieniać powyżej tego bloku.
 
-Znajdź blok na końcu `doPost` zaczynający się od walidacji telefonu (lub `const row = body;`) do końca `try{}` i zastąp go:
+### 7.3 `handleOrderSave` — dopisz jedną wartość do tablicy `row`
+
+Znajdź w `handleOrderSave` tablicę `row = [...]` (kończącą się
+`orderId, requestId || ''`) i dopisz jeden element na końcu:
 
 ```javascript
-return handleOrderSave(body);
+var row = [
+  // ...wszystkie istniejące pozycje bez zmian...
+  orderId,
+  requestId || "",
+  toNumberOrBlank(body["Rabat/Doliczenie %"]),
+];
 ```
 
 ### 7.4 Schemat arkusza `orders` po zmianach
 
-| Kol        | Pole      | Uwagi                                                             |
-| ---------- | --------- | ----------------------------------------------------------------- |
-| A–R (1–18) | bez zmian | Data → Ekspres                                                    |
-| S (19)     | orderId   | np. `RZ-3A7F2B9C`, generowane przez GAS                           |
-| T (20)     | RequestID | UUID z frontendu — klucz idempotencji (historyczne wiersze puste) |
+| Kol        | Pole               | Uwagi                                                                                                                         |
+| ---------- | ------------------ | ----------------------------------------------------------------------------------------------------------------------------- |
+| A–T (1–20) | bez zmian          | Data → RequestID, kolejność jak w `ORDER_HEADERS` 7.1 (D=Imię, R=Kto dodał)                                                   |
+| U (21)     | Rabat/Doliczenie % | Liczba (dodatnia = narzut, ujemna = rabat, 0 = brak), używana przez kontrolę spójności sumy — 7.2 (historyczne wiersze puste) |
 
 ### 7.5 Indeks idempotencji — PropertiesService
 
