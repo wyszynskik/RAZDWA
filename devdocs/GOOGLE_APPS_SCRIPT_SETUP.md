@@ -711,10 +711,27 @@ już zgodny z produkcją stan + dopisaną kontrolę spójności sumy.
 
 ```javascript
 const ORDER_HEADERS = [
-  "Data", "Godzina", "Firma", "Imię", "Nazwisko", "NIP", "Telefon", "Email",
-  "Materiał", "jedno/dwustronne", "Produkt", "Ilosc sztuk", "Cena za sztukę",
-  "Uwagi", "Suma (PLN)", "Priorytet", "Ekspres", "Kto dodał",
-  "orderId", "RequestID", "Rabat/Doliczenie %"
+  "Data",
+  "Godzina",
+  "Firma",
+  "Imię",
+  "Nazwisko",
+  "NIP",
+  "Telefon",
+  "Email",
+  "Materiał",
+  "jedno/dwustronne",
+  "Produkt",
+  "Ilosc sztuk",
+  "Cena za sztukę",
+  "Uwagi",
+  "Suma (PLN)",
+  "Priorytet",
+  "Ekspres",
+  "Kto dodał",
+  "orderId",
+  "RequestID",
+  "Rabat/Doliczenie %",
 ];
 ```
 
@@ -730,33 +747,37 @@ Znajdź w swoim `_validateOrderPayload` istniejącą pętlę walidującą
 `return { valid: true };` na końcu funkcji dopisz:
 
 ```javascript
-  // Kontrola spójności: Suma (PLN) musi odpowiadać Σ(ilość × cena) skorygowanej
-  // o ewentualny rabat/narzut z checkoutu. To NIE jest przeliczenie z żywego
-  // cennika — sprawdza wyłącznie wewnętrzną spójność przesłanych liczb (łapie
-  // błąd klienta lub zmanipulowany request). 1:1 executable spec i testy
-  // jednostkowe: src/services/orderSumValidation.ts (isOrderSumConsistent) w
-  // repo aplikacji — zmiana logiki tutaj bez zmiany tamtego pliku (albo
-  // odwrotnie) musi zostać wychwycona przy review jako niespójny diff.
-  if (qtyParts.length > 0 && priceParts.length > 0 && qtyParts.length === priceParts.length) {
-    var adjustmentPercent = Number(String(body['Rabat/Doliczenie %'] || '0').replace(',', '.').trim());
-    if (!Number.isFinite(adjustmentPercent)) adjustmentPercent = 0;
+// Kontrola spójności: Suma (PLN) musi odpowiadać Σ(ilość × cena) skorygowanej
+// o ewentualny rabat/narzut z checkoutu. To NIE jest przeliczenie z żywego
+// cennika — sprawdza wyłącznie wewnętrzną spójność przesłanych liczb (łapie
+// błąd klienta lub zmanipulowany request). 1:1 executable spec i testy
+// jednostkowe: src/services/orderSumValidation.ts (isOrderSumConsistent) w
+// repo aplikacji — zmiana logiki tutaj bez zmiany tamtego pliku (albo
+// odwrotnie) musi zostać wychwycona przy review jako niespójny diff.
+if (qtyParts.length > 0 && priceParts.length > 0 && qtyParts.length === priceParts.length) {
+  var adjustmentPercent = Number(
+    String(body["Rabat/Doliczenie %"] || "0")
+      .replace(",", ".")
+      .trim()
+  );
+  if (!Number.isFinite(adjustmentPercent)) adjustmentPercent = 0;
 
-    var rawSum = 0;
-    for (var k = 0; k < qtyParts.length; k++) {
-      var qk = Number(String(qtyParts[k]).replace(',', '.').trim());
-      var pk = Number(String(priceParts[k]).replace(',', '.').trim());
-      rawSum += qk * pk;
-    }
-    var expectedSum = rawSum * (1 + adjustmentPercent / 100);
-    var tolerance = Math.max(1, Math.abs(expectedSum) * 0.02);
-
-    if (Math.abs(total - expectedSum) > tolerance) {
-      return {
-        valid: false,
-        message: 'Suma nie zgadza się z ceną × ilość — odśwież stronę i spróbuj ponownie.'
-      };
-    }
+  var rawSum = 0;
+  for (var k = 0; k < qtyParts.length; k++) {
+    var qk = Number(String(qtyParts[k]).replace(",", ".").trim());
+    var pk = Number(String(priceParts[k]).replace(",", ".").trim());
+    rawSum += qk * pk;
   }
+  var expectedSum = rawSum * (1 + adjustmentPercent / 100);
+  var tolerance = Math.max(1, Math.abs(expectedSum) * 0.02);
+
+  if (Math.abs(total - expectedSum) > tolerance) {
+    return {
+      valid: false,
+      message: "Suma nie zgadza się z ceną × ilość — odśwież stronę i spróbuj ponownie.",
+    };
+  }
+}
 ```
 
 Używa zmiennych `qtyParts`, `priceParts` i `total`, które Twoja istniejąca
@@ -770,20 +791,20 @@ Znajdź w `handleOrderSave` tablicę `row = [...]` (kończącą się
 `orderId, requestId || ''`) i dopisz jeden element na końcu:
 
 ```javascript
-    var row = [
-      // ...wszystkie istniejące pozycje bez zmian...
-      orderId,
-      requestId || '',
-      toNumberOrBlank(body['Rabat/Doliczenie %']),
-    ];
+var row = [
+  // ...wszystkie istniejące pozycje bez zmian...
+  orderId,
+  requestId || "",
+  toNumberOrBlank(body["Rabat/Doliczenie %"]),
+];
 ```
 
 ### 7.4 Schemat arkusza `orders` po zmianach
 
-| Kol        | Pole               | Uwagi                                                                                                                          |
-| ---------- | ------------------ | ------------------------------------------------------------------------------------------------------------------------------- |
-| A–T (1–20) | bez zmian          | Data → RequestID, kolejność jak w `ORDER_HEADERS` 7.1 (D=Imię, R=Kto dodał)                                                      |
-| U (21)     | Rabat/Doliczenie % | Liczba (dodatnia = narzut, ujemna = rabat, 0 = brak), używana przez kontrolę spójności sumy — 7.2 (historyczne wiersze puste)     |
+| Kol        | Pole               | Uwagi                                                                                                                         |
+| ---------- | ------------------ | ----------------------------------------------------------------------------------------------------------------------------- |
+| A–T (1–20) | bez zmian          | Data → RequestID, kolejność jak w `ORDER_HEADERS` 7.1 (D=Imię, R=Kto dodał)                                                   |
+| U (21)     | Rabat/Doliczenie % | Liczba (dodatnia = narzut, ujemna = rabat, 0 = brak), używana przez kontrolę spójności sumy — 7.2 (historyczne wiersze puste) |
 
 ### 7.5 Indeks idempotencji — PropertiesService
 
