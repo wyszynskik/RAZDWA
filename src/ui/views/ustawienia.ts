@@ -114,6 +114,21 @@ type PriceSubgroupMap = SubgroupRegistry;
 const CUSTOM_PREFIX_VALUE = "__custom_prefix__";
 
 /**
+ * Kategorie dostępne w formularzu "Nowy materiał (kilka kategorii naraz)".
+ * Typowane przeciw DynamicMaterialCategoryId, więc dopisanie tu wartości
+ * nieznanej temu typowi (np. literówki) jest błędem kompilacji — ale samo
+ * dopisanie wpisu tutaj NIE wystarcza, żeby dodać nową kategorię: trzeba
+ * najpierw rozszerzyć DynamicMaterialCategoryId i PRICE_KEY_PREFIX w
+ * dynamicMaterials.ts, inaczej runtime i tak nie będzie wiedział, jak
+ * zbudować klucze cenowe dla tej kategorii.
+ */
+const MATERIAL_CATEGORY_OPTIONS: { value: DynamicMaterialCategoryId; label: string }[] = [
+  { value: "banner", label: "Bannery" },
+  { value: "solwentPlakaty", label: "Solwent - Plakaty" },
+  { value: "foliaSzroniona", label: "Folia szroniona / OWV" },
+];
+
+/**
  * Custom subgroups ("Nowa podkategoria…") always get their own quantity
  * tier table so the calculator can render a real per-quantity container for
  * them (see ui/dynamicSubgroups.ts) — regardless of whether the parent
@@ -3989,15 +4004,17 @@ export const UstawieniaView: View = {
 
                 <div class="settings-field">
                   <span class="settings-action-label">Dostępny w kategoriach</span>
-                  <label style="display:flex; align-items:center; gap:8px; margin:4px 0;">
-                    <input type="checkbox" class="new-material-category" value="banner"> Bannery
-                  </label>
-                  <label style="display:flex; align-items:center; gap:8px; margin:4px 0;">
-                    <input type="checkbox" class="new-material-category" value="solwentPlakaty"> Solwent - Plakaty
-                  </label>
-                  <label style="display:flex; align-items:center; gap:8px; margin:4px 0;">
-                    <input type="checkbox" class="new-material-category" value="foliaSzroniona"> Folia szroniona / OWV
-                  </label>
+                  <details class="settings-multiselect" id="new-material-category-picker">
+                    <summary id="new-material-category-summary" class="settings-input">Wybierz kategorie (0 zaznaczonych)</summary>
+                    <div class="settings-multiselect-options">
+                      ${MATERIAL_CATEGORY_OPTIONS.map(
+                        (opt) => `
+                      <label style="display:flex; align-items:center; gap:8px; margin:4px 0;">
+                        <input type="checkbox" class="new-material-category" value="${opt.value}"> ${opt.label}
+                      </label>`
+                      ).join("")}
+                    </div>
+                  </details>
                 </div>
 
                 <div class="settings-field">
@@ -4384,7 +4401,20 @@ export const UstawieniaView: View = {
     priceModeSelectEl?.addEventListener("change", () => {
       const relativeWrapper = container.querySelector<HTMLElement>("#new-price-relative-wrapper");
       if (relativeWrapper) {
-        relativeWrapper.style.display = priceModeSelectEl.value === "relative" ? "" : "none";
+        const hasBaseOptions = (baseVariantSelectEl?.options.length ?? 0) > 0;
+        if (priceModeSelectEl.value === "relative" && !hasBaseOptions) {
+          // syncAddCategorySelection() już to ukrywa przy zmianie kategorii/prefiksu,
+          // ale samo przełączenie trybu z tego <select> omijało tę kontrolę —
+          // pokazywało pustą listę "Papier bazowy" bez wyjaśnienia dlaczego.
+          priceModeSelectEl.value = "manual";
+          relativeWrapper.style.display = "none";
+          showStatus(
+            "⚠️ Brak innych papierów w tej kategorii — najpierw dodaj drugi, osobny papier (podkategorię), żeby móc ustawić cenę względną.",
+            "error"
+          );
+        } else {
+          relativeWrapper.style.display = priceModeSelectEl.value === "relative" ? "" : "none";
+        }
       }
       recomputeRelativePrice();
     });
@@ -4723,11 +4753,12 @@ export const UstawieniaView: View = {
       if (!materialTiersContainer) return;
       const row = document.createElement("div");
       row.className = "material-tier-row";
-      row.style.cssText = "display:flex; gap:6px; margin-bottom:6px; align-items:center;";
+      row.style.cssText =
+        "display:flex; flex-wrap:wrap; gap:6px; margin-bottom:6px; align-items:center;";
       row.innerHTML = `
-        <input type="number" min="0" step="1" class="settings-input tier-min" placeholder="od" style="width:80px;">
-        <input type="number" min="0" step="1" class="settings-input tier-max" placeholder="do (puste = +)" style="width:110px;">
-        <input type="number" min="0" step="0.01" class="settings-input tier-price" placeholder="cena zł" style="width:100px;">
+        <input type="number" min="0" step="1" class="settings-input tier-min" placeholder="od" style="flex:1 1 70px; min-width:70px;">
+        <input type="number" min="0" step="1" class="settings-input tier-max" placeholder="do (puste = +)" style="flex:1 1 90px; min-width:90px;">
+        <input type="number" min="0" step="0.01" class="settings-input tier-price" placeholder="cena zł" style="flex:1 1 80px; min-width:80px;">
         <button type="button" class="btn-secondary settings-icon-btn btn-remove-material-tier" title="Usuń próg">✕</button>
       `;
       row.querySelector(".btn-remove-material-tier")?.addEventListener("click", () => {
@@ -4736,11 +4767,33 @@ export const UstawieniaView: View = {
       materialTiersContainer.appendChild(row);
     }
 
+    const materialCategorySummary = container.querySelector<HTMLElement>(
+      "#new-material-category-summary"
+    );
+
+    function refreshMaterialCategorySummary(): void {
+      if (!materialCategorySummary) return;
+      const checkedCount = container.querySelectorAll<HTMLInputElement>(
+        ".new-material-category:checked"
+      ).length;
+      materialCategorySummary.textContent =
+        checkedCount === 0
+          ? "Wybierz kategorie (0 zaznaczonych)"
+          : `Wybrano kategorii: ${checkedCount}`;
+    }
+
+    container
+      .querySelectorAll<HTMLInputElement>(".new-material-category")
+      .forEach((cb) => cb.addEventListener("change", refreshMaterialCategorySummary));
+
     function resetMaterialForm(): void {
       if (materialNameInput) materialNameInput.value = "";
       container
         .querySelectorAll<HTMLInputElement>(".new-material-category")
         .forEach((cb) => (cb.checked = false));
+      refreshMaterialCategorySummary();
+      const picker = container.querySelector<HTMLDetailsElement>("#new-material-category-picker");
+      if (picker) picker.open = false;
       if (materialTiersContainer) materialTiersContainer.innerHTML = "";
       addMaterialTierRow();
     }

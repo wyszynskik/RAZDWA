@@ -1524,6 +1524,47 @@ body:not(.home-compact-layout):not(.settings-pricing-layout) .app-grid {
   grid-template-columns: minmax(0, 1fr);
 }
 
+.settings-multiselect summary.settings-input {
+  display: flex;
+  align-items: center;
+  height: 44px;
+  padding: 0 12px;
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+  cursor: pointer;
+  list-style: none;
+  transition: all 0.2s ease;
+}
+
+.settings-multiselect summary.settings-input::-webkit-details-marker {
+  display: none;
+}
+
+.settings-multiselect summary.settings-input::after {
+  content: "▾";
+  margin-left: auto;
+  color: var(--text-secondary, currentColor);
+}
+
+.settings-multiselect[open] summary.settings-input::after {
+  content: "▴";
+}
+
+.settings-multiselect summary.settings-input:hover {
+  border-color: var(--primary);
+}
+
+.settings-multiselect-options {
+  margin-top: 6px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  max-height: 220px;
+  overflow-y: auto;
+}
+
 .settings-action-btn {
   min-width: 0;
   width: 100%;
