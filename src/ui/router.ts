@@ -13,10 +13,24 @@ import { hasNativeSubgroupRenderer } from "../core/variantKeys";
  * mountDynamicSubgroupsFor() — never affects VariantDefinition.categoryId,
  * GAS, or the route/view ids themselves.
  */
-const ROUTE_TO_PRICE_CATEGORY_ID: Record<string, string> = {
+export const ROUTE_TO_PRICE_CATEGORY_ID: Record<string, string> = {
   "wizytowki-druk-cyfrowy": "wizytowki",
   "zaproszenia-kreda": "zaproszenia",
   "ulotki-cyfrowe": "ulotki",
+  "folia-szroniona": "folia",
+  "roll-up": "rollup",
+  "solwent-plakaty": "solwent",
+  "wlepki-naklejki": "wlepki",
+  // "plakaty" (wielki format) i "solwent-plakaty" dzielą tę samą kategorię
+  // cenową — BASE_PRICE_CATEGORIES["solwent"].prefixes zawiera zarówno
+  // "solwent-" jak i "plakaty-format-"/"plakaty-blockout200g-" (productCat.ts),
+  // a plakaty-wf.ts faktycznie czyta/pisze klucze "plakaty-format-*".
+  plakaty: "solwent",
+  // Resolves to a category with a native (bespoke) subgroup renderer — see
+  // hasNativeSubgroupRenderer() below. Mapping this explicitly (instead of
+  // relying on the category-not-found fallback) means the native-renderer
+  // check fires directly on "artykuly", the same id ustawienia.ts uses.
+  "artykuly-biurowe": "artykuly",
 };
 
 export interface CategoryContext extends ViewContext {
@@ -276,18 +290,24 @@ export class Router {
    * id in BASE_PRICE_CATEGORIES.
    */
   private mountDynamicSubgroupsFor(path: string): void {
-    // artykuly/uslugi render their custom subgroups through their own
-    // bespoke calculator — mounting the generic renderer here would
-    // double-render them (see hasNativeSubgroupRenderer).
-    if (hasNativeSubgroupRenderer(path)) return;
-    // Route id and price-category id diverge for these three views (their
-    // route ids are more descriptive than the price-category id admins pick
-    // in Ustawienia) — without this map, BASE_PRICE_CATEGORIES.find(id===path)
+    // Route id and price-category id diverge for several views (their route
+    // ids are more descriptive than the price-category id admins pick in
+    // Ustawienia) — without this map, BASE_PRICE_CATEGORIES.find(id===path)
     // returns undefined and the generic renderer never mounts, so any custom
     // subgroup/paper added under these categories silently never reaches the
     // customer. Confirmed live: a variant added to categoryId "zaproszenia"
     // did not appear on #/zaproszenia-kreda before this map existed.
     const priceCategoryId = ROUTE_TO_PRICE_CATEGORY_ID[path] ?? path;
+    // Checked on the RESOLVED price-category id, not the raw route path —
+    // hasNativeSubgroupRenderer's other call sites (ustawienia.ts) always
+    // pass a category id, so this must match that namespace. Checking the
+    // raw path here would silently stop protecting "artykuly-biurowe" the
+    // moment someone adds it to ROUTE_TO_PRICE_CATEGORY_ID (a very likely
+    // future edit, since it looks exactly like the other route/id mismatches
+    // fixed above) — artykuly/uslugi render their custom subgroups through
+    // their own bespoke calculator, so mounting the generic renderer here
+    // would double-render them.
+    if (hasNativeSubgroupRenderer(priceCategoryId)) return;
     const category = BASE_PRICE_CATEGORIES.find((c) => c.id === priceCategoryId);
     if (!category) return;
     try {
