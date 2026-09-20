@@ -288,6 +288,7 @@ test.describe("Dodaj materiał — przypisanie do wielu kategorii", () => {
     await openSettings(page);
 
     await page.fill("#new-material-name", "ZZZ-E2E Papier Testowy");
+    await page.click("#new-material-category-summary");
     await page.check('.new-material-category[value="banner"]');
     const tierRow = page.locator("#new-material-tiers .material-tier-row").first();
     await tierRow.locator(".tier-min").fill("1");
@@ -313,6 +314,7 @@ test.describe("Dodaj materiał — przypisanie do wielu kategorii", () => {
     await openSettings(page);
 
     await page.fill("#new-material-name", "ZZZ-E2E Duplikat");
+    await page.click("#new-material-category-summary");
     await page.check('.new-material-category[value="banner"]');
     const firstRow = page.locator("#new-material-tiers .material-tier-row").first();
     await firstRow.locator(".tier-min").fill("1");
@@ -326,6 +328,7 @@ test.describe("Dodaj materiał — przypisanie do wielu kategorii", () => {
     // zapisem): musi zostać odrzucona, a nie po cichu zostawić stary klucz
     // 1-9 obok nowych progów.
     await page.fill("#new-material-name", "ZZZ-E2E Duplikat");
+    await page.click("#new-material-category-summary");
     await page.check('.new-material-category[value="banner"]');
     const secondRow = page.locator("#new-material-tiers .material-tier-row").first();
     await secondRow.locator(".tier-min").fill("1");
