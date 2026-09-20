@@ -45,12 +45,24 @@ export function isOrderSumConsistent(
 
   const expectedSum = rawSum * (1 + adjustmentPercent / 100);
 
-  // Margines na zaokrąglenia: każda pozycja jest przesyłana z dokładnością do
-  // grosza ("Cena za sztukę" toFixed(2)), więc przy wielu pozycjach błędy się
-  // kumulują. 1 zł minimum LUB 2% oczekiwanej sumy (co więcej) — dostatecznie
-  // ciasne, żeby złapać realny błąd/manipulację, dostatecznie luźne, żeby nie
-  // odrzucać prawdziwych zamówień przez zaokrąglenia.
-  const tolerance = Math.max(1, Math.abs(expectedSum) * 0.02);
+  // Margines na zaokrąglenia, dwie składowe:
+  // 1) 1 zł minimum LUB 2% oczekiwanej sumy (co więcej) — łapie realny
+  //    błąd/manipulację niezależną od wolumenu.
+  // 2) Precyzyjny epsilon na zaokrąglenie JEDNOSTKOWE: "Cena za sztukę" leci
+  //    do GAS z dokładnością do grosza (toFixed(2)), więc każda pozycja może
+  //    być przesunięta o maksymalnie 0.005 zł względem realnej ceny. Przy
+  //    dużych ilościach (kategorie ilościowe: ulotki, wizytówki, dyplomy —
+  //    tysiące sztuk) i niskiej cenie jednostkowej (typowe dla priceFormula/
+  //    cen relatywnych) ten błąd kumuluje się i realnie przekracza 2% —
+  //    zweryfikowane empirycznie (Q=10000, unitPrice≈0.095 zł, rabat 10% →
+  //    różnica 44 zł przy tolerancji 16 zł bez tego członu). Bez tej składowej
+  //    walidacja fałszywie odrzuca prawdziwe, poprawne zamówienia.
+  let qtySum = 0;
+  for (let i = 0; i < quantities.length; i++) {
+    qtySum += quantities[i];
+  }
+  const unitRoundingMargin = Math.abs(0.005 * qtySum * (1 + adjustmentPercent / 100));
+  const tolerance = Math.max(1, Math.abs(expectedSum) * 0.02) + unitRoundingMargin;
 
   return Math.abs(claimedSum - expectedSum) <= tolerance;
 }
