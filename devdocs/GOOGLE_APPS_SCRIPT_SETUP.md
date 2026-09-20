@@ -763,13 +763,22 @@ if (qtyParts.length > 0 && priceParts.length > 0 && qtyParts.length === pricePar
   if (!Number.isFinite(adjustmentPercent)) adjustmentPercent = 0;
 
   var rawSum = 0;
+  var qtySum = 0;
   for (var k = 0; k < qtyParts.length; k++) {
     var qk = Number(String(qtyParts[k]).replace(",", ".").trim());
     var pk = Number(String(priceParts[k]).replace(",", ".").trim());
     rawSum += qk * pk;
+    qtySum += qk;
   }
   var expectedSum = rawSum * (1 + adjustmentPercent / 100);
-  var tolerance = Math.max(1, Math.abs(expectedSum) * 0.02);
+  // Epsilon na zaokrąglenie jednostkowe: "Cena za sztukę" leci z dokładnością
+  // do grosza (toFixed(2) po stronie klienta), więc każda pozycja może być
+  // przesunięta o maks. 0.005 zł względem realnej ceny. Przy dużych ilościach
+  // (kategorie ilościowe, tysiące sztuk) i niskiej cenie jednostkowej ten błąd
+  // się kumuluje i bez tego członu przekracza 2% — fałszywie odrzucając
+  // prawdziwe zamówienia (zaobserwowane produkcyjnie 2026-09-20).
+  var unitRoundingMargin = Math.abs(0.005 * qtySum * (1 + adjustmentPercent / 100));
+  var tolerance = Math.max(1, Math.abs(expectedSum) * 0.02) + unitRoundingMargin;
 
   if (Math.abs(total - expectedSum) > tolerance) {
     return {
