@@ -55,6 +55,12 @@ export const QUANTITY_BASED_CATEGORIES: ReadonlySet<string> = new Set([
   "zaproszenia",
   "wizytowki",
   "broszury-katalogi",
+  // Custom subgroups only (Plakaty A4-A3 / Plakaty A3-A0 mają zerowe
+  // natywne, ilościowe prefiksy VariantDefinition — każdy próg admin
+  // dodaje przez "Nowa podkategoria", więc to bezpiecznie odblokowuje
+  // resolveFormPriceFormula/showModeToggle bez wpływu na istniejące dane.
+  "plakaty-a4-a3",
+  "solwent",
 ]);
 
 export function isQuantityBasedCategory(categoryId: string): boolean {
