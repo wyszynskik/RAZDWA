@@ -160,3 +160,172 @@ describe("getCombinedMaterials", () => {
     expect(folia!.tiers[0].price).toBe(77);
   });
 });
+
+describe("getCombinedMaterials — materialPriceFormula (cena relatywna do innego materiału)", () => {
+  beforeEach(() => {
+    stubStorage();
+  });
+
+  afterEach(() => {
+    resetPrices();
+    setVariantDefinitions([]);
+    vi.unstubAllGlobals();
+  });
+
+  it("percent: mirroruje progi materiału bazowego z przeliczoną ceną", () => {
+    const baseId = "baza-pct";
+    const derivedId = "pochodny-pct";
+    setVariantDefinitions([
+      makeMaterialRow({ key: buildMaterialAssignmentKey("banner", baseId), label: "Baza" }),
+      makeMaterialRow({
+        key: buildMaterialAssignmentKey("banner", derivedId),
+        label: "Pochodny +20%",
+        materialPriceFormula: { baseMaterialId: baseId, op: "percent", value: 20 },
+      }),
+    ]);
+    const basePrefix = materialTierKeyPrefix("banner", baseId);
+    setPrice(`defaultPrices.${basePrefix}1-25`, 50);
+    setPrice(`defaultPrices.${basePrefix}26+`, 40);
+
+    const derived = getCombinedMaterials("banner").find((m) => m.id === derivedId);
+
+    expect(derived).toBeDefined();
+    expect(derived!.tiers).toEqual([
+      { min: 1, max: 25, price: 60 },
+      { min: 26, max: null, price: 48 },
+    ]);
+  });
+
+  it("fixed: dodaje/odejmuje stałą kwotę do każdego progu bazy", () => {
+    const baseId = "baza-fix";
+    const derivedId = "pochodny-fix";
+    setVariantDefinitions([
+      makeMaterialRow({ key: buildMaterialAssignmentKey("banner", baseId), label: "Baza" }),
+      makeMaterialRow({
+        key: buildMaterialAssignmentKey("banner", derivedId),
+        label: "Pochodny -5zł",
+        materialPriceFormula: { baseMaterialId: baseId, op: "fixed", value: -5 },
+      }),
+    ]);
+    const basePrefix = materialTierKeyPrefix("banner", baseId);
+    setPrice(`defaultPrices.${basePrefix}1+`, 30);
+
+    const derived = getCombinedMaterials("banner").find((m) => m.id === derivedId);
+
+    expect(derived!.tiers).toEqual([{ min: 1, max: null, price: 25 }]);
+  });
+
+  it("relatywnie do materiału STATYCZNEGO (z prices.json), nie tylko dynamicznego", () => {
+    const staticBase = (getPrice("banner") as any).materials[0];
+    const derivedId = "pochodny-od-statycznego";
+    setVariantDefinitions([
+      makeMaterialRow({
+        key: buildMaterialAssignmentKey("banner", derivedId),
+        label: "Pochodny",
+        materialPriceFormula: { baseMaterialId: staticBase.id, op: "percent", value: 10 },
+      }),
+    ]);
+
+    const derived = getCombinedMaterials("banner").find((m) => m.id === derivedId);
+
+    expect(derived).toBeDefined();
+    expect(derived!.tiers).toEqual(
+      staticBase.tiers.map((t: { min: number; max: number | null; price: number }) => ({
+        min: t.min,
+        max: t.max,
+        price: Math.round(t.price * 1.1 * 100) / 100,
+      }))
+    );
+  });
+
+  it("ŻYWY ZWIĄZEK: zmiana ceny bazy między wywołaniami zmienia cenę pochodną bez dotykania jej", () => {
+    const baseId = "baza-live";
+    const derivedId = "pochodny-live";
+    setVariantDefinitions([
+      makeMaterialRow({ key: buildMaterialAssignmentKey("banner", baseId), label: "Baza" }),
+      makeMaterialRow({
+        key: buildMaterialAssignmentKey("banner", derivedId),
+        label: "Pochodny",
+        materialPriceFormula: { baseMaterialId: baseId, op: "percent", value: 50 },
+      }),
+    ]);
+    const basePrefix = materialTierKeyPrefix("banner", baseId);
+    setPrice(`defaultPrices.${basePrefix}1+`, 10);
+
+    expect(getCombinedMaterials("banner").find((m) => m.id === derivedId)!.tiers[0].price).toBe(15);
+
+    setPrice(`defaultPrices.${basePrefix}1+`, 20);
+
+    expect(getCombinedMaterials("banner").find((m) => m.id === derivedId)!.tiers[0].price).toBe(30);
+  });
+
+  it("łańcuchowanie zablokowane: materiał relatywny do INNEGO materiału relatywnego nie rozwiązuje się (baza spoza puli formułowej)", () => {
+    setVariantDefinitions([
+      makeMaterialRow({ key: buildMaterialAssignmentKey("banner", "chain-a"), label: "A" }),
+      makeMaterialRow({
+        key: buildMaterialAssignmentKey("banner", "chain-b"),
+        label: "B",
+        materialPriceFormula: { baseMaterialId: "chain-a", op: "percent", value: 10 },
+      }),
+      makeMaterialRow({
+        key: buildMaterialAssignmentKey("banner", "chain-c"),
+        label: "C (relatywnie do B, które samo jest formułą)",
+        materialPriceFormula: { baseMaterialId: "chain-b", op: "percent", value: 10 },
+      }),
+    ]);
+    setPrice(`defaultPrices.${materialTierKeyPrefix("banner", "chain-a")}1+`, 100);
+
+    const combined = getCombinedMaterials("banner");
+
+    expect(combined.find((m) => m.id === "chain-b")).toBeDefined();
+    expect(combined.find((m) => m.id === "chain-c")).toBeUndefined();
+  });
+
+  it("cykl A↔B: żaden z dwóch materiałów wskazujących na siebie nawzajem się nie rozwiązuje, bez zawieszenia", () => {
+    setVariantDefinitions([
+      makeMaterialRow({
+        key: buildMaterialAssignmentKey("banner", "cycle-a"),
+        label: "A",
+        materialPriceFormula: { baseMaterialId: "cycle-b", op: "percent", value: 10 },
+      }),
+      makeMaterialRow({
+        key: buildMaterialAssignmentKey("banner", "cycle-b"),
+        label: "B",
+        materialPriceFormula: { baseMaterialId: "cycle-a", op: "percent", value: 10 },
+      }),
+    ]);
+
+    const combined = getCombinedMaterials("banner");
+
+    expect(combined.find((m) => m.id === "cycle-a")).toBeUndefined();
+    expect(combined.find((m) => m.id === "cycle-b")).toBeUndefined();
+  });
+
+  it("baza nieznaleziona (usunięta/literówka) → materiał pochodny pomijany, nie crashuje", () => {
+    setVariantDefinitions([
+      makeMaterialRow({
+        key: buildMaterialAssignmentKey("banner", "sierota"),
+        label: "Sierota",
+        materialPriceFormula: { baseMaterialId: "nie-istnieje", op: "percent", value: 10 },
+      }),
+    ]);
+
+    expect(() => getCombinedMaterials("banner")).not.toThrow();
+    expect(getCombinedMaterials("banner").find((m) => m.id === "sierota")).toBeUndefined();
+  });
+
+  it("wynik ≤0 zł jest pomijany na poziomie progu; materiał znika całkowicie, gdy WSZYSTKIE progi wypadają ≤0", () => {
+    const baseId = "baza-zero";
+    setVariantDefinitions([
+      makeMaterialRow({ key: buildMaterialAssignmentKey("banner", baseId), label: "Baza" }),
+      makeMaterialRow({
+        key: buildMaterialAssignmentKey("banner", "duzy-rabat"),
+        label: "Duży rabat -90%",
+        materialPriceFormula: { baseMaterialId: baseId, op: "fixed", value: -100 },
+      }),
+    ]);
+    setPrice(`defaultPrices.${materialTierKeyPrefix("banner", baseId)}1+`, 10);
+
+    expect(getCombinedMaterials("banner").find((m) => m.id === "duzy-rabat")).toBeUndefined();
+  });
+});
