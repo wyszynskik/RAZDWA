@@ -46,13 +46,8 @@ describe("resolveUseQtyMode", () => {
     expect(resolveUseQtyMode("uslugi", true)).toBe(false);
   });
 
-  it("a new custom subgroup in plakaty-a4-a3 DOES use quantity mode (the one real qty-tiered case)", () => {
-    expect(resolveUseQtyMode("plakaty-a4-a3", true)).toBe(true);
-  });
-
   it("adding to an EXISTING hardcoded prefix (not a custom subgroup) never forces quantity mode by itself", () => {
     expect(resolveUseQtyMode("artykuly", false)).toBe(false);
-    expect(resolveUseQtyMode("plakaty-a4-a3", false)).toBe(false);
   });
 
   it("natively quantity-based categories (isQuantityBasedCategory) always use quantity mode, regardless of custom subgroup status", () => {
@@ -60,6 +55,14 @@ describe("resolveUseQtyMode", () => {
     expect(resolveUseQtyMode("vouchery", true)).toBe(true);
     expect(resolveUseQtyMode("wizytowki", false)).toBe(true);
     expect(resolveUseQtyMode("broszury-katalogi", false)).toBe(true);
+    // plakaty-a4-a3 / solwent (Plakaty A3-A0) have zero native VariantDefinition
+    // prefixes — every prefix is a custom subgroup — so in practice they're
+    // always reached via isCustomSubgroupSelected=true, but they're now in
+    // QUANTITY_BASED_CATEGORIES so the identity check alone is sufficient too.
+    expect(resolveUseQtyMode("plakaty-a4-a3", false)).toBe(true);
+    expect(resolveUseQtyMode("plakaty-a4-a3", true)).toBe(true);
+    expect(resolveUseQtyMode("solwent", false)).toBe(true);
+    expect(resolveUseQtyMode("solwent", true)).toBe(true);
   });
 
   it("an unrelated category with no custom subgroup and no native qty basis never uses quantity mode", () => {
@@ -100,6 +103,13 @@ describe("categorySupportsCustomSubgroups", () => {
       "ulotki",
       "zaproszenia",
       "broszury-katalogi",
+      // solwent (Plakaty A3-A0): jego natywna wycena (format+rabat%) jest
+      // hardkodowana w plakaty.ts, ale — tak jak plakaty-a4-a3 — nie ma
+      // ŻADNYCH natywnych, ilościowych prefiksów VariantDefinition, więc
+      // "Nowa podkategoria…" jest dla niego bezpieczna: nowy próg zawsze
+      // ląduje jako osobny, addytywny custom subgroup, nigdy nie koliduje
+      // z natywnym flow.
+      "solwent",
     ]) {
       expect(categorySupportsCustomSubgroups(id)).toBe(true);
     }
@@ -109,7 +119,6 @@ describe("categorySupportsCustomSubgroups", () => {
     for (const id of [
       "banner",
       "folia",
-      "solwent",
       "wycinanie-folii",
       "canvas",
       "wlepki",

@@ -92,9 +92,13 @@ describe("isQuantityBasedCategory", () => {
     }
   });
 
+  it("returns true for solwent/plakaty-a4-a3 (custom subgroups only, no native qty prefixes)", () => {
+    expect(isQuantityBasedCategory("solwent")).toBe(true);
+    expect(isQuantityBasedCategory("plakaty-a4-a3")).toBe(true);
+  });
+
   it("returns false for non-qty categories", () => {
     expect(isQuantityBasedCategory("druk-a4-a3")).toBe(false);
-    expect(isQuantityBasedCategory("solwent")).toBe(false);
     expect(isQuantityBasedCategory("")).toBe(false);
   });
 

@@ -585,6 +585,11 @@ const CUSTOM_SUBGROUP_CATEGORIES: ReadonlySet<string> = new Set([
   "ulotki",
   "zaproszenia",
   "broszury-katalogi",
+  // Plakaty A3-A0 (wielki format) — dotąd bez żadnej ścieżki dodawania
+  // wariantów przez admina; router już poprawnie rozwiązuje "solwent" dla
+  // obu tras #/plakaty i #/solwent-plakaty (patrz ROUTE_TO_PRICE_CATEGORY_ID
+  // w router.ts), więc to tylko odblokowanie strony admina.
+  "solwent",
 ]);
 
 /**
