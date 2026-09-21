@@ -3909,10 +3909,10 @@ export const UstawieniaView: View = {
 
                 <div id="rename-subgroup-wrapper" class="settings-field" style="display:none">
                   <span class="settings-action-label">Nowa nazwa podgrupy</span>
-                  <div style="display:flex; gap:6px;">
-                    <input id="rename-subgroup-input" type="text" class="settings-input" style="flex:1;">
-                    <button type="button" id="btn-rename-subgroup-save" class="btn-success settings-action-btn">Zapisz nazwę</button>
-                    <button type="button" id="btn-rename-subgroup-cancel" class="btn-secondary settings-action-btn">Anuluj</button>
+                  <div style="display:flex; flex-wrap:wrap; gap:6px;">
+                    <input id="rename-subgroup-input" type="text" class="settings-input" style="flex:1 1 160px; min-width:120px;">
+                    <button type="button" id="btn-rename-subgroup-save" class="btn-success settings-action-btn" style="width:auto; flex:0 0 auto; white-space:nowrap;">Zapisz nazwę</button>
+                    <button type="button" id="btn-rename-subgroup-cancel" class="btn-secondary settings-action-btn" style="width:auto; flex:0 0 auto; white-space:nowrap;">Anuluj</button>
                   </div>
                 </div>
 
