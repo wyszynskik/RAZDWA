@@ -391,6 +391,84 @@ test.describe("Dodaj materiał — przypisanie do wielu kategorii", () => {
   });
 });
 
+test.describe("Dodaj papier do kilku kategorii naraz (bulk-dodawacz)", () => {
+  test.beforeEach(async ({ page }) => {
+    await neutralizeReloadTriggers(page);
+    await seedAdminSession(page);
+    await stubAppsScript(page);
+  });
+
+  test("jeden papier dodany do DWÓCH kategorii tworzy dwie niezależne podgrupy z własnymi progami", async ({
+    page,
+  }) => {
+    await openSettings(page);
+
+    await page.fill("#bulk-paper-name", "ZZZ-E2E-Bulk-Papier");
+    await page.click("#bulk-paper-category-summary");
+    await page.check('.bulk-paper-category[value="dyplomy"]');
+    await page.check('.bulk-paper-category[value="wizytowki"]');
+
+    const dyplomyBlock = page.locator('.bulk-paper-block[data-category="dyplomy"]');
+    await dyplomyBlock.locator(".tier-qty").first().fill("50");
+    await dyplomyBlock.locator(".tier-price").first().fill("15");
+
+    const wizytowkiBlock = page.locator('.bulk-paper-block[data-category="wizytowki"]');
+    await wizytowkiBlock.locator(".tier-qty").first().fill("100");
+    await wizytowkiBlock.locator(".tier-price").first().fill("30");
+
+    await page.click("#btn-add-bulk-paper");
+    await expect(page.locator("#save-msg")).toContainText("Dodano");
+
+    await savePrices(page);
+
+    const variants = await readVariants(page);
+    const dyplomyVariant = variants.find(
+      (v: any) => v.categoryId === "dyplomy" && v.subgroupLabel === "ZZZ-E2E-Bulk-Papier"
+    );
+    const wizytowkiVariant = variants.find(
+      (v: any) => v.categoryId === "wizytowki" && v.subgroupLabel === "ZZZ-E2E-Bulk-Papier"
+    );
+    expect(dyplomyVariant).toBeTruthy();
+    expect(wizytowkiVariant).toBeTruthy();
+    // Niezależne podkategorie — różne prefiksy, każda ze swoją własną ceną.
+    expect(dyplomyVariant.subcategoryPrefix).not.toBe(wizytowkiVariant.subcategoryPrefix);
+    expect(dyplomyVariant.calcScheme).toBe("interpolated");
+
+    const prices = await page.evaluate(() =>
+      JSON.parse(localStorage.getItem("razdwa_prices") ?? "{}")
+    );
+    expect(prices[`${dyplomyVariant.subcategoryPrefix}50`]).toBe(15);
+    expect(prices[`${wizytowkiVariant.subcategoryPrefix}100szt`]).toBe(30);
+
+    await page.goto("/#/dyplomy");
+    await expect(page.locator("body")).toContainText("ZZZ-E2E-Bulk-Papier");
+  });
+
+  test("kategoria zaznaczona bez wpisanego progu blokuje cały zapis z czytelnym błędem", async ({
+    page,
+  }) => {
+    await openSettings(page);
+
+    await page.fill("#bulk-paper-name", "ZZZ-E2E-Bulk-Niekompletny");
+    await page.click("#bulk-paper-category-summary");
+    await page.check('.bulk-paper-category[value="dyplomy"]');
+    await page.check('.bulk-paper-category[value="ulotki"]');
+
+    const dyplomyBlock = page.locator('.bulk-paper-block[data-category="dyplomy"]');
+    await dyplomyBlock.locator(".tier-qty").first().fill("50");
+    await dyplomyBlock.locator(".tier-price").first().fill("15");
+    // "ulotki" pozostaje bez wypełnionego progu.
+
+    await page.click("#btn-add-bulk-paper");
+    await expect(page.locator("#save-msg")).toContainText("Ulotki");
+
+    const variants = await readVariants(page);
+    expect(
+      variants.find((v: any) => v.subgroupLabel === "ZZZ-E2E-Bulk-Niekompletny")
+    ).toBeUndefined();
+  });
+});
+
 test.describe("Cena relatywna do innego papieru (kategorie ilościowe)", () => {
   test.beforeEach(async ({ page }) => {
     await neutralizeReloadTriggers(page);
