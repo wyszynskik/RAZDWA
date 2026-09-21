@@ -338,6 +338,57 @@ test.describe("Dodaj materiał — przypisanie do wielu kategorii", () => {
 
     await expect(page.locator("#save-msg")).toContainText("już istnieje");
   });
+
+  test("materiał dodany relatywnie (+20% od innego materiału) mirroruje jego progi i niesie żywą formułę, nie zwykłe ceny", async ({
+    page,
+  }) => {
+    await openSettings(page);
+
+    // Materiał bazowy — musi zostać ZAPISANY, żeby pojawić się jako opcja
+    // "Materiał bazowy" (getCombinedMaterials czyta stan zapisany, nie draft).
+    await page.fill("#new-material-name", "ZZZ-E2E-Material-Baza");
+    await page.click("#new-material-category-summary");
+    await page.check('.new-material-category[value="banner"]');
+    const baseRow = page.locator("#new-material-tiers .material-tier-row").first();
+    await baseRow.locator(".tier-min").fill("1");
+    await baseRow.locator(".tier-max").fill("9");
+    await baseRow.locator(".tier-price").fill("50");
+    await page.click("#btn-add-material");
+    await expect(page.locator("#save-msg")).toContainText("Dodano materiał");
+    await savePrices(page);
+
+    // Materiał relatywny: +20% od bazy, bez ręcznych progów.
+    await page.fill("#new-material-name", "ZZZ-E2E-Material-Wzgledny");
+    await page.click("#new-material-category-summary");
+    await page.check('.new-material-category[value="banner"]');
+    await page.selectOption("#new-material-price-mode", "relative");
+    await page.selectOption("#new-material-base", { label: "ZZZ-E2E-Material-Baza" });
+    await page.selectOption("#new-material-relative-op", "percent");
+    await page.fill("#new-material-relative-value", "20");
+    await page.click("#btn-add-material");
+    await expect(page.locator("#save-msg")).toContainText("Dodano materiał");
+
+    await savePrices(page);
+
+    const variants = await readVariants(page);
+    const relative = variants.find((v: any) => v.key === "mat__banner__zzz-e2e-material-wzgledny");
+    expect(relative?.materialPriceFormula).toEqual({
+      baseMaterialId: "zzz-e2e-material-baza",
+      op: "percent",
+      value: 20,
+    });
+    // Materiał relatywny nie ma WŁASNYCH kluczy progów w defaultPrices —
+    // jego cena jest liczona na żywo z bazy przy każdym getCombinedMaterials().
+    const prices = await page.evaluate(() =>
+      JSON.parse(localStorage.getItem("razdwa_prices") ?? "{}")
+    );
+    expect(Object.keys(prices).some((k) => k.startsWith("banner-zzz-e2e-material-wzgledny-"))).toBe(
+      false
+    );
+
+    await page.goto("/#/banner");
+    await expect(page.locator("#b-material")).toContainText("ZZZ-E2E-Material-Wzgledny");
+  });
 });
 
 test.describe("Cena relatywna do innego papieru (kategorie ilościowe)", () => {

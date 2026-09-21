@@ -1455,6 +1455,96 @@ wypełnioną kolumnę O (`priceFormula`, JSON w jednej komórce) dla tego wiersz
 
 ---
 
+### 8.10 `materialPriceFormula` — żywa cena relatywna dla materiałów (Banner/Solwent-Plakaty/Folia szroniona)
+
+Ten sam wzorzec co 8.9 — jedna nowa kolumna na **końcu** `VARIANTS_HEADERS`,
+JSON w jednej komórce, zero zmian w istniejących kolumnach. Odrębne pole od
+`priceFormula` (8.9), bo dotyczy zupełnie innego mechanizmu: materiał w
+kategorii m²-owej (`core/dynamicMaterials.ts`) nie ma prefiksu/progu ilości
+do dopasowania — jego baza jest identyfikowana po `baseMaterialId` w tej
+samej kategorii, a progi pochodnego materiału są **mirrorowane** z progów
+bazy (nie dopasowywane po kluczu). Klient aplikacji
+(`core/dynamicMaterials.ts::getCombinedMaterials`) liczy cenę pochodną na
+żywo przy każdym wywołaniu — Code.gs nadal tylko przechowuje i zwraca pole
+jak każde inne pole `VariantDefinition`, bez żadnej logiki liczącej.
+
+**Krok 1 — podmień `VARIANTS_HEADERS` (sekcja 8.1), dopisz jedną kolumnę na końcu:**
+
+```javascript
+const VARIANTS_HEADERS = [
+  "key",
+  "categoryId",
+  "subcategoryPrefix",
+  "subgroupLabel",
+  "label",
+  "legend",
+  "visibleInSettings",
+  "visibleInCalculator",
+  "sortOrder",
+  "createdAt",
+  "updatedAt",
+  "subgroupSortOrder",
+  "calcScheme",
+  "materialSizeOptions",
+  "priceFormula",
+  "materialPriceFormula", // NOWA — kolumna P
+];
+```
+
+**Krok 2 — nowy parser, dopisz obok `parsePriceFormula` (sekcja 8.9):**
+
+```javascript
+function parseMaterialPriceFormula(raw) {
+  var s = String(raw || "").trim();
+  if (!s) return null;
+  try {
+    var parsed = JSON.parse(s);
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : null;
+  } catch (e) {
+    return null;
+  }
+}
+```
+
+**Krok 3 — `_writeVariantRows` (sekcja 8.2): dopisz jeden element na końcu tablicy wiersza**, zaraz po `priceFormula`:
+
+```javascript
+        v.priceFormula && typeof v.priceFormula === "object"
+          ? JSON.stringify(v.priceFormula)
+          : "",
+        v.materialPriceFormula && typeof v.materialPriceFormula === "object"
+          ? JSON.stringify(v.materialPriceFormula)
+          : "", // NOWA linia
+      ];
+```
+
+**Krok 4 — `readVariants` (sekcja 8.3): dopisz na końcu, po `priceFormula`:**
+
+```javascript
+const priceFormula = parsePriceFormula(row[14]);
+if (priceFormula) variant.priceFormula = priceFormula;
+
+const materialPriceFormula = parseMaterialPriceFormula(row[15]);
+if (materialPriceFormula) variant.materialPriceFormula = materialPriceFormula;
+
+return variant;
+```
+
+**Bez zmian:** `handleVariantsUpdate`/`handleCatalogSave`/`doGet`/`doPost` — jak w 8.9, przepuszczają cały obiekt `VariantDefinition` bez wybierania pól.
+
+**Krok 5 — ręczny, kosmetyczny krok w samym arkuszu** (opcjonalny): dopisz
+`materialPriceFormula` do nagłówka kolumny P w arkuszu `API_VARIANTS`.
+
+**Weryfikacja po wdrożeniu:** w panelu Ustawień, "Nowy materiał (kilka
+kategorii naraz)" → zaznacz DOKŁADNIE jedną kategorię (np. Bannery) →
+"Sposób wpisania ceny: Relatywnie do innego materiału" → wybierz materiał
+bazowy (musi być już zapisany) → zapisz cennik → sprawdź, że arkusz
+`API_VARIANTS` ma wypełnioną kolumnę P dla tego wiersza, i że materiał
+pochodny widnieje w kalkulatorze Banner/Solwent-Plakaty/Folia szroniona z
+poprawną, przeliczoną ceną.
+
+---
+
 ## 9) Snapshot stabilnego katalogu po ≥12h (Faza 3)
 
 Dopisz **poniższe bloki do istniejącego `Code.gs` bez modyfikacji żadnych

@@ -26,9 +26,16 @@
  * `const data = getPrice(...)` froze the materials list for the lifetime of
  * the page).
  */
-import { getPrice, getVariantDefinitions, type VariantDefinition } from "../services/priceService";
+import {
+  getPrice,
+  getVariantDefinitions,
+  type VariantDefinition,
+  type MaterialPriceFormula,
+} from "../services/priceService";
 import { getDefaultPricesMap } from "./compat";
 import { MATERIAL_ASSIGNMENT_PREFIX, parseTierSuffix } from "./variantKeys";
+
+export type { MaterialPriceFormula, MaterialPriceFormulaOp } from "../services/priceService";
 
 export type DynamicMaterialCategoryId = "banner" | "solwentPlakaty" | "foliaSzroniona";
 
@@ -105,11 +112,52 @@ function reconstructDynamicMaterial(
   return { id: materialId, name, tiers };
 }
 
+function roundToCents(n: number): number {
+  return Math.round(n * 100) / 100;
+}
+
+/**
+ * Resolves a relative material's tier ladder by MIRRORING the base
+ * material's own tier boundaries (min/max) with a transformed price — not by
+ * matching a shared boundary schema, which materials don't have (each
+ * material's tiers are independently admin-entered, see module doc). This is
+ * why relative materials need no manual tier entry at all: adding a tier to
+ * the base later automatically produces a matching derived tier next call.
+ *
+ * `basePool` must never include formula-carrying materials — that is what
+ * blocks chaining and makes cycles structurally impossible (a formula can
+ * only ever resolve against a materialPriceFormula-free base), the same
+ * guarantee productModel.ts's resolveEntryPrice() gives quantity variants.
+ */
+function resolveRelativeMaterialTiers(
+  formula: MaterialPriceFormula,
+  basePool: MaterialDefinition[]
+): MaterialTier[] | null {
+  const base = basePool.find((m) => m.id === formula.baseMaterialId);
+  if (!base) return null;
+
+  const tiers: MaterialTier[] = [];
+  for (const tier of base.tiers) {
+    const derived =
+      formula.op === "percent"
+        ? tier.price * (1 + formula.value / 100)
+        : tier.price + formula.value;
+    const rounded = roundToCents(derived);
+    if (rounded > 0) tiers.push({ min: tier.min, max: tier.max, price: rounded });
+  }
+  return tiers.length > 0 ? tiers : null;
+}
+
 /**
  * Returns static materials (from prices.json) followed by dynamically
  * assigned ones (from VariantDefinition + defaultPrices) for one category.
  * With zero dynamic materials in the system, this is exactly the static
  * list — provably unchanged behavior for existing categories.
+ *
+ * Two-pass resolution for relative (materialPriceFormula) materials: pass 1
+ * builds the base pool (static + manually-priced dynamic materials only),
+ * pass 2 resolves every formula-carrying material against that pool. A
+ * formula material is never itself eligible as a base (see basePool above).
  */
 export function getCombinedMaterials(categoryId: DynamicMaterialCategoryId): MaterialDefinition[] {
   const staticMaterials = ((getPrice(categoryId) as { materials?: MaterialDefinition[] })
@@ -122,8 +170,14 @@ export function getCombinedMaterials(categoryId: DynamicMaterialCategoryId): Mat
   if (dynamicRows.length === 0) return staticMaterials;
 
   const defaultPrices = getDefaultPricesMap();
-  const dynamicMaterials: MaterialDefinition[] = [];
+  const manualDynamic: MaterialDefinition[] = [];
+  const formulaRows: VariantDefinition[] = [];
+
   for (const row of dynamicRows) {
+    if (row.materialPriceFormula) {
+      formulaRows.push(row);
+      continue;
+    }
     const materialId = parseMaterialAssignmentKey(row.key, categoryId);
     if (!materialId) continue;
     const material = reconstructDynamicMaterial(
@@ -132,8 +186,20 @@ export function getCombinedMaterials(categoryId: DynamicMaterialCategoryId): Mat
       row.label || materialId,
       defaultPrices
     );
-    if (material) dynamicMaterials.push(material);
+    if (material) manualDynamic.push(material);
   }
 
-  return [...staticMaterials, ...dynamicMaterials];
+  const basePool = [...staticMaterials, ...manualDynamic];
+  if (formulaRows.length === 0) return basePool;
+
+  const relativeDynamic: MaterialDefinition[] = [];
+  for (const row of formulaRows) {
+    const materialId = parseMaterialAssignmentKey(row.key, categoryId);
+    if (!materialId || !row.materialPriceFormula) continue;
+    const tiers = resolveRelativeMaterialTiers(row.materialPriceFormula, basePool);
+    if (!tiers) continue;
+    relativeDynamic.push({ id: materialId, name: row.label || materialId, tiers });
+  }
+
+  return [...basePool, ...relativeDynamic];
 }

@@ -624,6 +624,18 @@ export interface VariantDefinition {
    * a base — this is also what makes cycles structurally impossible.
    */
   priceFormula?: VariantPriceFormula;
+  /**
+   * Optional: live price relationship for a DYNAMIC MATERIAL sentinel row
+   * (subcategoryPrefix === MATERIAL_ASSIGNMENT_PREFIX, see
+   * core/dynamicMaterials.ts). Distinct from priceFormula above — a material
+   * has no subcategoryPrefix/quantity-tier axis to match against, so its
+   * base is identified by materialId within the same category, and its
+   * derived tier LIST is built by mirroring the base material's own tier
+   * boundaries (min/max) with a transformed price, not by matching a single
+   * quantity key. Resolved fresh in getCombinedMaterials() — see there for
+   * the two-pass, chain-blocking algorithm.
+   */
+  materialPriceFormula?: MaterialPriceFormula;
 }
 
 export type VariantPriceFormulaOp = "percent" | "fixed";
@@ -636,6 +648,16 @@ export interface VariantPriceFormula {
   /** subcategoryPrefix of the base subgroup. */
   basePrefix: string;
   op: VariantPriceFormulaOp;
+  /** percent: derived = base*(1+value/100); fixed: derived = base+value. Can be negative (a discount). */
+  value: number;
+}
+
+export type MaterialPriceFormulaOp = "percent" | "fixed";
+
+export interface MaterialPriceFormula {
+  /** id of the base MaterialDefinition within the SAME category. */
+  baseMaterialId: string;
+  op: MaterialPriceFormulaOp;
   /** percent: derived = base*(1+value/100); fixed: derived = base+value. Can be negative (a discount). */
   value: number;
 }

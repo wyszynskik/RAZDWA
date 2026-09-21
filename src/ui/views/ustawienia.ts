@@ -28,6 +28,7 @@ import {
   buildMaterialAssignmentKey,
   materialTierKeyPrefix,
   type DynamicMaterialCategoryId,
+  type MaterialPriceFormula,
 } from "../../core/dynamicMaterials";
 import {
   getCustomSubgroupDefinitions,
@@ -4022,7 +4023,29 @@ export const UstawieniaView: View = {
                   </details>
                 </div>
 
-                <div class="settings-field">
+                <div id="new-material-price-mode-wrapper" class="settings-field" style="display:none">
+                  <span class="settings-action-label">Sposób wpisania ceny</span>
+                  <select id="new-material-price-mode" class="settings-input">
+                    <option value="manual">Ręcznie (progi od/do m²)</option>
+                    <option value="relative">Relatywnie do innego materiału</option>
+                  </select>
+                </div>
+
+                <div id="new-material-relative-wrapper" class="settings-field" style="display:none">
+                  <span class="settings-action-label">Materiał bazowy</span>
+                  <select id="new-material-base" class="settings-input"></select>
+                  <div style="display:flex; gap:6px; margin-top:6px;">
+                    <select id="new-material-relative-op" class="settings-input" style="flex:1;">
+                      <option value="percent">% od ceny bazowej</option>
+                      <option value="fixed">kwota do ceny bazowej (zł)</option>
+                    </select>
+                    <input id="new-material-relative-value" type="number" step="0.01" class="settings-input" style="width:100px;" placeholder="np. 20">
+                  </div>
+                  <div class="hint" style="margin-top:4px;">Progi (od/do m²) są przejmowane z materiału bazowego — cena przelicza się automatycznie, także po jego zmianie. Materiał bazowy musi być już zapisany („Zapisz cennik”).</div>
+                  <div id="new-material-relative-error" class="hint" style="display:none; color:#dc2626; margin-top:4px;"></div>
+                </div>
+
+                <div id="new-material-tiers-group" class="settings-field">
                   <span class="settings-action-label">Progi cenowe (od m² / do m² — puste = bez górnej granicy / cena zł)</span>
                   <div id="new-material-tiers"></div>
                   <button type="button" id="btn-add-material-tier" class="btn-secondary settings-action-btn">+ Dodaj próg</button>
@@ -4787,9 +4810,105 @@ export const UstawieniaView: View = {
           : `Wybrano kategorii: ${checkedCount}`;
     }
 
-    container
-      .querySelectorAll<HTMLInputElement>(".new-material-category")
-      .forEach((cb) => cb.addEventListener("change", refreshMaterialCategorySummary));
+    // ── Cena relatywna dla "Dodaj materiał" ──
+    // Ograniczona do DOKŁADNIE JEDNEJ zaznaczonej kategorii: baza jest zawsze
+    // materiałem w jednej konkretnej kategorii (getCombinedMaterials(catId)),
+    // a "między kategoriami" nie ma wspólnego materiału bazowego do wskazania
+    // (patrz Krok 1 tego samego planu — ten sam wniosek dla progów ilościowych).
+    const materialPriceModeWrapper = container.querySelector<HTMLElement>(
+      "#new-material-price-mode-wrapper"
+    );
+    const materialPriceModeSelect = container.querySelector<HTMLSelectElement>(
+      "#new-material-price-mode"
+    );
+    const materialRelativeWrapper = container.querySelector<HTMLElement>(
+      "#new-material-relative-wrapper"
+    );
+    const materialBaseSelect = container.querySelector<HTMLSelectElement>("#new-material-base");
+    const materialRelativeOpSelect = container.querySelector<HTMLSelectElement>(
+      "#new-material-relative-op"
+    );
+    const materialRelativeValueInput = container.querySelector<HTMLInputElement>(
+      "#new-material-relative-value"
+    );
+    const materialRelativeError = container.querySelector<HTMLElement>(
+      "#new-material-relative-error"
+    );
+    const materialTiersGroup = container.querySelector<HTMLElement>("#new-material-tiers-group");
+
+    function materialIdsWithFormula(categoryId: DynamicMaterialCategoryId): Set<string> {
+      const ids = new Set<string>();
+      for (const v of [...getVariantDefinitions(), ..._draftVariantDefs]) {
+        if (
+          v.categoryId === categoryId &&
+          v.subcategoryPrefix === MATERIAL_ASSIGNMENT_PREFIX &&
+          v.materialPriceFormula
+        ) {
+          const id = parseMaterialAssignmentKeyForCategory(v.key, categoryId);
+          if (id) ids.add(id);
+        }
+      }
+      return ids;
+    }
+
+    function parseMaterialAssignmentKeyForCategory(
+      key: string,
+      categoryId: DynamicMaterialCategoryId
+    ): string | null {
+      const prefix = `mat__${categoryId}__`;
+      return key.startsWith(prefix) ? key.slice(prefix.length) || null : null;
+    }
+
+    function refreshMaterialPriceModeVisibility(): void {
+      if (!materialPriceModeWrapper || !materialPriceModeSelect || !materialRelativeWrapper) return;
+      const checkedCategories = Array.from(
+        container.querySelectorAll<HTMLInputElement>(".new-material-category:checked")
+      ).map((cb) => cb.value as DynamicMaterialCategoryId);
+
+      if (checkedCategories.length !== 1) {
+        materialPriceModeWrapper.style.display = "none";
+        materialPriceModeSelect.value = "manual";
+        materialRelativeWrapper.style.display = "none";
+        if (materialTiersGroup) materialTiersGroup.style.display = "";
+        return;
+      }
+
+      materialPriceModeWrapper.style.display = "";
+      const [categoryId] = checkedCategories;
+      const formulaIds = materialIdsWithFormula(categoryId);
+      const baseOptions = getCombinedMaterials(categoryId).filter((m) => !formulaIds.has(m.id));
+
+      if (materialBaseSelect) {
+        const previous = materialBaseSelect.value;
+        materialBaseSelect.innerHTML = baseOptions
+          .map((m) => `<option value="${escapeHtml(m.id)}">${escapeHtml(m.name)}</option>`)
+          .join("");
+        if (baseOptions.some((m) => m.id === previous)) materialBaseSelect.value = previous;
+      }
+
+      if (materialPriceModeSelect.value === "relative" && baseOptions.length === 0) {
+        materialPriceModeSelect.value = "manual";
+        showStatus(
+          "⚠️ Brak innych ZAPISANYCH materiałów w tej kategorii — cena względna wymaga materiału " +
+            "bazowego, który przetrwał „Zapisz cennik” (materiał dodany w tej samej, niezapisanej " +
+            "sesji jeszcze się tu nie pojawi).",
+          "error"
+        );
+      }
+
+      const isRelative = materialPriceModeSelect.value === "relative";
+      materialRelativeWrapper.style.display = isRelative ? "" : "none";
+      if (materialTiersGroup) materialTiersGroup.style.display = isRelative ? "none" : "";
+      if (materialRelativeError) materialRelativeError.style.display = "none";
+    }
+
+    container.querySelectorAll<HTMLInputElement>(".new-material-category").forEach((cb) =>
+      cb.addEventListener("change", () => {
+        refreshMaterialCategorySummary();
+        refreshMaterialPriceModeVisibility();
+      })
+    );
+    materialPriceModeSelect?.addEventListener("change", refreshMaterialPriceModeVisibility);
 
     function resetMaterialForm(): void {
       if (materialNameInput) materialNameInput.value = "";
@@ -4801,6 +4920,10 @@ export const UstawieniaView: View = {
       if (picker) picker.open = false;
       if (materialTiersContainer) materialTiersContainer.innerHTML = "";
       addMaterialTierRow();
+      if (materialPriceModeSelect) materialPriceModeSelect.value = "manual";
+      if (materialRelativeValueInput) materialRelativeValueInput.value = "";
+      if (materialRelativeError) materialRelativeError.style.display = "none";
+      refreshMaterialPriceModeVisibility();
     }
 
     addMaterialTierRow();
@@ -4834,28 +4957,50 @@ export const UstawieniaView: View = {
         return;
       }
 
-      const tierRows =
-        materialTiersContainer?.querySelectorAll<HTMLElement>(".material-tier-row") ?? [];
+      const isRelativeMode =
+        checkedCategories.length === 1 && materialPriceModeSelect?.value === "relative";
+
       const tiers: Array<{ min: number; max: number | null; price: number }> = [];
-      for (const row of tierRows) {
-        const minRaw = row.querySelector<HTMLInputElement>(".tier-min")?.value ?? "";
-        const maxRaw = row.querySelector<HTMLInputElement>(".tier-max")?.value ?? "";
-        const priceRaw = row.querySelector<HTMLInputElement>(".tier-price")?.value ?? "";
-        if (minRaw === "" || priceRaw === "") continue;
+      let materialPriceFormula: MaterialPriceFormula | undefined;
 
-        const min = Number.parseInt(minRaw, 10);
-        const max = maxRaw === "" ? null : Number.parseInt(maxRaw, 10);
-        const price = Number.parseFloat(priceRaw);
-        if (!Number.isFinite(min) || min < 0) continue;
-        if (max !== null && (!Number.isFinite(max) || max <= min)) continue;
-        if (!Number.isFinite(price) || price < 0) continue;
+      if (isRelativeMode) {
+        const baseMaterialId = materialBaseSelect?.value ?? "";
+        const opValue = materialRelativeOpSelect?.value === "fixed" ? "fixed" : "percent";
+        const rawValue = (materialRelativeValueInput?.value ?? "").replace(",", ".");
+        const value = Number.parseFloat(rawValue);
+        if (!baseMaterialId) {
+          showStatus("⚠️ Wybierz materiał bazowy.", "error");
+          return;
+        }
+        if (!Number.isFinite(value)) {
+          showStatus("⚠️ Wpisz poprawną wartość ceny relatywnej.", "error");
+          materialRelativeValueInput?.focus();
+          return;
+        }
+        materialPriceFormula = { baseMaterialId, op: opValue, value };
+      } else {
+        const tierRows =
+          materialTiersContainer?.querySelectorAll<HTMLElement>(".material-tier-row") ?? [];
+        for (const row of tierRows) {
+          const minRaw = row.querySelector<HTMLInputElement>(".tier-min")?.value ?? "";
+          const maxRaw = row.querySelector<HTMLInputElement>(".tier-max")?.value ?? "";
+          const priceRaw = row.querySelector<HTMLInputElement>(".tier-price")?.value ?? "";
+          if (minRaw === "" || priceRaw === "") continue;
 
-        tiers.push({ min, max, price });
-      }
+          const min = Number.parseInt(minRaw, 10);
+          const max = maxRaw === "" ? null : Number.parseInt(maxRaw, 10);
+          const price = Number.parseFloat(priceRaw);
+          if (!Number.isFinite(min) || min < 0) continue;
+          if (max !== null && (!Number.isFinite(max) || max <= min)) continue;
+          if (!Number.isFinite(price) || price < 0) continue;
 
-      if (tiers.length === 0) {
-        showStatus("⚠️ Dodaj przynajmniej jeden poprawny próg cenowy (od / cena).", "error");
-        return;
+          tiers.push({ min, max, price });
+        }
+
+        if (tiers.length === 0) {
+          showStatus("⚠️ Dodaj przynajmniej jeden poprawny próg cenowy (od / cena).", "error");
+          return;
+        }
       }
 
       // Sprawdzamy zarówno zapisany stan (getCombinedMaterials, czyta
@@ -4898,12 +5043,15 @@ export const UstawieniaView: View = {
           sortOrder: 0,
           createdAt: now,
           updatedAt: now,
+          materialPriceFormula,
         };
         _draftVariantDefs = _draftVariantDefs.filter((d) => d.key !== key).concat(variantDef);
 
-        const tierKeyPrefix = materialTierKeyPrefix(categoryId, materialId);
-        for (const tier of tiers) {
-          prices[`${tierKeyPrefix}${buildTierSuffix(tier.min, tier.max)}`] = tier.price;
+        if (!isRelativeMode) {
+          const tierKeyPrefix = materialTierKeyPrefix(categoryId, materialId);
+          for (const tier of tiers) {
+            prices[`${tierKeyPrefix}${buildTierSuffix(tier.min, tier.max)}`] = tier.price;
+          }
         }
       }
 
@@ -4914,7 +5062,7 @@ export const UstawieniaView: View = {
         prefix: MATERIAL_ASSIGNMENT_PREFIX,
         label: name,
         qty: "",
-        price: tiers[0]?.price ?? null,
+        price: isRelativeMode ? null : (tiers[0]?.price ?? null),
         timestamp: now,
       });
 
