@@ -22,6 +22,7 @@ import {
   slugifyKeySegment,
   buildTierSuffix,
   MATERIAL_ASSIGNMENT_PREFIX,
+  QUANTITY_BASED_CATEGORIES,
 } from "../../core/variantKeys";
 import {
   getCombinedMaterials,
@@ -128,6 +129,30 @@ const MATERIAL_CATEGORY_OPTIONS: { value: DynamicMaterialCategoryId; label: stri
   { value: "solwentPlakaty", label: "Solwent - Plakaty" },
   { value: "foliaSzroniona", label: "Folia szroniona / OWV" },
 ];
+
+/**
+ * Kategorie dostępne w bulk-dodawaczu "Dodaj papier do kilku kategorii
+ * naraz". Wykluczone celowo:
+ *  - "vouchery": buildQuantityKey ma dla niej odwrócony format klucza
+ *    (vouchery-{qty}-{jed|dwu}), dopasowywany po istniejącym prefiksie
+ *    "vouchery-jed-"/"vouchery-dwu-" — świeżo utworzony bulk-prefiks nigdy
+ *    go nie dopasuje, więc wpadłby w zwykły format i zepsuł wyświetlanie.
+ *  - "broszury-katalogi": jej ilość bywa zakresem ("51-1000"), osobna logika,
+ *    poza zakresem tego formularza.
+ * Progi ILOŚCIOWE nie są wspólne między kategoriami (każda ma własny,
+ * niezależnie wpisany zestaw), więc formularz zbiera osobny zestaw
+ * próg+cena PER zaznaczoną kategorię — bulk-dodawacz oszczędza tylko
+ * nawigację między zakładkami, nie samo wpisywanie liczb.
+ */
+const BULK_PAPER_CATEGORY_IDS = [...QUANTITY_BASED_CATEGORIES].filter(
+  (id) => id !== "vouchery" && id !== "broszury-katalogi"
+);
+const BULK_PAPER_CATEGORY_OPTIONS: { value: string; label: string }[] = BULK_PAPER_CATEGORY_IDS.map(
+  (id) => ({
+    value: id,
+    label: BASE_PRICE_CATEGORIES.find((c) => c.id === id)?.label ?? id,
+  })
+);
 
 /**
  * Custom subgroups ("Nowa podkategoria…") always get their own quantity
@@ -4056,6 +4081,42 @@ export const UstawieniaView: View = {
 
               <hr class="settings-divider">
 
+              <div class="settings-add-group" id="add-bulk-paper-group">
+                <div class="settings-wizard-header">
+                  <span class="settings-wizard-title">Dodaj papier do kilku kategorii naraz</span>
+                </div>
+                <div class="hint" style="margin-bottom:8px;">
+                  Tworzy nową, niezależną podkategorię o tej samej nazwie w każdej zaznaczonej
+                  kategorii — progi ilość/cena wpisujesz osobno dla każdej (nie są współdzielone).
+                </div>
+
+                <label class="settings-field">
+                  <span class="settings-action-label">Nazwa papieru / podkategorii</span>
+                  <input id="bulk-paper-name" type="text" class="settings-input" placeholder="np. Kreda 250g">
+                </label>
+
+                <div class="settings-field">
+                  <span class="settings-action-label">Dodaj do kategorii</span>
+                  <details class="settings-multiselect" id="bulk-paper-category-picker">
+                    <summary id="bulk-paper-category-summary" class="settings-input">Wybierz kategorie (0 zaznaczonych)</summary>
+                    <div class="settings-multiselect-options">
+                      ${BULK_PAPER_CATEGORY_OPTIONS.map(
+                        (opt) => `
+                      <label style="display:flex; align-items:center; gap:8px; margin:4px 0;">
+                        <input type="checkbox" class="bulk-paper-category" value="${opt.value}"> ${escapeHtml(opt.label)}
+                      </label>`
+                      ).join("")}
+                    </div>
+                  </details>
+                </div>
+
+                <div id="bulk-paper-category-blocks"></div>
+
+                <button id="btn-add-bulk-paper" type="button" class="btn-success settings-action-btn">+ Dodaj papier do zaznaczonych kategorii</button>
+              </div>
+
+              <hr class="settings-divider">
+
               <div class="settings-persist-group">
                 <button id="btn-save" type="button" class="btn-primary settings-action-btn">💾 Zapisz cennik</button>
                 <button id="btn-reset" type="button" class="btn-secondary settings-action-btn">🔄 Przywróć</button>
@@ -5073,6 +5134,214 @@ export const UstawieniaView: View = {
       renderTable();
       ctx?.emit?.("prices-updated", { timestamp: Date.now() });
       resetMaterialForm();
+    });
+
+    // ── "Dodaj papier do kilku kategorii naraz" — bulk-dodawacz (wersja
+    // wyłącznie ręczna: relatywność nie przenosi się między kategoriami, bo
+    // papier bazowy zawsze należy do jednej konkretnej kategorii — patrz
+    // komentarz przy BULK_PAPER_CATEGORY_OPTIONS). Tworzy N niezależnych,
+    // NOWYCH podkategorii (po jednej na zaznaczoną kategorię) o tej samej
+    // nazwie — każda z własnym, osobno wpisanym zestawem progów ilość/cena,
+    // bo progi nie są współdzielone między kategoriami.
+    const bulkPaperNameInput = container.querySelector<HTMLInputElement>("#bulk-paper-name");
+    const bulkPaperCategorySummary = container.querySelector<HTMLElement>(
+      "#bulk-paper-category-summary"
+    );
+    const bulkPaperBlocksContainer = container.querySelector<HTMLElement>(
+      "#bulk-paper-category-blocks"
+    );
+
+    function refreshBulkPaperCategorySummary(): void {
+      if (!bulkPaperCategorySummary) return;
+      const checkedCount = container.querySelectorAll<HTMLInputElement>(
+        ".bulk-paper-category:checked"
+      ).length;
+      bulkPaperCategorySummary.textContent =
+        checkedCount === 0
+          ? "Wybierz kategorie (0 zaznaczonych)"
+          : `Wybrano kategorii: ${checkedCount}`;
+    }
+
+    function addBulkPaperTierRow(rowsContainer: HTMLElement): void {
+      const row = document.createElement("div");
+      row.className = "bulk-paper-tier-row";
+      row.style.cssText =
+        "display:flex; flex-wrap:wrap; gap:6px; margin-bottom:6px; align-items:center;";
+      row.innerHTML = `
+        <input type="number" min="1" step="1" class="settings-input tier-qty" placeholder="ilość szt." style="flex:1 1 90px; min-width:90px;">
+        <input type="number" min="0" step="0.01" class="settings-input tier-price" placeholder="cena zł" style="flex:1 1 80px; min-width:80px;">
+        <button type="button" class="btn-secondary settings-icon-btn btn-remove-bulk-paper-tier" title="Usuń próg">✕</button>
+      `;
+      row.querySelector(".btn-remove-bulk-paper-tier")?.addEventListener("click", () => {
+        if (rowsContainer.children.length > 1) row.remove();
+      });
+      rowsContainer.appendChild(row);
+    }
+
+    // Jeden blok progów PER kategoria, wyrenderowany raz przy montowaniu i
+    // tylko pokazywany/ukrywany checkboxem — dane wpisane w danej kategorii
+    // przeżywają odznaczenie/zaznaczenie innej, zamiast znikać przy re-renderze.
+    const bulkPaperBlocksByCategory = new Map<string, HTMLElement>();
+    if (bulkPaperBlocksContainer) {
+      for (const opt of BULK_PAPER_CATEGORY_OPTIONS) {
+        const block = document.createElement("div");
+        block.className = "bulk-paper-block";
+        block.dataset.category = opt.value;
+        block.style.cssText =
+          "display:none; border:1px solid #d0d5dd; border-radius:6px; padding:8px; margin-bottom:8px;";
+        block.innerHTML = `
+          <div class="settings-action-label" style="margin-bottom:6px;">${escapeHtml(opt.label)} — progi (ilość szt. / cena zł)</div>
+          <div class="bulk-paper-tier-rows"></div>
+          <button type="button" class="btn-secondary settings-action-btn btn-add-bulk-paper-tier">+ Dodaj próg</button>
+        `;
+        const rowsContainer = block.querySelector<HTMLElement>(".bulk-paper-tier-rows");
+        if (rowsContainer) {
+          block
+            .querySelector(".btn-add-bulk-paper-tier")
+            ?.addEventListener("click", () => addBulkPaperTierRow(rowsContainer));
+          addBulkPaperTierRow(rowsContainer);
+        }
+        bulkPaperBlocksContainer.appendChild(block);
+        bulkPaperBlocksByCategory.set(opt.value, block);
+      }
+    }
+
+    container.querySelectorAll<HTMLInputElement>(".bulk-paper-category").forEach((cb) =>
+      cb.addEventListener("change", () => {
+        refreshBulkPaperCategorySummary();
+        const block = bulkPaperBlocksByCategory.get(cb.value);
+        if (block) block.style.display = cb.checked ? "" : "none";
+      })
+    );
+
+    function resetBulkPaperForm(): void {
+      if (bulkPaperNameInput) bulkPaperNameInput.value = "";
+      container
+        .querySelectorAll<HTMLInputElement>(".bulk-paper-category")
+        .forEach((cb) => (cb.checked = false));
+      refreshBulkPaperCategorySummary();
+      const picker = container.querySelector<HTMLDetailsElement>("#bulk-paper-category-picker");
+      if (picker) picker.open = false;
+      for (const block of bulkPaperBlocksByCategory.values()) {
+        block.style.display = "none";
+        const rowsContainer = block.querySelector<HTMLElement>(".bulk-paper-tier-rows");
+        if (rowsContainer) {
+          rowsContainer.innerHTML = "";
+          addBulkPaperTierRow(rowsContainer);
+        }
+      }
+    }
+
+    container.querySelector("#btn-add-bulk-paper")?.addEventListener("click", () => {
+      const paperName = (bulkPaperNameInput?.value ?? "").trim();
+      if (!paperName) {
+        showStatus("⚠️ Wpisz nazwę papieru.", "error");
+        bulkPaperNameInput?.focus();
+        return;
+      }
+
+      const checkedCategories = Array.from(
+        container.querySelectorAll<HTMLInputElement>(".bulk-paper-category:checked")
+      ).map((cb) => cb.value);
+      if (checkedCategories.length === 0) {
+        showStatus("⚠️ Zaznacz przynajmniej jedną kategorię.", "error");
+        return;
+      }
+
+      // Zbierz i zwaliduj progi PRZED zapisem czegokolwiek — inaczej kategoria
+      // bez poprawnych progów zostawiłaby zarejestrowaną, ale pustą podgrupę.
+      const perCategoryTiers = new Map<string, Array<{ qty: string; price: number }>>();
+      const missing: string[] = [];
+      for (const categoryId of checkedCategories) {
+        const block = bulkPaperBlocksByCategory.get(categoryId);
+        const rows = block?.querySelectorAll<HTMLElement>(".bulk-paper-tier-row") ?? [];
+        const tiers: Array<{ qty: string; price: number }> = [];
+        for (const row of rows) {
+          const qtyRaw = row.querySelector<HTMLInputElement>(".tier-qty")?.value ?? "";
+          const priceRaw = row.querySelector<HTMLInputElement>(".tier-price")?.value ?? "";
+          if (qtyRaw === "" || priceRaw === "") continue;
+          const qtyNum = Number.parseInt(qtyRaw, 10);
+          const price = Number.parseFloat(priceRaw);
+          if (!Number.isFinite(qtyNum) || qtyNum <= 0) continue;
+          if (!Number.isFinite(price) || price < 0) continue;
+          tiers.push({ qty: String(qtyNum), price });
+        }
+        if (tiers.length === 0) {
+          missing.push(
+            BULK_PAPER_CATEGORY_OPTIONS.find((o) => o.value === categoryId)?.label ?? categoryId
+          );
+          continue;
+        }
+        perCategoryTiers.set(categoryId, tiers);
+      }
+
+      if (missing.length > 0) {
+        showStatus(
+          `⚠️ Dodaj przynajmniej jeden poprawny próg (ilość / cena) dla: ${missing.join(", ")}.`,
+          "error"
+        );
+        return;
+      }
+
+      const now = new Date().toISOString();
+      for (const [categoryId, tiers] of perCategoryTiers) {
+        const chosenPrefix = buildUniqueSubgroupPrefix(
+          resolveNewSubgroupBasePrefix(categoryId),
+          paperName,
+          prices,
+          customPriceSubgroups[categoryId] ?? {}
+        );
+        customPriceSubgroups = createSubgroupRegistryEntry(
+          categoryId,
+          chosenPrefix,
+          paperName,
+          customPriceSubgroups
+        );
+        const subgroupSortOrder = customPriceSubgroups[categoryId]?.[chosenPrefix]?.sortOrder;
+
+        for (const tier of tiers) {
+          const key = buildUniqueQuantityKey(categoryId, chosenPrefix, tier.qty, prices);
+          prices[key] = tier.price;
+          const variantDef: VariantDefinition = {
+            key,
+            categoryId,
+            subcategoryPrefix: chosenPrefix,
+            subgroupLabel: paperName,
+            label: resolveVariantLabel("", "", true, tier.qty, getPriceLabel(key)),
+            legend: "",
+            visibleInSettings: true,
+            visibleInCalculator: true,
+            sortOrder: nextVariantSortOrderInSubgroup(categoryId, chosenPrefix, [
+              ...getVariantDefinitions(),
+              ..._draftVariantDefs,
+            ]),
+            createdAt: now,
+            updatedAt: now,
+            calcScheme: "interpolated",
+            subgroupSortOrder,
+          };
+          _draftVariantDefs = _draftVariantDefs.filter((d) => d.key !== key).concat(variantDef);
+        }
+      }
+
+      logVariantOperation({
+        action: "add",
+        key: paperName,
+        categoryId: [...perCategoryTiers.keys()].join(","),
+        prefix: "",
+        label: paperName,
+        qty: "",
+        price: null,
+        timestamp: now,
+      });
+
+      showStatus(
+        `✓ Dodano "${paperName}" (niezapisany) w ${perCategoryTiers.size} ${perCategoryTiers.size === 1 ? "kategorii" : "kategoriach"}`
+      );
+      updateDraftIndicator();
+      renderTable();
+      ctx?.emit?.("prices-updated", { timestamp: Date.now() });
+      resetBulkPaperForm();
     });
 
     // Zwraca wyłącznie warianty z rejestru (upsertVariantDefinition).
