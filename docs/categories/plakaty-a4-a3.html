@@ -41,6 +41,7 @@
                     <label for="pa-canon-qty">Ilość (szt):</label>
                     <input type="number" id="pa-canon-qty" class="form-control" placeholder="np. 3" min="1" max="9" step="1" inputmode="numeric" autocomplete="off">
                     <span style="color: #b91c1c; font-size: 12px; margin-top: 4px; display: block;">Plakaty do MAX 9 sztuk</span>
+                    <div id="pa-canon-qty-hint" class="ghost-hint"></div>
                 </div>
             </div>
 
@@ -67,6 +68,7 @@
                 <div class="form-group">
                     <label for="pa-duzy-canon-qty">Ilość (szt):</label>
                     <input type="number" id="pa-duzy-canon-qty" class="form-control" placeholder="np. 50" min="10" max="200" step="1" inputmode="numeric" autocomplete="off">
+                    <div id="pa-duzy-canon-qty-hint" class="ghost-hint"></div>
                 </div>
 
                 </div>
@@ -98,8 +100,7 @@
         <div id="pa-conflict-warning" style="display:none; margin-top:10px; color:#b91c1c; font-weight:700;"></div>
 
         <div class="form-actions" style="margin-top: 12px;">
-            <button id="pa-add-to-cart" class="btn-success" disabled>DODAJ DO KOSZYKA</button>
-            <div id="pa-add-to-cart-hint" class="add-to-cart-hint" style="display:none"></div>
+            <button id="pa-add-to-cart" class="btn-success is-disabled" aria-disabled="true">DODAJ DO KOSZYKA</button>
         </div>
     </div>
 

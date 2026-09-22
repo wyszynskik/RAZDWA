@@ -33,6 +33,7 @@
       <label for="dypQty">Ilość (szt):</label>
       <input type="number" id="dypQty" min="1" step="1" placeholder="ilość" inputmode="numeric">
       <div class="hint">Od 6 szt. automatyczny rabat -12% dla jednostronnych.</div>
+      <div id="dypQty-hint" class="ghost-hint"></div>
     </div>
 
     <div class="form-group">
@@ -61,8 +62,7 @@
     </div>
 
     <div class="form-actions">
-      <button id="addToCartBtn" class="btn-success">DODAJ DO KOSZYKA</button>
-      <div id="addToCartBtn-hint" class="add-to-cart-hint" style="display:none"></div>
+      <button id="addToCartBtn" class="btn-success is-disabled" aria-disabled="true">DODAJ DO KOSZYKA</button>
     </div>
 
     <div id="dypResult" class="result-display card" style="display:none; margin-top: 20px;">
@@ -111,6 +111,7 @@
     <div class="form-group">
       <label for="ekoQty">Ilość (szt):</label>
       <input type="number" id="ekoQty" min="1" step="1" placeholder="ilość" inputmode="numeric">
+      <div id="ekoQty-hint" class="ghost-hint"></div>
     </div>
 
     <div class="form-group">
@@ -132,8 +133,7 @@
     </div>
 
     <div class="form-actions">
-      <button id="ekoAddToCartBtn" class="btn-success">DODAJ DO KOSZYKA</button>
-      <div id="ekoAddToCartBtn-hint" class="add-to-cart-hint" style="display:none"></div>
+      <button id="ekoAddToCartBtn" class="btn-success is-disabled" aria-disabled="true">DODAJ DO KOSZYKA</button>
     </div>
 
     <div id="ekoResult" class="result-display card" style="display:none; margin-top: 20px;">

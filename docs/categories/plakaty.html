@@ -11,6 +11,7 @@
                 <select id="p-material" class="form-control">
                     <!-- populated by JS -->
                 </select>
+                <div id="p-material-hint" class="ghost-hint"></div>
             </div>
 
             <div id="p-format-group" class="form-group">
@@ -25,6 +26,7 @@
                 </div>
                 <label for="p-qty">Ilość (szt):</label>
                 <input type="number" id="p-qty" class="form-control" placeholder="np. 10" min="1" step="1" inputmode="numeric" autocomplete="off">
+                <div id="p-qty-hint" class="ghost-hint"></div>
             </div>
 
             <div class="form-group" style="margin-top: 10px;">
@@ -49,8 +51,7 @@
             </div>
 
         <div class="form-actions" style="margin-top: 12px;">
-            <button id="p-add-to-cart" class="btn-success" disabled>DODAJ DO KOSZYKA</button>
-            <div id="p-add-to-cart-hint" class="add-to-cart-hint" style="display:none"></div>
+            <button id="p-add-to-cart" class="btn-success is-disabled" aria-disabled="true">DODAJ DO KOSZYKA</button>
         </div>
     </div>
 

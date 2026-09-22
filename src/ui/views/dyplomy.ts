@@ -11,7 +11,7 @@ import {
 import { formatPLN } from "../../core/money";
 import { resolveStoredPrice } from "../../core/compat";
 import { mountDynamicSubgroupContainers } from "../dynamicSubgroups";
-import { setDisabledHint } from "../viewHelpers";
+import { setFieldHint, flashFieldHints, setButtonGuarded } from "../viewHelpers";
 
 export const DyplomyView: View = {
   id: "dyplomy",
@@ -54,7 +54,7 @@ export const DyplomyView: View = {
       const qtyInput = container.querySelector("#dypQty") as HTMLInputElement;
       const paperSel = container.querySelector("#dypPaper") as HTMLSelectElement;
       const addToCartBtn = container.querySelector("#addToCartBtn") as HTMLButtonElement;
-      const addToCartHint = container.querySelector("#addToCartBtn-hint") as HTMLElement | null;
+      const qtyHint = container.querySelector("#dypQty-hint") as HTMLElement | null;
       const resultArea = container.querySelector("#dypResult") as HTMLElement;
       const breakdownBox = container.querySelector("#dypBreakdown") as HTMLElement;
       const legendRows = container.querySelector("#dyp-legend-rows") as HTMLElement | null;
@@ -74,8 +74,8 @@ export const DyplomyView: View = {
         if (!qtyInput?.value || parseInt(qtyInput.value) <= 0) {
           resultArea.style.display = "none";
           breakdownBox.style.display = "none";
-          addToCartBtn.disabled = true;
-          setDisabledHint(addToCartHint, "Podaj ilość sztuk, aby zobaczyć cenę.");
+          setButtonGuarded(addToCartBtn, false);
+          setFieldHint(qtyHint, "Podaj ilość sztuk, aby zobaczyć cenę.");
           return null;
         }
         const paperVal = paperSel.value;
@@ -161,8 +161,8 @@ export const DyplomyView: View = {
         breakdownBox.style.display = "grid";
 
         resultArea.style.display = "block";
-        addToCartBtn.disabled = false;
-        setDisabledHint(addToCartHint, null);
+        setButtonGuarded(addToCartBtn, true);
+        setFieldHint(qtyHint, null);
         (container.querySelector("#resUnitPrice") as HTMLElement).textContent = formatPLN(
           totalPrice / options.qty
         );
@@ -216,9 +216,7 @@ export const DyplomyView: View = {
       const ekoQtyInput = container.querySelector("#ekoQty") as HTMLInputElement;
       const ekoPaperSel = container.querySelector("#ekoPaper") as HTMLSelectElement;
       const ekoAddToCartBtn = container.querySelector("#ekoAddToCartBtn") as HTMLButtonElement;
-      const ekoAddToCartHint = container.querySelector(
-        "#ekoAddToCartBtn-hint"
-      ) as HTMLElement | null;
+      const ekoQtyHint = container.querySelector("#ekoQty-hint") as HTMLElement | null;
       const ekoResultArea = container.querySelector("#ekoResult") as HTMLElement;
       const ekoBreakdownBox = container.querySelector("#ekoBreakdown") as HTMLElement;
       const ekoLegendRows = container.querySelector("#eko-legend-rows") as HTMLElement;
@@ -239,8 +237,8 @@ export const DyplomyView: View = {
         if (!ekoQtyInput?.value || parseInt(ekoQtyInput.value) <= 0) {
           ekoResultArea.style.display = "none";
           ekoBreakdownBox.style.display = "none";
-          ekoAddToCartBtn.disabled = true;
-          setDisabledHint(ekoAddToCartHint, "Podaj ilość sztuk, aby zobaczyć cenę.");
+          setButtonGuarded(ekoAddToCartBtn, false);
+          setFieldHint(ekoQtyHint, "Podaj ilość sztuk, aby zobaczyć cenę.");
           return null;
         }
         const format = (ekoFormatSel.value as DyplomyEkoFormat) ?? "A4";
@@ -285,8 +283,8 @@ export const DyplomyView: View = {
         ekoBreakdownBox.style.display = "grid";
 
         ekoResultArea.style.display = "block";
-        ekoAddToCartBtn.disabled = false;
-        setDisabledHint(ekoAddToCartHint, null);
+        setButtonGuarded(ekoAddToCartBtn, true);
+        setFieldHint(ekoQtyHint, null);
         (container.querySelector("#ekoTotalPrice") as HTMLElement).textContent = formatPLN(
           result.totalPrice
         );
@@ -362,7 +360,10 @@ export const DyplomyView: View = {
 
       ekoAddToCartBtn.addEventListener("click", () => {
         const calc = calculateEko();
-        if (!calc) return;
+        if (!calc) {
+          flashFieldHints([ekoQtyHint]);
+          return;
+        }
         const { format, qty, isSatin, paperLabel, result } = calc;
 
         ctx.cart.addItem({
@@ -385,14 +386,17 @@ export const DyplomyView: View = {
 
         ekoResultArea.style.display = "none";
         if (ekoBreakdownBox) ekoBreakdownBox.style.display = "none";
-        ekoAddToCartBtn.disabled = true;
-        setDisabledHint(ekoAddToCartHint, "Podaj ilość sztuk, aby zobaczyć cenę.");
+        setButtonGuarded(ekoAddToCartBtn, false);
+        setFieldHint(ekoQtyHint, "Podaj ilość sztuk, aby zobaczyć cenę.");
         container.dispatchEvent(new CustomEvent("view:reset"));
       });
 
       addToCartBtn.addEventListener("click", () => {
         const calc = calculate();
-        if (!calc) return;
+        if (!calc) {
+          flashFieldHints([qtyHint]);
+          return;
+        }
         const { options, result } = calc;
 
         const dpv = paperSel.value;
@@ -423,8 +427,8 @@ export const DyplomyView: View = {
 
         resultArea.style.display = "none";
         if (breakdownBox) breakdownBox.style.display = "none";
-        addToCartBtn.disabled = true;
-        setDisabledHint(addToCartHint, "Podaj ilość sztuk, aby zobaczyć cenę.");
+        setButtonGuarded(addToCartBtn, false);
+        setFieldHint(qtyHint, "Podaj ilość sztuk, aby zobaczyć cenę.");
         container.dispatchEvent(new CustomEvent("view:reset"));
       });
     } catch (err) {
