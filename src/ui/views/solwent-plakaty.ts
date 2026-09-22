@@ -4,6 +4,12 @@ import { calculateSolwentPlakaty } from "../../categories/solwent-plakaty";
 import { formatPLN } from "../../core/money";
 import { resolveStoredPrice } from "../../core/compat";
 import { getCombinedMaterials } from "../../core/dynamicMaterials";
+import {
+  setFieldHint,
+  flashFieldHints,
+  setButtonGuarded,
+  isButtonGuardDisabled,
+} from "../viewHelpers";
 
 function populateMaterialSelect(container: HTMLElement): void {
   const materials = getCombinedMaterials("solwentPlakaty");
@@ -38,6 +44,8 @@ export const SolwentPlakatyView: View = {
     const materialSelect = container.querySelector("#material") as HTMLSelectElement;
     const areaInput = container.querySelector("#area") as HTMLInputElement;
     const addToCartBtn = container.querySelector("#add-to-cart") as HTMLButtonElement;
+    const materialHint = container.querySelector("#material-hint") as HTMLElement | null;
+    const areaHint = container.querySelector("#area-hint") as HTMLElement | null;
     const resultDisplay = container.querySelector("#result-display") as HTMLElement;
     const unitPriceSpan = container.querySelector("#unit-price") as HTMLElement;
     const totalPriceSpan = container.querySelector("#total-price") as HTMLElement;
@@ -45,6 +53,7 @@ export const SolwentPlakatyView: View = {
     const expressHint = container.querySelector("#express-hint") as HTMLElement;
 
     let currentResult: any = null;
+    let blockedHints: (HTMLElement | null)[] = [];
 
     const ensureLegend = () => {
       let legend = container.querySelector<HTMLElement>("#solwent-dynamic-legend");
@@ -99,13 +108,19 @@ export const SolwentPlakatyView: View = {
     const performCalculation = () => {
       if (!materialSelect.value) {
         resultDisplay.style.display = "none";
-        addToCartBtn.disabled = true;
+        setFieldHint(materialHint, "Wybierz materiał, aby zobaczyć cenę.");
+        setFieldHint(areaHint, null);
+        setButtonGuarded(addToCartBtn, false);
+        blockedHints = [materialHint];
         return;
       }
+      setFieldHint(materialHint, null);
       const areaM2 = parseFloat(areaInput.value);
       if (!Number.isFinite(areaM2) || areaM2 <= 0) {
         resultDisplay.style.display = "none";
-        addToCartBtn.disabled = true;
+        setFieldHint(areaHint, "Podaj powierzchnię większą niż 0, aby zobaczyć cenę.");
+        setButtonGuarded(addToCartBtn, false);
+        blockedHints = [areaHint];
         return;
       }
       const input = {
@@ -123,17 +138,19 @@ export const SolwentPlakatyView: View = {
         areaValSpan.innerText = `${input.areaM2} m²${result.effectiveQuantity > input.areaM2 ? " (min. 1 m²)" : ""}`;
       if (expressHint) expressHint.style.display = ctx.expressMode ? "block" : "none";
       resultDisplay.style.display = "block";
-      addToCartBtn.disabled = result.totalPrice <= 0;
+      const isValid = result.totalPrice > 0;
+      setButtonGuarded(addToCartBtn, isValid);
+      setFieldHint(areaHint, null);
+      setFieldHint(
+        materialHint,
+        isValid ? null : "Brak ceny dla tego materiału — skontaktuj się z nami."
+      );
+      blockedHints = isValid ? [] : [materialHint];
 
       ctx.updateLastCalculated(result.totalPrice, "Solwent - Plakaty");
     };
 
     autoCalc({ root: container, calc: performCalculation, cancelOn: [addToCartBtn] });
-    addToCartBtn.addEventListener("pointerdown", () => {
-      if (addToCartBtn.disabled && !materialSelect.value) {
-        ctx.showToast?.("Wybierz materiał przed dodaniem do koszyka.", "error");
-      }
-    });
     ensureLegend();
 
     materialSelect.addEventListener("change", ensureLegend);
@@ -144,6 +161,10 @@ export const SolwentPlakatyView: View = {
     });
 
     addToCartBtn.onclick = () => {
+      if (isButtonGuardDisabled(addToCartBtn)) {
+        flashFieldHints(blockedHints);
+        return;
+      }
       if (currentResult) {
         ctx.cart.addItem({
           id: `solwent-${Date.now()}`,
@@ -160,7 +181,9 @@ export const SolwentPlakatyView: View = {
 
         currentResult = null;
         resultDisplay.style.display = "none";
-        addToCartBtn.disabled = true;
+        setFieldHint(materialHint, "Wybierz materiał, aby zobaczyć cenę.");
+        setButtonGuarded(addToCartBtn, false);
+        blockedHints = [materialHint];
         container.dispatchEvent(new CustomEvent("view:reset"));
       }
     };

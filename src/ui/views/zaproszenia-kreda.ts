@@ -7,6 +7,7 @@ import {
 import { formatPLN } from "../../core/money";
 import { resolveStoredPrice, getDefaultPricesMap } from "../../core/compat";
 import { getPrice } from "../../services/priceService";
+import { setFieldHint, flashFieldHints, setButtonGuarded } from "../viewHelpers";
 
 export const ZaproszeniaKredaView: View = {
   id: "zaproszenia-kreda",
@@ -27,6 +28,11 @@ export const ZaproszeniaKredaView: View = {
       const envelopeTypeSel = container.querySelector("#zapEnvelopeType") as HTMLSelectElement;
       const envelopeQtyInput = container.querySelector("#zapEnvelopeQty") as HTMLInputElement;
       const addToCartBtn = container.querySelector("#addToCartBtn") as HTMLButtonElement;
+      const formatHint = container.querySelector("#zapFormat-hint") as HTMLElement | null;
+      const qtyHint = container.querySelector("#zapQty-hint") as HTMLElement | null;
+      const fallbackHint = container.querySelector(
+        "#addToCartBtn-fallback-hint"
+      ) as HTMLElement | null;
       const resultArea = container.querySelector("#zapResult") as HTMLElement;
       const breakdownBox = container.querySelector("#zapBreakdown") as HTMLElement;
       const legendTitle = container.querySelector("#zap-legend-title") as HTMLElement | null;
@@ -153,9 +159,22 @@ export const ZaproszeniaKredaView: View = {
         if (!hasAllRequiredInputs) {
           resultArea.style.display = "none";
           breakdownBox.style.display = "none";
-          addToCartBtn.disabled = true;
+          setFieldHint(formatHint, formatSel.value ? null : "Wybierz format, aby zobaczyć cenę.");
+          const qtyValid = qtyRaw.length > 0 && Number.isFinite(qty) && qty > 0;
+          setFieldHint(qtyHint, qtyValid ? null : "Podaj ilość sztuk, aby zobaczyć cenę.");
+          const otherFieldMissing = !(Number.isFinite(sides) && sides > 0) || !paperSel.value;
+          setFieldHint(
+            fallbackHint,
+            otherFieldMissing && formatSel.value && qtyValid
+              ? "Uzupełnij pozostałe wymagane pola, aby zobaczyć cenę."
+              : null
+          );
+          setButtonGuarded(addToCartBtn, false);
           return null;
         }
+        setFieldHint(formatHint, null);
+        setFieldHint(qtyHint, null);
+        setFieldHint(fallbackHint, null);
         const paperVal = paperSel.value;
         const isSatin = paperVal.startsWith("satyna");
         const isModigliani = paperVal === "modigliani";
@@ -235,7 +254,7 @@ export const ZaproszeniaKredaView: View = {
         breakdownBox.style.display = "grid";
 
         resultArea.style.display = "block";
-        addToCartBtn.disabled = false;
+        setButtonGuarded(addToCartBtn, true);
         (container.querySelector("#resUnitPrice") as HTMLElement).textContent = formatPLN(
           totalPrice / options.qty
         );
@@ -279,11 +298,6 @@ export const ZaproszeniaKredaView: View = {
       };
 
       autoCalc({ root: container, calc: calculate, cancelOn: [addToCartBtn] });
-      addToCartBtn.addEventListener("pointerdown", () => {
-        if (addToCartBtn.disabled && (!formatSel.value || !paperSel.value)) {
-          ctx.showToast?.("Wybierz format i papier przed dodaniem do koszyka.", "error");
-        }
-      });
       updateLegend();
       ctx?.on?.("prices-updated", () => {
         updateLegend();
@@ -292,7 +306,10 @@ export const ZaproszeniaKredaView: View = {
 
       addToCartBtn.addEventListener("click", () => {
         const calc = calculate();
-        if (!calc) return;
+        if (!calc) {
+          flashFieldHints([formatHint, qtyHint, fallbackHint]);
+          return;
+        }
         const { options, result } = calc;
 
         const zpv = paperSel.value;
@@ -332,7 +349,8 @@ export const ZaproszeniaKredaView: View = {
 
         resultArea.style.display = "none";
         if (breakdownBox) breakdownBox.style.display = "none";
-        addToCartBtn.disabled = true;
+        setFieldHint(formatHint, "Wybierz format, aby zobaczyć cenę.");
+        setButtonGuarded(addToCartBtn, false);
         container.dispatchEvent(new CustomEvent("view:reset"));
       });
     } catch (err) {

@@ -4,6 +4,12 @@ import { calculateDrukA4A3Skan } from "../../categories/druk-a4-a3-skan";
 import { formatPLN } from "../../core/money";
 import categories from "../../../data/categories.json";
 import { getPRICE, resolveStoredPrice } from "../../core/compat";
+import {
+  setFieldHint,
+  flashFieldHints,
+  setButtonGuarded,
+  isButtonGuardDisabled,
+} from "../viewHelpers";
 
 type BreakdownRow = {
   label: string;
@@ -68,6 +74,7 @@ export const DrukA4A3SkanView: View = {
     const scanQtyRow = container.querySelector("#scan-qty-row") as HTMLElement;
 
     const addToCartBtn = container.querySelector("#d-add-to-cart") as HTMLButtonElement;
+    const printQtyHint = container.querySelector("#d-print-qty-hint") as HTMLElement | null;
     const resultDisplay = container.querySelector("#d-result-display") as HTMLElement;
     const breakdownDisplay = container.querySelector("#d-breakdown-display") as HTMLElement | null;
     const breakdownLines = container.querySelector("#d-breakdown-lines") as HTMLElement | null;
@@ -233,6 +240,7 @@ export const DrukA4A3SkanView: View = {
 
     let currentResult: any = null;
     let currentOptions: any = null;
+    let blockedHints: (HTMLElement | null)[] = [];
 
     const performCalculation = () => {
       const printQty = parseInt(printQtyInput.value) || 0;
@@ -241,7 +249,9 @@ export const DrukA4A3SkanView: View = {
       const hasAnyInput = printQty > 0 || (scanEnabled && scanQty > 0);
       if (!hasAnyInput) {
         resultDisplay.style.display = "none";
-        addToCartBtn.disabled = true;
+        setFieldHint(printQtyHint, "Podaj ilość druku lub skanowania, aby zobaczyć cenę.");
+        setButtonGuarded(addToCartBtn, false);
+        blockedHints = [printQtyHint];
         if (breakdownDisplay) breakdownDisplay.style.display = "none";
         return;
       }
@@ -360,7 +370,9 @@ export const DrukA4A3SkanView: View = {
       totalPriceSpan.innerText = formatPLN(result.totalPrice);
       setHiddenState(expressHint, !ctx.expressMode);
       resultDisplay.style.display = "block";
-      addToCartBtn.disabled = false;
+      setFieldHint(printQtyHint, null);
+      setButtonGuarded(addToCartBtn, true);
+      blockedHints = [];
 
       ctx.updateLastCalculated(result.totalPrice, "Druk A4/A3 + skan");
     };
@@ -375,6 +387,11 @@ export const DrukA4A3SkanView: View = {
     addToCartBtn.onclick = () => {
       performCalculation();
 
+      if (isButtonGuardDisabled(addToCartBtn)) {
+        flashFieldHints(blockedHints);
+        return;
+      }
+
       if (!currentResult || !currentOptions) return;
 
       const printQty = Math.max(0, Number(currentOptions.printQty) || 0);
@@ -383,7 +400,10 @@ export const DrukA4A3SkanView: View = {
       const hasScan = currentOptions.scanType !== "none" && scanQty > 0;
 
       if (!hasPrint && !hasScan) {
-        alert("Podaj ilość druku lub skanowania przed dodaniem do listy.");
+        setFieldHint(printQtyHint, "Podaj ilość druku lub skanowania, aby zobaczyć cenę.");
+        setButtonGuarded(addToCartBtn, false);
+        blockedHints = [printQtyHint];
+        flashFieldHints(blockedHints);
         return;
       }
 
@@ -448,7 +468,9 @@ export const DrukA4A3SkanView: View = {
       currentOptions = null;
       resultDisplay.style.display = "none";
       if (breakdownDisplay) breakdownDisplay.style.display = "none";
-      addToCartBtn.disabled = true;
+      setFieldHint(printQtyHint, "Podaj ilość druku lub skanowania, aby zobaczyć cenę.");
+      setButtonGuarded(addToCartBtn, false);
+      blockedHints = [printQtyHint];
 
       container.dispatchEvent(new CustomEvent("view:reset"));
 

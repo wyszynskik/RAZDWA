@@ -2,6 +2,12 @@ import { View, ViewContext } from "../types";
 import { autoCalc } from "../autoCalc";
 import { formatPLN } from "../../core/money";
 import { resolveStoredPrice, mergeStoredNumericTiers } from "../../core/compat";
+import {
+  setFieldHint,
+  flashFieldHints,
+  setButtonGuarded,
+  isButtonGuardDisabled,
+} from "../viewHelpers";
 
 type BreakdownRow = {
   label: string;
@@ -85,6 +91,8 @@ function initBroszuryKatalogi(container: HTMLElement, ctx: ViewContext): void {
   const pagesSelect = container.querySelector("#bk-pages") as HTMLSelectElement;
   const qtyInput = container.querySelector("#bk-qty") as HTMLInputElement;
   const addToCartBtn = container.querySelector("#bk-add-to-cart") as HTMLButtonElement;
+  const formatHint = container.querySelector("#bk-format-hint") as HTMLElement | null;
+  const qtyHint = container.querySelector("#bk-qty-hint") as HTMLElement | null;
   const resultDisplay = container.querySelector("#bk-result-display") as HTMLElement;
   const breakdownDisplay = container.querySelector("#bk-breakdown-display") as HTMLElement;
   const breakdownLines = container.querySelector("#bk-breakdown-lines") as HTMLElement;
@@ -140,6 +148,7 @@ function initBroszuryKatalogi(container: HTMLElement, ctx: ViewContext): void {
 
   let currentResult: any = null;
   let currentOptions: any = null;
+  let blockedHints: (HTMLElement | null)[] = [];
 
   const parsePositiveInt = (value: string): number | null => {
     const parsed = Number.parseInt(value, 10);
@@ -151,7 +160,10 @@ function initBroszuryKatalogi(container: HTMLElement, ctx: ViewContext): void {
     if (!qty) {
       resultDisplay.style.display = "none";
       breakdownDisplay.style.display = "none";
-      addToCartBtn.disabled = true;
+      setFieldHint(formatHint, null);
+      setFieldHint(qtyHint, "Podaj nakład, aby zobaczyć cenę.");
+      setButtonGuarded(addToCartBtn, false);
+      blockedHints = [qtyHint];
       return;
     }
 
@@ -201,7 +213,14 @@ function initBroszuryKatalogi(container: HTMLElement, ctx: ViewContext): void {
     renderBreakdownRows(breakdownLines, lines);
     breakdownDisplay.style.display = "block";
     resultDisplay.style.display = "block";
-    addToCartBtn.disabled = unitPrice <= 0;
+    const isValid = unitPrice > 0;
+    setButtonGuarded(addToCartBtn, isValid);
+    setFieldHint(qtyHint, null);
+    setFieldHint(
+      formatHint,
+      isValid ? null : "Brak ceny dla tego formatu i nakładu — skontaktuj się z nami."
+    );
+    blockedHints = isValid ? [] : [formatHint];
 
     ctx.updateLastCalculated(totalPrice, "Broszury i katalogi");
   };
@@ -214,6 +233,10 @@ function initBroszuryKatalogi(container: HTMLElement, ctx: ViewContext): void {
   });
 
   addToCartBtn.onclick = () => {
+    if (isButtonGuardDisabled(addToCartBtn)) {
+      flashFieldHints(blockedHints);
+      return;
+    }
     if (!currentResult || !currentOptions) return;
     const formatLabel = FORMAT_LABELS[currentOptions.format as FormatKey];
     const hint = `${formatLabel}, ${currentOptions.pages} stron, ${currentOptions.qty} szt.${currentOptions.express ? ", EXPRESS" : ""}`;
@@ -234,7 +257,10 @@ function initBroszuryKatalogi(container: HTMLElement, ctx: ViewContext): void {
     currentOptions = null;
     resultDisplay.style.display = "none";
     breakdownDisplay.style.display = "none";
-    addToCartBtn.disabled = true;
+    setFieldHint(formatHint, null);
+    setFieldHint(qtyHint, "Podaj nakład, aby zobaczyć cenę.");
+    setButtonGuarded(addToCartBtn, false);
+    blockedHints = [qtyHint];
     container.dispatchEvent(new CustomEvent("view:reset"));
   };
 }

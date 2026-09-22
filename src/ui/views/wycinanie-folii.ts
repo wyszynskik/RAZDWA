@@ -4,6 +4,12 @@ import { calculateWycinanieFolii, WycinanieFoliiOptions } from "../../categories
 import { formatPLN } from "../../core/money";
 import { getPrice } from "../../services/priceService";
 import { resolveStoredPrice } from "../../core/compat";
+import {
+  setFieldHint,
+  flashFieldHints,
+  setButtonGuarded,
+  isButtonGuardDisabled,
+} from "../viewHelpers";
 
 export const WycinanieFoliiView: View = {
   id: "wycinanie-folii",
@@ -32,6 +38,7 @@ export const WycinanieFoliiView: View = {
       ".wf-foil-type"
     ) as NodeListOf<HTMLInputElement>;
     const addBtn = container.querySelector("#wf-add-to-cart") as HTMLButtonElement;
+    const colorHintEl = container.querySelector("#wf-color-hint") as HTMLElement | null;
 
     const resultEl = container.querySelector("#wfResult") as HTMLElement;
     const breakdownDisplay = container.querySelector("#wfBreakdownHint") as HTMLElement;
@@ -99,6 +106,7 @@ export const WycinanieFoliiView: View = {
 
     let currentOptions: (WycinanieFoliiOptions & { color?: string }) | null = null;
     let currentResult: any = null;
+    let blockedHints: (HTMLElement | null)[] = [];
 
     // Single-choice for foil type
     const enforceSingleChoiceFoilType = () => {
@@ -147,17 +155,21 @@ export const WycinanieFoliiView: View = {
 
       if (!color) {
         if (resultEl) resultEl.style.display = "none";
-        addBtn.disabled = true;
+        setFieldHint(colorHintEl, "Wybierz kolor/rodzaj folii, aby zobaczyć cenę.");
+        setButtonGuarded(addBtn, false);
+        blockedHints = [colorHintEl];
         currentResult = null;
         currentOptions = null;
         return;
       }
+      setFieldHint(colorHintEl, null);
 
       const widthMm = parseInt(widthInput.value) || 0;
       const heightMm = parseInt(heightInput.value) || 0;
       if (widthMm <= 0 || heightMm <= 0) {
         if (resultEl) resultEl.style.display = "none";
-        addBtn.disabled = true;
+        setButtonGuarded(addBtn, false);
+        blockedHints = [computedAreaInfo];
         currentResult = null;
         currentOptions = null;
         return;
@@ -194,7 +206,13 @@ export const WycinanieFoliiView: View = {
         breakdownDisplay.textContent = `${areaM2.toFixed(2)} m², przedział: ${areaM2 < 1 ? "poniżej 1 m²" : "od 1 m²"} → ${formatPLN(appliedRate)}/m²${options.express ? " × 1.20 (EXPRESS)" : ""}`;
       }
       if (resultEl) resultEl.style.display = "block";
-      addBtn.disabled = result.totalPrice <= 0;
+      const isValid = result.totalPrice > 0;
+      setButtonGuarded(addBtn, isValid);
+      setFieldHint(
+        colorHintEl,
+        isValid ? null : "Brak ceny dla tej kombinacji — skontaktuj się z nami."
+      );
+      blockedHints = isValid ? [] : [colorHintEl];
 
       currentOptions = {
         ...options,
@@ -211,6 +229,10 @@ export const WycinanieFoliiView: View = {
     });
 
     addBtn.onclick = () => {
+      if (isButtonGuardDisabled(addBtn)) {
+        flashFieldHints(blockedHints);
+        return;
+      }
       if (!currentOptions || !currentResult) return;
 
       const foilName = currentOptions.color ? `Folia ${currentOptions.color}` : "Wycinanie z folii";
@@ -236,7 +258,9 @@ export const WycinanieFoliiView: View = {
       currentResult = null;
       currentOptions = null;
       if (resultEl) resultEl.style.display = "none";
-      addBtn.disabled = true;
+      setFieldHint(colorHintEl, "Wybierz kolor/rodzaj folii, aby zobaczyć cenę.");
+      setButtonGuarded(addBtn, false);
+      blockedHints = [colorHintEl];
       container.dispatchEvent(new CustomEvent("view:reset"));
     };
   },

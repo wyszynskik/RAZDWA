@@ -10,6 +10,12 @@ import {
 } from "../../categories/ulotki-cyfrowe-jednostronne";
 import { formatPLN } from "../../core/money";
 import { resolveStoredPrice } from "../../core/compat";
+import {
+  setFieldHint,
+  flashFieldHints,
+  setButtonGuarded,
+  isButtonGuardDisabled,
+} from "../viewHelpers";
 
 const SATIN_MULTIPLIER = 1.12;
 
@@ -67,6 +73,11 @@ export const UlotkiCyfroweView: View = {
     const qtySelect = container.querySelector("#u-qty") as HTMLSelectElement;
     const paperSelect = container.querySelector("#u-paper") as HTMLSelectElement;
     const addToCartBtn = container.querySelector("#u-add-to-cart") as HTMLButtonElement;
+    const formatHint = container.querySelector("#u-format-hint") as HTMLElement | null;
+    const qtyHint = container.querySelector("#u-qty-hint") as HTMLElement | null;
+    const fallbackHint = container.querySelector(
+      "#u-add-to-cart-fallback-hint"
+    ) as HTMLElement | null;
     const resultDisplay = container.querySelector("#u-result-display") as HTMLElement;
     const breakdownDisplay = container.querySelector("#u-breakdown-display") as HTMLElement;
     const breakdownLines = container.querySelector("#u-breakdown-lines") as HTMLElement;
@@ -98,6 +109,7 @@ export const UlotkiCyfroweView: View = {
 
     let currentResult: any = null;
     let currentOptions: any = null;
+    let blockedHints: (HTMLElement | null)[] = [];
 
     const renderBreakdown = (result: any, options: any, paperVal: string) => {
       const basePrice = result.basePrice;
@@ -201,18 +213,26 @@ export const UlotkiCyfroweView: View = {
     };
 
     const performCalculation = () => {
+      setFieldHint(fallbackHint, null);
       if (!formatSelect.value) {
         resultDisplay.style.display = "none";
         if (breakdownDisplay) breakdownDisplay.style.display = "none";
-        addToCartBtn.disabled = true;
+        setFieldHint(formatHint, "Wybierz format, aby zobaczyć cenę.");
+        setFieldHint(qtyHint, null);
+        setButtonGuarded(addToCartBtn, false);
+        blockedHints = [formatHint];
         return;
       }
+      setFieldHint(formatHint, null);
       if (!qtySelect.value) {
         resultDisplay.style.display = "none";
         if (breakdownDisplay) breakdownDisplay.style.display = "none";
-        addToCartBtn.disabled = true;
+        setFieldHint(qtyHint, "Wybierz nakład, aby zobaczyć cenę.");
+        setButtonGuarded(addToCartBtn, false);
+        blockedHints = [qtyHint];
         return;
       }
+      setFieldHint(qtyHint, null);
       const sides = getSelectedSides();
       const paperVal = paperSelect.value;
       const isSatin = paperVal.startsWith("satyna");
@@ -243,21 +263,21 @@ export const UlotkiCyfroweView: View = {
         if (satinHint) satinHint.style.display = isSatin ? "block" : "none";
         renderBreakdown(currentResult, currentOptions, paperVal);
         resultDisplay.style.display = "block";
-        addToCartBtn.disabled = false;
+        setButtonGuarded(addToCartBtn, true);
+        blockedHints = [];
 
         ctx.updateLastCalculated(totalPrice, "Ulotki");
       } catch (err) {
-        addToCartBtn.disabled = true;
+        setButtonGuarded(addToCartBtn, false);
         resultDisplay.style.display = "none";
+        const msg =
+          err instanceof Error ? err.message : "Nie udało się obliczyć ceny dla wybranych opcji.";
+        setFieldHint(fallbackHint, msg);
+        blockedHints = [fallbackHint];
       }
     };
 
     autoCalc({ root: container, calc: performCalculation, cancelOn: [addToCartBtn] });
-    addToCartBtn.addEventListener("pointerdown", () => {
-      if (addToCartBtn.disabled && (!formatSelect.value || !qtySelect.value)) {
-        ctx.showToast?.("Wybierz format i nakład przed dodaniem do koszyka.", "error");
-      }
-    });
     [formatSelect, qtySelect, paperSelect, ...sidesInputs].forEach((el) => {
       el.addEventListener("change", populateTables);
     });
@@ -268,6 +288,10 @@ export const UlotkiCyfroweView: View = {
     });
 
     addToCartBtn.onclick = () => {
+      if (isButtonGuardDisabled(addToCartBtn)) {
+        flashFieldHints(blockedHints);
+        return;
+      }
       if (currentResult && currentOptions) {
         const pv = paperSelect.value;
         const paperLabel = pv.startsWith("satyna_")
@@ -299,7 +323,9 @@ export const UlotkiCyfroweView: View = {
         currentOptions = null;
         resultDisplay.style.display = "none";
         breakdownDisplay.style.display = "none";
-        addToCartBtn.disabled = true;
+        setFieldHint(formatHint, "Wybierz format, aby zobaczyć cenę.");
+        setButtonGuarded(addToCartBtn, false);
+        blockedHints = [formatHint];
         container.dispatchEvent(new CustomEvent("view:reset"));
       }
     };

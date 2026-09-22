@@ -11,6 +11,7 @@
                 <option value="a5">A5</option>
                 <option value="dl">DL</option>
             </select>
+            <div id="bk-format-hint" class="ghost-hint"></div>
         </div>
 
         <div class="form-group">
@@ -30,10 +31,11 @@
         <div class="form-group">
             <label for="bk-qty">Nakład (szt.):</label>
             <input type="number" id="bk-qty" class="form-control" placeholder="np. 100" min="1" step="1" inputmode="numeric" autocomplete="off">
+            <div id="bk-qty-hint" class="ghost-hint"></div>
         </div>
 
         <div class="form-actions">
-            <button id="bk-add-to-cart" class="btn-success" disabled>DODAJ DO KOSZYKA</button>
+            <button id="bk-add-to-cart" class="btn-success is-disabled" aria-disabled="true">DODAJ DO KOSZYKA</button>
         </div>
     </div>
 
