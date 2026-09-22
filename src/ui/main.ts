@@ -84,10 +84,7 @@ import {
   readAppliedUpdatedAt,
 } from "../services/catalogRevision";
 import { checkStartupConfig } from "../core/startGuard";
-import { categoryRegistry, eventBus } from "../bootstrap";
-import { registerBuiltinCategories } from "../domain/registerBuiltinCategories";
-
-registerBuiltinCategories(categoryRegistry);
+import { eventBus } from "../bootstrap";
 
 const cart = new Cart();
 

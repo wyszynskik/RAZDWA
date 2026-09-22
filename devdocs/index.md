@@ -10,10 +10,6 @@ Jeśli dopiero zaczynasz z projektem, przeczytaj w tej kolejności:
 
 ## 🎯 Dla deweloperów
 
-### Dodajesz nową kategorię?
-
-→ **[MIGRATION_GUIDE.md](MIGRATION_GUIDE.md)** - Krok po kroku jak dodać nową kategorię
-
 ### Chcesz zrozumieć PriceService?
 
 → **[REFACTORING_PRICE_SERVICE.md](REFACTORING_PRICE_SERVICE.md)** - Pełna dokumentacja techniczna
@@ -27,8 +23,7 @@ Jeśli dopiero zaczynasz z projektem, przeczytaj w tej kolejności:
 ```
 docs/
 ├── index.md                          # ← Ten plik (nawigacja)
-├── REFACTORING_PRICE_SERVICE.md      # Dokumentacja techniczna refaktoryzacji
-└── MIGRATION_GUIDE.md                # Przewodnik dla deweloperów
+└── REFACTORING_PRICE_SERVICE.md      # Dokumentacja techniczna refaktoryzacji
 ```
 
 ## 🔧 Narzędzia
@@ -65,7 +60,6 @@ npx tsc
 ### Rozwój
 
 - [AGENTS.md](../AGENTS.md) - Zasady i standardy
-- [MIGRATION_GUIDE.md](MIGRATION_GUIDE.md) - Jak dodać nową kategorię
 
 ### Historia zmian
 
@@ -135,10 +129,6 @@ Znormalizowane struktury JSON z cenami i progami.
 
 ## ❓ FAQ
 
-### Gdzie dodać nową kategorię?
-
-Zobacz [MIGRATION_GUIDE.md](MIGRATION_GUIDE.md) sekcja "Kroki migracji".
-
 ### Jak zmodyfikować cenę?
 
 ```typescript
@@ -164,8 +154,7 @@ Zobacz testy w `/tests/priceService.test.ts`.
 Pytania? Problemy? Sprawdź:
 
 1. FAQ w tym dokumencie
-2. [MIGRATION_GUIDE.md](MIGRATION_GUIDE.md)
-3. Issues w repozytorium
+2. Issues w repozytorium
 
 ---
 
