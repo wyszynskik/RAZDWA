@@ -4259,6 +4259,14 @@ a.employee-mode-btn {
   line-height: 1.4;
 }
 
+.add-to-cart-hint {
+  display: none;
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-top: 6px;
+  line-height: 1.4;
+}
+
 .field-error {
   display: none;
   font-size: 11px;

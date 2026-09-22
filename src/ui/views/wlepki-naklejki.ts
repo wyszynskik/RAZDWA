@@ -9,6 +9,7 @@ import { formatPLN } from "../../core/money";
 import { parseNumericInput } from "../../core/numericInput";
 import { getPrice } from "../../services/priceService";
 import { mergeStoredNumericTiers, resolveStoredPrice } from "../../core/compat";
+import { setDisabledHint } from "../viewHelpers";
 
 type BreakdownRow = {
   label: string;
@@ -84,6 +85,7 @@ export const WlepkiView: View = {
     const modifiersGroup = container.querySelector("#wlepki-modifiers-group") as HTMLElement;
     const areaInput = container.querySelector("#wlepki-area") as HTMLInputElement;
     const addBtn = container.querySelector("#btn-add-to-cart") as HTMLButtonElement;
+    const addBtnHint = container.querySelector("#btn-add-to-cart-hint") as HTMLElement | null;
     const resultDiv = container.querySelector("#wlepki-result") as HTMLElement;
     const unitPriceEl = container.querySelector("#unit-price") as HTMLElement | null;
     const basePriceEl = container.querySelector("#base-price") as HTMLElement | null;
@@ -262,12 +264,14 @@ export const WlepkiView: View = {
         if (resultDiv) resultDiv.style.display = "none";
         if (detailedBreakdownDisplay) detailedBreakdownDisplay.style.display = "none";
         addBtn.disabled = true;
+        setDisabledHint(addBtnHint, "Wybierz rozmiar naklejki, aby zobaczyć cenę.");
         return;
       }
       if (mode === "m2" && !groupSelect.value) {
         if (resultDiv) resultDiv.style.display = "none";
         if (detailedBreakdownDisplay) detailedBreakdownDisplay.style.display = "none";
         addBtn.disabled = true;
+        setDisabledHint(addBtnHint, "Wybierz rodzaj folii/materiału, aby zobaczyć cenę.");
         return;
       }
 
@@ -301,6 +305,7 @@ export const WlepkiView: View = {
             }
             if (resultDiv) resultDiv.style.display = "none";
             addBtn.disabled = true;
+            setDisabledHint(addBtnHint, "Podaj ilość sztuk (min. 1), aby zobaczyć cenę.");
             return;
           }
           sztQtyErrEl.style.display = "none";
@@ -396,6 +401,7 @@ export const WlepkiView: View = {
             }
             if (resultDiv) resultDiv.style.display = "none";
             addBtn.disabled = true;
+            setDisabledHint(addBtnHint, "Podaj powierzchnię większą niż 0, aby zobaczyć cenę.");
             return;
           }
           m2AreaErrEl.style.display = "none";
@@ -513,25 +519,21 @@ export const WlepkiView: View = {
         if (resultDiv) resultDiv.style.display = "block";
         if (detailedBreakdownDisplay) detailedBreakdownDisplay.style.display = "block";
         addBtn.disabled = false;
+        setDisabledHint(addBtnHint, null);
 
         ctx.updateLastCalculated(currentResult.totalPrice, "Wlepki");
       } catch (err) {
         if (resultDiv) resultDiv.style.display = "none";
         if (detailedBreakdownDisplay) detailedBreakdownDisplay.style.display = "none";
         addBtn.disabled = true;
+        setDisabledHint(
+          addBtnHint,
+          err instanceof Error ? err.message : "Uzupełnij wymagane opcje, aby zobaczyć cenę."
+        );
       }
     };
 
     autoCalc({ root: container, calc: calculate, cancelOn: [addBtn] });
-    addBtn.addEventListener("pointerdown", () => {
-      if (!addBtn.disabled) return;
-      const mode = modeSelect.value === "szt" ? "szt" : "m2";
-      if (mode === "szt" && !pieceTableSelect.value) {
-        ctx.showToast?.("Wybierz rozmiar naklejki przed dodaniem do koszyka.", "error");
-      } else if (mode === "m2" && !groupSelect.value) {
-        ctx.showToast?.("Wybierz rodzaj folii przed dodaniem do koszyka.", "error");
-      }
-    });
     pieceTableSelect.addEventListener("change", renderDynamicLegend);
     modeSelect.addEventListener("change", renderDynamicLegend);
     renderDynamicLegend();
@@ -616,6 +618,7 @@ export const WlepkiView: View = {
       if (resultDiv) resultDiv.style.display = "none";
       if (detailedBreakdownDisplay) detailedBreakdownDisplay.style.display = "none";
       addBtn.disabled = true;
+      setDisabledHint(addBtnHint, "Wybierz opcje, aby zobaczyć cenę.");
       container.dispatchEvent(new CustomEvent("view:reset"));
     });
   },
