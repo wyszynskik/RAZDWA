@@ -569,8 +569,10 @@ export const PlakatyA4A3View: View = {
       if (malyQty) {
         try {
           calcMalyCanon(malyQty);
-        } catch {
-          clearResult("Nie udało się obliczyć ceny — spróbuj inną ilość.");
+        } catch (err) {
+          clearResult(
+            err instanceof Error ? err.message : "Nie udało się obliczyć ceny — spróbuj inną ilość."
+          );
         }
         return;
       }
@@ -578,8 +580,10 @@ export const PlakatyA4A3View: View = {
       if (duzyQty) {
         try {
           calcDuzyCanon(duzyQty);
-        } catch {
-          clearResult("Nie udało się obliczyć ceny — spróbuj inną ilość.");
+        } catch (err) {
+          clearResult(
+            err instanceof Error ? err.message : "Nie udało się obliczyć ceny — spróbuj inną ilość."
+          );
         }
         return;
       }
