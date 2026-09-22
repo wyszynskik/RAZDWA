@@ -403,6 +403,7 @@ test.describe("Dodaj papier do kilku kategorii naraz (bulk-dodawacz)", () => {
   }) => {
     await openSettings(page);
 
+    await page.click('#multi-category-mode-tabs button[data-mode="qty"]');
     await page.fill("#bulk-paper-name", "ZZZ-E2E-Bulk-Papier");
     await page.click("#bulk-paper-category-summary");
     await page.check('.bulk-paper-category[value="dyplomy"]');
@@ -449,6 +450,7 @@ test.describe("Dodaj papier do kilku kategorii naraz (bulk-dodawacz)", () => {
   }) => {
     await openSettings(page);
 
+    await page.click('#multi-category-mode-tabs button[data-mode="qty"]');
     await page.fill("#bulk-paper-name", "ZZZ-E2E-Bulk-Niekompletny");
     await page.click("#bulk-paper-category-summary");
     await page.check('.bulk-paper-category[value="dyplomy"]');
