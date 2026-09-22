@@ -154,4 +154,49 @@ test.describe("disabled add-to-cart hint (dlaczego przycisk wyłączony)", () =>
     await page.locator("#wlepki-area").dispatchEvent("input");
     await expect(areaFoilHint).toHaveText("Wybierz kolor folii: biała albo transparentna.");
   });
+
+  test("roll-up: two independent hints (type, format) clear as each field is filled", async ({
+    page,
+  }) => {
+    await page.goto("/#/roll-up");
+    const btn = page.locator("#addToCartBtn");
+    const typeHint = page.locator("#rollUpType-hint");
+    const formatHint = page.locator("#rollUpFormat-hint");
+
+    await expect(btn).toHaveAttribute("aria-disabled", "true");
+    await expect(typeHint).toHaveText("Wybierz rodzaj, aby zobaczyć cenę.");
+    await expect(formatHint).toHaveText("Wybierz format, aby zobaczyć cenę.");
+
+    await page.locator("#rollUpType").selectOption("full");
+    await page.locator("#rollUpFormat").selectOption("85x200");
+    await page.locator("#rollUpQty").fill("2");
+    await page.locator("#rollUpQty").dispatchEvent("input");
+
+    await expect(typeHint).toHaveText("");
+    await expect(formatHint).toHaveText("");
+    await expect(btn).toHaveAttribute("aria-disabled", "false");
+  });
+
+  test("wycinanie-folii: reuses the existing computed-area info element as its dims hint, plus a checkbox-group color hint", async ({
+    page,
+  }) => {
+    await page.goto("/#/wycinanie-folii");
+    const btn = page.locator("#wf-add-to-cart");
+    const colorHint = page.locator("#wf-color-hint");
+    const areaInfo = page.locator("#wf-computed-area-info");
+
+    await expect(btn).toHaveAttribute("aria-disabled", "true");
+    await expect(colorHint).toHaveText("Wybierz kolor/rodzaj folii, aby zobaczyć cenę.");
+    await expect(areaInfo).toHaveText("Wyliczona powierzchnia: -");
+
+    await page.locator("#wf-gold").check();
+    await expect(colorHint).toHaveText("");
+
+    await page.locator("#wf-width").fill("500");
+    await page.locator("#wf-width").dispatchEvent("input");
+    await page.locator("#wf-height").fill("500");
+    await page.locator("#wf-height").dispatchEvent("input");
+
+    await expect(btn).toHaveAttribute("aria-disabled", "false");
+  });
 });

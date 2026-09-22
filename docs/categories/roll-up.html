@@ -8,6 +8,7 @@
       <option value="full">Roll-up Komplet (z kasetą)</option>
       <option value="replacement">Wymiana wkładu (klienta kaseta)</option>
     </select>
+    <div id="rollUpType-hint" class="ghost-hint"></div>
   </div>
 
   <div class="form-group">
@@ -19,15 +20,17 @@
       <option value="120x200">120 x 200 cm</option>
       <option value="150x200">150 x 200 cm</option>
     </select>
+    <div id="rollUpFormat-hint" class="ghost-hint"></div>
   </div>
 
   <div class="form-group">
     <label for="rollUpQty">Ilość (szt):</label>
     <input type="number" id="rollUpQty" min="1" step="1" placeholder="ilość" inputmode="numeric">
+    <div id="rollUpQty-hint" class="ghost-hint"></div>
   </div>
 
   <div class="form-actions">
-    <button id="addToCartBtn" class="btn-success" disabled>DODAJ DO KOSZYKA</button>
+    <button id="addToCartBtn" class="btn-success is-disabled" aria-disabled="true">DODAJ DO KOSZYKA</button>
   </div>
 
   <div id="rollUpResult" class="result-area" style="display:none; margin-top: 20px;">

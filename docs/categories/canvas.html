@@ -7,11 +7,13 @@
       <option value="framed">Płótno z oprawą</option>
       <option value="unframed">Płótno bez oprawy</option>
     </select>
+    <div id="cv-mode-hint" class="ghost-hint"></div>
   </div>
 
   <div class="row" id="cv-format-row">
     <label for="cv-format">Format:</label>
     <select id="cv-format"></select>
+    <div id="cv-format-hint" class="ghost-hint"></div>
   </div>
 
   <div class="row" id="cv-size-row" style="display:none;">
@@ -26,6 +28,7 @@
   <div class="row">
     <label for="cv-qty">Ilość (szt):</label>
     <input type="number" id="cv-qty" min="1" placeholder="ilość" inputmode="numeric">
+    <div id="cv-qty-hint" class="ghost-hint"></div>
   </div>
 
   <div id="cvResult" class="result-area" style="display:none; margin-top: 20px;">
@@ -41,7 +44,7 @@
   </div>
 
   <div class="form-actions">
-    <button id="cv-add" class="btn-success" disabled>DODAJ DO KOSZYKA</button>
+    <button id="cv-add" class="btn-success is-disabled" aria-disabled="true">DODAJ DO KOSZYKA</button>
   </div>
 
   <div class="cennik-table pricing-legend" style="margin-top: 16px;">

@@ -9,6 +9,7 @@
       <option value="A5">A5 (148x210mm)</option>
       <option value="DL">DL (99x210mm)</option>
     </select>
+    <div id="zapFormat-hint" class="ghost-hint"></div>
   </div>
 
   <div class="form-group">
@@ -29,6 +30,7 @@
     <label for="zapQty">Ilość (szt):</label>
     <input type="number" id="zapQty" min="10" step="1" placeholder="ilość" inputmode="numeric">
     <div class="hint">Tabela obejmuje nakłady od 10 do 150 szt.</div>
+    <div id="zapQty-hint" class="ghost-hint"></div>
   </div>
 
   <div class="form-group">
@@ -79,7 +81,8 @@
   </div>
 
   <div class="form-actions">
-    <button id="addToCartBtn" class="btn-success">DODAJ DO KOSZYKA</button>
+    <button id="addToCartBtn" class="btn-success is-disabled" aria-disabled="true">DODAJ DO KOSZYKA</button>
+    <div id="addToCartBtn-fallback-hint" class="ghost-hint"></div>
   </div>
 
   <div id="zapResult" class="result-display card" style="display:none; margin-top: 20px;">

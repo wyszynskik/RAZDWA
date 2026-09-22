@@ -4,6 +4,12 @@ import { calculateCanvas, CanvasOptions, CanvasResult } from "../../categories/c
 import { formatPLN } from "../../core/money";
 import { getPrice } from "../../services/priceService";
 import { resolveStoredPrice } from "../../core/compat";
+import {
+  setFieldHint,
+  flashFieldHints,
+  setButtonGuarded,
+  isButtonGuardDisabled,
+} from "../viewHelpers";
 
 export const CanvasView: View = {
   id: "canvas",
@@ -31,6 +37,9 @@ export const CanvasView: View = {
     const qtyInput = container.querySelector("#cv-qty") as HTMLInputElement;
 
     const addBtn = container.querySelector("#cv-add") as HTMLButtonElement;
+    const modeHint = container.querySelector("#cv-mode-hint") as HTMLElement | null;
+    const formatHint = container.querySelector("#cv-format-hint") as HTMLElement | null;
+    const qtyHint = container.querySelector("#cv-qty-hint") as HTMLElement | null;
 
     const resultEl = container.querySelector("#cvResult") as HTMLElement;
     const totalEl = container.querySelector("#cv-total") as HTMLElement;
@@ -52,6 +61,7 @@ export const CanvasView: View = {
 
     let currentOptions: CanvasOptions | null = null;
     let currentResult: CanvasResult | null = null;
+    let blockedHints: (HTMLElement | null)[] = [];
 
     const updateLegend = () => {
       const framedMode = data?.modes?.find((m: any) => m.id === "framed");
@@ -143,19 +153,29 @@ export const CanvasView: View = {
     };
 
     const calculate = () => {
+      setFieldHint(modeHint, null);
+      setFieldHint(formatHint, null);
+      setFieldHint(qtyHint, null);
+
       if (!modeSel.value) {
         if (resultEl) resultEl.style.display = "none";
-        addBtn.disabled = true;
+        setFieldHint(modeHint, "Wybierz tryb, aby zobaczyć cenę.");
+        setButtonGuarded(addBtn, false);
+        blockedHints = [modeHint];
         return;
       }
       if (!qtyInput.value) {
         if (resultEl) resultEl.style.display = "none";
-        addBtn.disabled = true;
+        setFieldHint(qtyHint, "Podaj ilość, aby zobaczyć cenę.");
+        setButtonGuarded(addBtn, false);
+        blockedHints = [qtyHint];
         return;
       }
       if (modeSel.value !== "m2-unframed" && !formatSel.value) {
         if (resultEl) resultEl.style.display = "none";
-        addBtn.disabled = true;
+        setFieldHint(formatHint, "Wybierz format, aby zobaczyć cenę.");
+        setButtonGuarded(addBtn, false);
+        blockedHints = [formatHint];
         return;
       }
       const options: CanvasOptions = {
@@ -171,7 +191,9 @@ export const CanvasView: View = {
 
       if (result.totalPrice <= 0) {
         if (resultEl) resultEl.style.display = "none";
-        addBtn.disabled = true;
+        setFieldHint(qtyHint, "Brak ceny dla tej kombinacji — skontaktuj się z nami.");
+        setButtonGuarded(addBtn, false);
+        blockedHints = [qtyHint];
         return;
       }
 
@@ -200,7 +222,8 @@ export const CanvasView: View = {
         breakdownLinesEl.innerHTML = lines.join("");
       }
 
-      addBtn.disabled = false;
+      setButtonGuarded(addBtn, true);
+      blockedHints = [];
       ctx.updateLastCalculated(result.totalPrice, "Canvas / P\u0142\u00F3tno");
 
       currentOptions = options;
@@ -210,11 +233,6 @@ export const CanvasView: View = {
     modeSel.onchange = syncModeUI;
 
     autoCalc({ root: container, calc: calculate, cancelOn: [addBtn] });
-    addBtn.addEventListener("pointerdown", () => {
-      if (addBtn.disabled && !modeSel.value) {
-        ctx.showToast?.("Wybierz tryb przed dodaniem do koszyka.", "error");
-      }
-    });
     updateLegend();
     ctx?.on?.("prices-updated", () => {
       updateLegend();
@@ -222,6 +240,10 @@ export const CanvasView: View = {
     });
 
     addBtn.onclick = () => {
+      if (isButtonGuardDisabled(addBtn)) {
+        flashFieldHints(blockedHints);
+        return;
+      }
       if (!currentOptions || !currentResult) return;
 
       const optionsHintParts = [
@@ -254,7 +276,9 @@ export const CanvasView: View = {
       currentOptions = null;
       if (resultEl) resultEl.style.display = "none";
       if (breakdownEl) breakdownEl.style.display = "none";
-      addBtn.disabled = true;
+      setFieldHint(modeHint, "Wybierz tryb, aby zobaczyć cenę.");
+      setButtonGuarded(addBtn, false);
+      blockedHints = [modeHint];
       container.dispatchEvent(new CustomEvent("view:reset"));
     };
 

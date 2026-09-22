@@ -7,6 +7,7 @@ import {
 } from "../../categories/vouchery";
 import { formatPLN } from "../../core/money";
 import { resolveStoredPrice } from "../../core/compat";
+import { setFieldHint, flashFieldHints, setButtonGuarded } from "../viewHelpers";
 
 type BreakdownRow = {
   label: string;
@@ -65,6 +66,10 @@ export const VoucheryView: View = {
     const envelopeTypeSelect = container.querySelector("#v-envelope-type") as HTMLSelectElement;
     const envelopeQtyInput = container.querySelector("#v-envelope-qty") as HTMLInputElement;
     const addToCartBtn = container.querySelector("#v-add-to-cart") as HTMLButtonElement;
+    const qtyHint = container.querySelector("#v-qty-hint") as HTMLElement | null;
+    const fallbackHint = container.querySelector(
+      "#v-add-to-cart-fallback-hint"
+    ) as HTMLElement | null;
     const resultDisplay = container.querySelector("#v-result-display") as HTMLElement;
     const basePriceSpan = container.querySelector("#v-base-price") as HTMLElement;
     const modifiersRow = container.querySelector("#v-modifiers-row") as HTMLElement;
@@ -216,9 +221,12 @@ export const VoucheryView: View = {
       if (!qtyInput?.value || parseInt(qtyInput.value) <= 0) {
         resultDisplay.style.display = "none";
         breakdownDisplay.style.display = "none";
-        addToCartBtn.disabled = true;
+        setFieldHint(fallbackHint, null);
+        setFieldHint(qtyHint, "Podaj ilość sztuk, aby zobaczyć cenę.");
+        setButtonGuarded(addToCartBtn, false);
         return false;
       }
+      setFieldHint(qtyHint, null);
       const sidesInput = container.querySelector(
         'input[name="v-sides"]:checked'
       ) as HTMLInputElement;
@@ -292,13 +300,17 @@ export const VoucheryView: View = {
         if (modiglianiHint) modiglianiHint.style.display = isModigliani ? "block" : "none";
         renderBreakdown(currentResult, currentOptions);
         resultDisplay.style.display = "block";
-        addToCartBtn.disabled = false;
+        setFieldHint(fallbackHint, null);
+        setButtonGuarded(addToCartBtn, true);
 
         ctx.updateLastCalculated(totalPrice, "Vouchery");
         return true;
       } catch (err) {
         resultDisplay.style.display = "none";
-        addToCartBtn.disabled = true;
+        setButtonGuarded(addToCartBtn, false);
+        const msg =
+          err instanceof Error ? err.message : "Nie udało się obliczyć ceny dla wybranych opcji.";
+        setFieldHint(fallbackHint, msg);
         return false;
       }
     };
@@ -311,7 +323,10 @@ export const VoucheryView: View = {
     });
 
     addToCartBtn.onclick = () => {
-      if (!performCalculation()) return;
+      if (!performCalculation()) {
+        flashFieldHints([qtyHint, fallbackHint]);
+        return;
+      }
       if (currentResult && currentOptions) {
         const pv = currentOptions.paper;
         const paperLabel =
@@ -346,7 +361,8 @@ export const VoucheryView: View = {
         currentOptions = null;
         resultDisplay.style.display = "none";
         breakdownDisplay.style.display = "none";
-        addToCartBtn.disabled = true;
+        setFieldHint(qtyHint, "Podaj ilość sztuk, aby zobaczyć cenę.");
+        setButtonGuarded(addToCartBtn, false);
         container.dispatchEvent(new CustomEvent("view:reset"));
       }
     };

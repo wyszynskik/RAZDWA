@@ -26,6 +26,7 @@
                 <option value="A5">A5</option>
                 <option value="DL">DL</option>
             </select>
+            <div id="u-format-hint" class="ghost-hint"></div>
         </div>
 
         <div class="form-group">
@@ -54,6 +55,7 @@
                 <option value="900">900</option>
                 <option value="1000">1000</option>
             </select>
+            <div id="u-qty-hint" class="ghost-hint"></div>
         </div>
 
         <div class="form-group">
@@ -75,7 +77,8 @@
         </div>
 
         <div class="form-actions">
-            <button id="u-add-to-cart" class="btn-success" disabled>DODAJ DO KOSZYKA</button>
+            <button id="u-add-to-cart" class="btn-success is-disabled" aria-disabled="true">DODAJ DO KOSZYKA</button>
+            <div id="u-add-to-cart-fallback-hint" class="ghost-hint"></div>
         </div>
     </div>
 

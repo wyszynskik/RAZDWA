@@ -4,6 +4,12 @@ import { calculateFoliaSzroniona } from "../../categories/folia-szroniona";
 import { formatPLN } from "../../core/money";
 import { resolveStoredPrice } from "../../core/compat";
 import { getCombinedMaterials } from "../../core/dynamicMaterials";
+import {
+  setFieldHint,
+  flashFieldHints,
+  setButtonGuarded,
+  isButtonGuardDisabled,
+} from "../viewHelpers";
 
 type BreakdownRow = {
   label: string;
@@ -65,6 +71,8 @@ export const FoliaSzronionaView: View = {
     const widthInput = container.querySelector("#fs-width") as HTMLInputElement;
     const heightInput = container.querySelector("#fs-height") as HTMLInputElement;
     const addToCartBtn = container.querySelector("#fs-add-to-cart") as HTMLButtonElement;
+    const serviceHint = container.querySelector("#fs-service-hint") as HTMLElement | null;
+    const dimsHint = container.querySelector("#fs-dims-hint") as HTMLElement | null;
     const resultDisplay = container.querySelector("#fs-result-display") as HTMLElement;
     const breakdownDisplay = container.querySelector("#fs-breakdown-display") as HTMLElement;
     const normalResult = container.querySelector("#fs-normal-result") as HTMLElement;
@@ -76,6 +84,7 @@ export const FoliaSzronionaView: View = {
 
     let currentResult: any = null;
     let currentOptions: any = null;
+    let blockedHints: (HTMLElement | null)[] = [];
 
     // Świeże na każdym wywołaniu — nigdy nie cache'ować na poziomie modułu
     // (to była przyczyna "zamrożonej" listy usług/materiałów).
@@ -156,7 +165,13 @@ export const FoliaSzronionaView: View = {
       if (!serviceSelect.value || !hasDimensions) {
         resultDisplay.style.display = "none";
         if (breakdownDisplay) breakdownDisplay.style.display = "none";
-        addToCartBtn.disabled = true;
+        setFieldHint(
+          serviceHint,
+          serviceSelect.value ? null : "Wybierz usługę, aby zobaczyć cenę."
+        );
+        setFieldHint(dimsHint, hasDimensions ? null : "Podaj wymiary, aby zobaczyć cenę.");
+        setButtonGuarded(addToCartBtn, false);
+        blockedHints = [serviceHint, dimsHint];
         currentResult = null;
         return;
       }
@@ -174,7 +189,10 @@ export const FoliaSzronionaView: View = {
       if (result.isCustom) {
         normalResult.style.display = "none";
         customQuote.style.display = "block";
-        addToCartBtn.disabled = true;
+        setFieldHint(serviceHint, "Ta usługa wymaga indywidualnej wyceny — skontaktuj się z nami.");
+        setFieldHint(dimsHint, null);
+        setButtonGuarded(addToCartBtn, false);
+        blockedHints = [serviceHint];
         ctx.updateLastCalculated(0, "Folia szroniona / OWV (wycena ind.)");
       } else {
         normalResult.style.display = "block";
@@ -202,7 +220,11 @@ export const FoliaSzronionaView: View = {
           strongValue: true,
         });
         if (breakdownDisplay) renderBreakdownRows(breakdownDisplay, lines);
-        addToCartBtn.disabled = result.tierPrice <= 0;
+        const isValid = result.tierPrice > 0;
+        setButtonGuarded(addToCartBtn, isValid);
+        setFieldHint(dimsHint, null);
+        setFieldHint(serviceHint, isValid ? null : "Brak ceny — skontaktuj się z nami.");
+        blockedHints = isValid ? [] : [serviceHint];
         ctx.updateLastCalculated(result.totalPrice, "Folia szroniona / OWV");
       }
 
@@ -212,11 +234,6 @@ export const FoliaSzronionaView: View = {
     };
 
     autoCalc({ root: container, calc: performCalculation, cancelOn: [addToCartBtn] });
-    addToCartBtn.addEventListener("pointerdown", () => {
-      if (addToCartBtn.disabled && !serviceSelect.value) {
-        ctx.showToast?.("Wybierz usługę przed dodaniem do koszyka.", "error");
-      }
-    });
     populateServiceSelect();
     ensureLegend();
     serviceSelect.addEventListener("change", ensureLegend);
@@ -227,6 +244,10 @@ export const FoliaSzronionaView: View = {
     });
 
     addToCartBtn.onclick = () => {
+      if (isButtonGuardDisabled(addToCartBtn)) {
+        flashFieldHints(blockedHints);
+        return;
+      }
       if (currentResult && currentOptions) {
         const serviceName = serviceSelect.options[serviceSelect.selectedIndex].text;
         const isOWV = currentOptions.serviceId.includes("owv");
@@ -256,7 +277,10 @@ export const FoliaSzronionaView: View = {
         currentOptions = null;
         resultDisplay.style.display = "none";
         if (breakdownDisplay) breakdownDisplay.style.display = "none";
-        addToCartBtn.disabled = true;
+        setFieldHint(serviceHint, "Wybierz usługę, aby zobaczyć cenę.");
+        setFieldHint(dimsHint, "Podaj wymiary, aby zobaczyć cenę.");
+        setButtonGuarded(addToCartBtn, false);
+        blockedHints = [serviceHint, dimsHint];
         container.dispatchEvent(new CustomEvent("view:reset"));
       }
     };

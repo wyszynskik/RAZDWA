@@ -5,6 +5,12 @@ import { formatPLN } from "../../core/money";
 import { getPrice } from "../../services/priceService";
 import { resolveStoredPrice } from "../../core/compat";
 import { parseNumericInput } from "../../core/numericInput";
+import {
+  setFieldHint,
+  flashFieldHints,
+  setButtonGuarded,
+  isButtonGuardDisabled,
+} from "../viewHelpers";
 
 type BreakdownRow = {
   label: string;
@@ -61,6 +67,9 @@ export const RollUpView: View = {
       const formatSel = container.querySelector("#rollUpFormat") as HTMLSelectElement;
       const qtyInput = container.querySelector("#rollUpQty") as HTMLInputElement;
       const addToCartBtn = container.querySelector("#addToCartBtn") as HTMLButtonElement;
+      const typeHint = container.querySelector("#rollUpType-hint") as HTMLElement | null;
+      const formatHint = container.querySelector("#rollUpFormat-hint") as HTMLElement | null;
+      const qtyHint = container.querySelector("#rollUpQty-hint") as HTMLElement | null;
       const resultArea = container.querySelector("#rollUpResult") as HTMLElement;
       const breakdownBox = container.querySelector("#rollUpBreakdown") as HTMLElement;
       const legendNote = container.querySelector("#rollup-legend-note") as HTMLElement | null;
@@ -118,21 +127,30 @@ export const RollUpView: View = {
 
       let currentOptions: RollUpOptions | null = null;
       let currentResult: ReturnType<typeof calculateRollUp> | null = null;
+      let blockedHints: (HTMLElement | null)[] = [typeHint, formatHint];
 
-      addToCartBtn.disabled = true;
+      setButtonGuarded(addToCartBtn, false);
 
       const calculate = () => {
         if (!typeSel.value || !formatSel.value) {
           resultArea.style.display = "none";
           breakdownBox.style.display = "none";
-          addToCartBtn.disabled = true;
+          setFieldHint(typeHint, typeSel.value ? null : "Wybierz rodzaj, aby zobaczyć cenę.");
+          setFieldHint(formatHint, formatSel.value ? null : "Wybierz format, aby zobaczyć cenę.");
+          setFieldHint(qtyHint, null);
+          setButtonGuarded(addToCartBtn, false);
+          blockedHints = [typeHint, formatHint];
           return;
         }
+        setFieldHint(typeHint, null);
+        setFieldHint(formatHint, null);
         const qty = parseNumericInput(qtyInput.value, { integer: true, min: 1 });
         if (qty === null) {
           resultArea.style.display = "none";
           breakdownBox.style.display = "none";
-          addToCartBtn.disabled = true;
+          setFieldHint(qtyHint, "Podaj ilość, aby zobaczyć cenę.");
+          setButtonGuarded(addToCartBtn, false);
+          blockedHints = [qtyHint];
           return;
         }
         const options: RollUpOptions = {
@@ -196,16 +214,13 @@ export const RollUpView: View = {
           result.totalPrice
         );
 
-        addToCartBtn.disabled = false;
+        setFieldHint(qtyHint, null);
+        setButtonGuarded(addToCartBtn, true);
+        blockedHints = [];
         ctx.updateLastCalculated(result.totalPrice, "Roll-up");
       };
 
       autoCalc({ root: container, calc: calculate, cancelOn: [addToCartBtn] });
-      addToCartBtn.addEventListener("pointerdown", () => {
-        if (addToCartBtn.disabled && (!typeSel.value || !formatSel.value)) {
-          ctx.showToast?.("Wybierz rodzaj i format przed dodaniem do koszyka.", "error");
-        }
-      });
 
       ctx?.on?.("prices-updated", () => {
         updateLegend();
@@ -213,6 +228,10 @@ export const RollUpView: View = {
       });
 
       addToCartBtn.addEventListener("click", () => {
+        if (isButtonGuardDisabled(addToCartBtn)) {
+          flashFieldHints(blockedHints);
+          return;
+        }
         if (!currentOptions || !currentResult) return;
 
         ctx.cart.addItem({
@@ -232,7 +251,10 @@ export const RollUpView: View = {
         currentOptions = null;
         resultArea.style.display = "none";
         breakdownBox.style.display = "none";
-        addToCartBtn.disabled = true;
+        setFieldHint(typeHint, "Wybierz rodzaj, aby zobaczyć cenę.");
+        setFieldHint(formatHint, "Wybierz format, aby zobaczyć cenę.");
+        setButtonGuarded(addToCartBtn, false);
+        blockedHints = [typeHint, formatHint];
         container.dispatchEvent(new CustomEvent("view:reset"));
       });
     } catch (err) {

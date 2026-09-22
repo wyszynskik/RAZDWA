@@ -6,6 +6,7 @@
       <option value="" disabled selected>— wybierz usługę —</option>
       <!-- Reszta opcji wypełniana przez JS -->
     </select>
+    <div id="fs-service-hint" class="ghost-hint"></div>
   </div>
 
   <div class="row">
@@ -15,10 +16,11 @@
       <span style="color: var(--muted);">×</span>
       <input type="number" id="fs-height" placeholder="Wysokość" min="1">
     </div>
+    <div id="fs-dims-hint" class="ghost-hint"></div>
   </div>
 
   <div class="form-actions">
-    <button id="fs-add-to-cart" class="btn-success" disabled>DODAJ DO KOSZYKA</button>
+    <button id="fs-add-to-cart" class="btn-success is-disabled" aria-disabled="true">DODAJ DO KOSZYKA</button>
   </div>
 
   <div id="fs-result-display" style="display:none; margin-top: 20px; padding: 14px; background: rgba(34, 197, 94, 0.1); border: 1px solid rgba(34, 197, 94, 0.3); border-radius: 12px;">
