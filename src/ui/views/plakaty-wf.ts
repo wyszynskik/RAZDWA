@@ -5,6 +5,7 @@ import { formatPLN } from "../../core/money";
 import { parseNumericInput } from "../../core/numericInput";
 import { getPrice } from "../../services/priceService";
 import { resolveStoredPrice } from "../../core/compat";
+import { setDisabledHint } from "../viewHelpers";
 
 function renderHintContent(target: HTMLElement, lines: string[]): void {
   target.replaceChildren();
@@ -58,6 +59,7 @@ export const PlakatyWFView: View = {
     const trim2QtyInput = container.querySelector("#p-trim-2-qty") as HTMLInputElement | null;
     const trim4QtyInput = container.querySelector("#p-trim-4-qty") as HTMLInputElement | null;
     const addBtn = container.querySelector("#p-add-to-cart") as HTMLButtonElement;
+    const addBtnHint = container.querySelector("#p-add-to-cart-hint") as HTMLElement | null;
     const resultBox = container.querySelector("#p-result-display") as HTMLElement;
     const breakdownBox = container.querySelector("#p-breakdown-display") as HTMLElement | null;
     const breakdownLines = container.querySelector("#p-breakdown-lines") as HTMLElement | null;
@@ -240,6 +242,7 @@ export const PlakatyWFView: View = {
         if (breakdownBox) breakdownBox.style.display = "none";
         if (breakdownLines) breakdownLines.innerHTML = "";
         addBtn.disabled = true;
+        setDisabledHint(addBtnHint, "Podaj ilość sztuk, aby zobaczyć cenę.");
         return;
       }
 
@@ -318,6 +321,12 @@ export const PlakatyWFView: View = {
 
       resultBox.style.display = "block";
       addBtn.disabled = currentResult.totalPrice <= 0;
+      setDisabledHint(
+        addBtnHint,
+        currentResult.totalPrice <= 0
+          ? "Brak ceny dla tej kombinacji — skontaktuj się z nami."
+          : null
+      );
       ctx.updateLastCalculated(currentResult.totalPrice, "Plakaty wielkoformatowe");
     };
 
@@ -400,6 +409,7 @@ export const PlakatyWFView: View = {
       resultBox.style.display = "none";
       if (breakdownBox) breakdownBox.style.display = "none";
       addBtn.disabled = true;
+      setDisabledHint(addBtnHint, "Podaj ilość sztuk, aby zobaczyć cenę.");
       container.dispatchEvent(new CustomEvent("view:reset"));
     };
   },

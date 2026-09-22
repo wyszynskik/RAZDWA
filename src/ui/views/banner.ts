@@ -5,6 +5,7 @@ import { formatPLN } from "../../core/money";
 import { getPrice } from "../../services/priceService";
 import { resolveStoredPrice } from "../../core/compat";
 import { getCombinedMaterials } from "../../core/dynamicMaterials";
+import { setDisabledHint } from "../viewHelpers";
 
 type BreakdownRow = {
   label: string;
@@ -62,6 +63,7 @@ export const BannerView: View = {
     const areaInput = container.querySelector("#b-area") as HTMLInputElement;
     const oczkowanieCheckbox = container.querySelector("#b-oczkowanie") as HTMLInputElement;
     const addToCartBtn = container.querySelector("#b-add-to-cart") as HTMLButtonElement;
+    const addToCartHint = container.querySelector("#b-add-to-cart-hint") as HTMLElement | null;
     const resultDisplay = container.querySelector("#b-result-display") as HTMLElement;
     const breakdownDisplay = container.querySelector("#b-breakdown-display") as HTMLElement;
     const breakdownLines = container.querySelector("#b-breakdown-lines") as HTMLElement;
@@ -226,6 +228,7 @@ export const BannerView: View = {
         resultDisplay.style.display = "none";
         if (breakdownDisplay) breakdownDisplay.style.display = "none";
         addToCartBtn.disabled = true;
+        setDisabledHint(addToCartHint, "Podaj szerokość i wysokość, aby zobaczyć cenę.");
         return;
       }
 
@@ -247,6 +250,12 @@ export const BannerView: View = {
       renderBreakdown(result, currentOptions);
       resultDisplay.style.display = "block";
       addToCartBtn.disabled = result.totalPrice <= 0;
+      setDisabledHint(
+        addToCartHint,
+        result.totalPrice <= 0
+          ? "Brak ceny dla tej kombinacji materiału i wymiarów — skontaktuj się z nami."
+          : null
+      );
 
       ctx.updateLastCalculated(result.totalPrice, "Banner");
     };
@@ -290,6 +299,7 @@ export const BannerView: View = {
         resultDisplay.style.display = "none";
         breakdownDisplay.style.display = "none";
         addToCartBtn.disabled = true;
+        setDisabledHint(addToCartHint, "Podaj szerokość i wysokość, aby zobaczyć cenę.");
         container.dispatchEvent(new CustomEvent("view:reset"));
       }
     };

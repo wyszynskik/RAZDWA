@@ -100,3 +100,44 @@ test.describe("UI flow", () => {
     await expect(page.locator("#d-result-display")).toBeVisible();
   });
 });
+
+test.describe("disabled add-to-cart hint (dlaczego przycisk wyłączony)", () => {
+  test("banner: hint explains missing dimensions on load, then clears once form is valid", async ({
+    page,
+  }) => {
+    await page.goto("/#/banner");
+    const addBtn = page.locator("#b-add-to-cart");
+    const hint = page.locator("#b-add-to-cart-hint");
+
+    await expect(addBtn).toBeDisabled();
+    await expect(hint).toBeVisible();
+    await expect(hint).toHaveText("Podaj szerokość i wysokość, aby zobaczyć cenę.");
+
+    await page.locator("#b-width").fill("200");
+    await page.locator("#b-width").dispatchEvent("input");
+    await page.locator("#b-height").fill("100");
+    await page.locator("#b-height").dispatchEvent("input");
+
+    await expect(addBtn).toBeEnabled();
+    await expect(hint).toBeHidden();
+  });
+
+  test("wlepki-naklejki: hint reflects the real validation message from the calc path, not a generic fallback", async ({
+    page,
+  }) => {
+    await page.goto("/#/wlepki-naklejki");
+    const addBtn = page.locator("#btn-add-to-cart");
+    const hint = page.locator("#btn-add-to-cart-hint");
+
+    await expect(addBtn).toBeDisabled();
+    await expect(hint).toBeVisible();
+    await expect(hint).toHaveText("Wybierz rodzaj folii/materiału, aby zobaczyć cenę.");
+
+    await page.locator("#wlepki-group").selectOption("wlepki_polipropylen");
+    await page.locator("#wlepki-area").fill("2");
+    await page.locator("#wlepki-area").dispatchEvent("input");
+
+    await expect(hint).toBeHidden();
+    await expect(addBtn).toBeEnabled();
+  });
+});

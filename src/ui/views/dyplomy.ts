@@ -11,6 +11,7 @@ import {
 import { formatPLN } from "../../core/money";
 import { resolveStoredPrice } from "../../core/compat";
 import { mountDynamicSubgroupContainers } from "../dynamicSubgroups";
+import { setDisabledHint } from "../viewHelpers";
 
 export const DyplomyView: View = {
   id: "dyplomy",
@@ -53,6 +54,7 @@ export const DyplomyView: View = {
       const qtyInput = container.querySelector("#dypQty") as HTMLInputElement;
       const paperSel = container.querySelector("#dypPaper") as HTMLSelectElement;
       const addToCartBtn = container.querySelector("#addToCartBtn") as HTMLButtonElement;
+      const addToCartHint = container.querySelector("#addToCartBtn-hint") as HTMLElement | null;
       const resultArea = container.querySelector("#dypResult") as HTMLElement;
       const breakdownBox = container.querySelector("#dypBreakdown") as HTMLElement;
       const legendRows = container.querySelector("#dyp-legend-rows") as HTMLElement | null;
@@ -73,6 +75,7 @@ export const DyplomyView: View = {
           resultArea.style.display = "none";
           breakdownBox.style.display = "none";
           addToCartBtn.disabled = true;
+          setDisabledHint(addToCartHint, "Podaj ilość sztuk, aby zobaczyć cenę.");
           return null;
         }
         const paperVal = paperSel.value;
@@ -159,6 +162,7 @@ export const DyplomyView: View = {
 
         resultArea.style.display = "block";
         addToCartBtn.disabled = false;
+        setDisabledHint(addToCartHint, null);
         (container.querySelector("#resUnitPrice") as HTMLElement).textContent = formatPLN(
           totalPrice / options.qty
         );
@@ -212,6 +216,9 @@ export const DyplomyView: View = {
       const ekoQtyInput = container.querySelector("#ekoQty") as HTMLInputElement;
       const ekoPaperSel = container.querySelector("#ekoPaper") as HTMLSelectElement;
       const ekoAddToCartBtn = container.querySelector("#ekoAddToCartBtn") as HTMLButtonElement;
+      const ekoAddToCartHint = container.querySelector(
+        "#ekoAddToCartBtn-hint"
+      ) as HTMLElement | null;
       const ekoResultArea = container.querySelector("#ekoResult") as HTMLElement;
       const ekoBreakdownBox = container.querySelector("#ekoBreakdown") as HTMLElement;
       const ekoLegendRows = container.querySelector("#eko-legend-rows") as HTMLElement;
@@ -233,6 +240,7 @@ export const DyplomyView: View = {
           ekoResultArea.style.display = "none";
           ekoBreakdownBox.style.display = "none";
           ekoAddToCartBtn.disabled = true;
+          setDisabledHint(ekoAddToCartHint, "Podaj ilość sztuk, aby zobaczyć cenę.");
           return null;
         }
         const format = (ekoFormatSel.value as DyplomyEkoFormat) ?? "A4";
@@ -278,6 +286,7 @@ export const DyplomyView: View = {
 
         ekoResultArea.style.display = "block";
         ekoAddToCartBtn.disabled = false;
+        setDisabledHint(ekoAddToCartHint, null);
         (container.querySelector("#ekoTotalPrice") as HTMLElement).textContent = formatPLN(
           result.totalPrice
         );
@@ -377,6 +386,7 @@ export const DyplomyView: View = {
         ekoResultArea.style.display = "none";
         if (ekoBreakdownBox) ekoBreakdownBox.style.display = "none";
         ekoAddToCartBtn.disabled = true;
+        setDisabledHint(ekoAddToCartHint, "Podaj ilość sztuk, aby zobaczyć cenę.");
         container.dispatchEvent(new CustomEvent("view:reset"));
       });
 
@@ -414,6 +424,7 @@ export const DyplomyView: View = {
         resultArea.style.display = "none";
         if (breakdownBox) breakdownBox.style.display = "none";
         addToCartBtn.disabled = true;
+        setDisabledHint(addToCartHint, "Podaj ilość sztuk, aby zobaczyć cenę.");
         container.dispatchEvent(new CustomEvent("view:reset"));
       });
     } catch (err) {

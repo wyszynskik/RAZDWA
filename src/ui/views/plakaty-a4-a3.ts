@@ -5,6 +5,7 @@ import { getPlakatyMalyCanonLegendPanels } from "../../categories/plakaty";
 import { formatPLN } from "../../core/money";
 import { getPrice } from "../../services/priceService";
 import { resolveStoredPrice } from "../../core/compat";
+import { setDisabledHint } from "../viewHelpers";
 
 const data: any = getPrice("plakaty");
 
@@ -116,6 +117,7 @@ export const PlakatyA4A3View: View = {
     ) as HTMLInputElement | null;
 
     const addBtn = container.querySelector("#pa-add-to-cart") as HTMLButtonElement;
+    const addBtnHint = container.querySelector("#pa-add-to-cart-hint") as HTMLElement | null;
     const resultBox = container.querySelector("#pa-result-area") as HTMLElement;
     const unitPriceEl = container.querySelector("#pa-unit-price") as HTMLElement;
     const totalPriceEl = container.querySelector("#pa-total-price") as HTMLElement;
@@ -361,11 +363,14 @@ export const PlakatyA4A3View: View = {
     let currentOptions: any = null;
     let activeCanonInput: "maly" | "duzy" = "maly";
 
-    const clearResult = () => {
+    const clearResult = (
+      reason: string | null = "Podaj ilość sztuk w Mały Canon lub Duży Canon."
+    ) => {
       resultBox.style.display = "none";
       const paBreakdownBox = container.querySelector<HTMLElement>("#pa-breakdown-display");
       if (paBreakdownBox) paBreakdownBox.style.display = "none";
       addBtn.disabled = true;
+      setDisabledHint(addBtnHint, reason);
       if (discountRow) discountRow.style.display = "none";
     };
 
@@ -448,6 +453,7 @@ export const PlakatyA4A3View: View = {
       if (expressHint) expressHint.style.display = "none";
       resultBox.style.display = "block";
       addBtn.disabled = false;
+      setDisabledHint(addBtnHint, null);
       ctx.updateLastCalculated(totalWithTrim, "Plakaty A4-A3 (Mały Canon)");
     };
 
@@ -540,6 +546,7 @@ export const PlakatyA4A3View: View = {
       if (expressHint) expressHint.style.display = "none";
       resultBox.style.display = "block";
       addBtn.disabled = false;
+      setDisabledHint(addBtnHint, null);
       ctx.updateLastCalculated(currentResult.totalPrice, "Plakaty A4-A3 (Duży Canon)");
     };
 
@@ -553,7 +560,7 @@ export const PlakatyA4A3View: View = {
             ? "USUŃ ILOŚĆ SZTUK Z MAŁY CANON"
             : "USUŃ ILOŚĆ SZTUK Z DUŻY CANON"
         );
-        clearResult();
+        clearResult(null);
         return;
       }
 
@@ -563,7 +570,7 @@ export const PlakatyA4A3View: View = {
         try {
           calcMalyCanon(malyQty);
         } catch {
-          clearResult();
+          clearResult("Nie udało się obliczyć ceny — spróbuj inną ilość.");
         }
         return;
       }
@@ -572,7 +579,7 @@ export const PlakatyA4A3View: View = {
         try {
           calcDuzyCanon(duzyQty);
         } catch {
-          clearResult();
+          clearResult("Nie udało się obliczyć ceny — spróbuj inną ilość.");
         }
         return;
       }
