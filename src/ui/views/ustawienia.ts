@@ -4019,10 +4019,25 @@ export const UstawieniaView: View = {
 
               <hr class="settings-divider">
 
-              <div class="settings-add-group" id="add-material-group">
+              <div class="settings-add-group" id="add-multi-category-group">
                 <div class="settings-wizard-header">
-                  <span class="settings-wizard-title">Nowy materiał (kilka kategorii naraz)</span>
+                  <span class="settings-wizard-title">Nowy produkt do kilku kategorii naraz</span>
                 </div>
+                <div class="hint" style="margin-bottom:8px;">
+                  Sposób wyceny decyduje, do jakich kategorii można dodać produkt — obie ceny nie
+                  łączą się w jednym formularzu, bo liczą się zupełnie inaczej.
+                </div>
+
+                <div class="settings-tabs" id="multi-category-mode-tabs" role="tablist">
+                  <button type="button" class="settings-tab settings-tab--active" data-mode="m2" role="tab" aria-selected="true">
+                    <span class="settings-tab-label">Cena za m² (Banner / Solwent-Plakaty / Folia szroniona)</span>
+                  </button>
+                  <button type="button" class="settings-tab" data-mode="qty" role="tab" aria-selected="false">
+                    <span class="settings-tab-label">Cena za sztukę (Dyplomy / Ulotki / Zaproszenia / Wizytówki / Plakaty)</span>
+                  </button>
+                </div>
+
+              <div class="settings-add-group" id="add-material-group" style="margin-top:12px;">
                 <div class="hint" style="margin-bottom:8px;">
                   Dodaje materiał (np. nowy papier) od razu do wybranych kategorii — pojawi się
                   w ich formularzach bez ręcznej edycji HTML.
@@ -4079,12 +4094,7 @@ export const UstawieniaView: View = {
                 <button id="btn-add-material" type="button" class="btn-success settings-action-btn">+ Dodaj materiał</button>
               </div>
 
-              <hr class="settings-divider">
-
-              <div class="settings-add-group" id="add-bulk-paper-group">
-                <div class="settings-wizard-header">
-                  <span class="settings-wizard-title">Dodaj papier do kilku kategorii naraz</span>
-                </div>
+              <div class="settings-add-group" id="add-bulk-paper-group" style="display:none; margin-top:12px;">
                 <div class="hint" style="margin-bottom:8px;">
                   Tworzy nową, niezależną podkategorię o tej samej nazwie w każdej zaznaczonej
                   kategorii — progi ilość/cena wpisujesz osobno dla każdej (nie są współdzielone).
@@ -4113,6 +4123,7 @@ export const UstawieniaView: View = {
                 <div id="bulk-paper-category-blocks"></div>
 
                 <button id="btn-add-bulk-paper" type="button" class="btn-success settings-action-btn">+ Dodaj papier do zaznaczonych kategorii</button>
+              </div>
               </div>
 
               <hr class="settings-divider">
@@ -4826,6 +4837,27 @@ export const UstawieniaView: View = {
       } else {
         addLabelInput?.focus();
       }
+    });
+
+    // ── Przełącznik "Cena za m² / Cena za sztukę" — czysto wizualny toggle
+    // nad dwoma niezależnymi formularzami poniżej. Pokazuje jeden, ukrywa
+    // drugi; nie dotyka żadnej logiki zapisu — to wyłącznie rozwiązanie
+    // problemu, że oba formularze wyglądały jak duplikat obok siebie.
+    const multiCategoryModeTabs = container.querySelectorAll<HTMLButtonElement>(
+      "#multi-category-mode-tabs .settings-tab"
+    );
+    const addMaterialGroupEl = container.querySelector<HTMLElement>("#add-material-group");
+    const addBulkPaperGroupEl = container.querySelector<HTMLElement>("#add-bulk-paper-group");
+    multiCategoryModeTabs.forEach((tab) => {
+      tab.addEventListener("click", () => {
+        const mode = tab.dataset.mode;
+        multiCategoryModeTabs.forEach((t) => {
+          t.classList.toggle("settings-tab--active", t === tab);
+          t.setAttribute("aria-selected", t === tab ? "true" : "false");
+        });
+        if (addMaterialGroupEl) addMaterialGroupEl.style.display = mode === "m2" ? "" : "none";
+        if (addBulkPaperGroupEl) addBulkPaperGroupEl.style.display = mode === "qty" ? "" : "none";
+      });
     });
 
     // ── "Dodaj materiał" — przypisanie jednego materiału do kilku kategorii ──
