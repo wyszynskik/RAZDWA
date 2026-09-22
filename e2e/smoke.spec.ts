@@ -102,24 +102,32 @@ test.describe("UI flow", () => {
 });
 
 test.describe("disabled add-to-cart hint (dlaczego przycisk wyłączony)", () => {
-  test("banner: hint explains missing dimensions on load, then clears once form is valid", async ({
+  test("banner: ghost-hint is quiet at rest, flashes red only on click-while-invalid, clears once valid", async ({
     page,
   }) => {
     await page.goto("/#/banner");
     const addBtn = page.locator("#b-add-to-cart");
-    const hint = page.locator("#b-add-to-cart-hint");
+    const areaInfo = page.locator("#b-computed-area-info");
+    const materialHint = page.locator("#b-material-hint");
 
-    await expect(addBtn).toBeDisabled();
-    await expect(hint).toBeVisible();
-    await expect(hint).toHaveText("Podaj szerokość i wysokość, aby zobaczyć cenę.");
+    await expect(addBtn).toHaveAttribute("aria-disabled", "true");
+    await expect(areaInfo).toHaveText("0,00 m² (wpisz wymiary)");
+    await expect(areaInfo).not.toHaveClass(/ghost-hint--flash/);
+
+    // force:true — Playwright's own actionability check refuses .click() on
+    // aria-disabled="true" elements; a real mouse click has no such restriction
+    // (verified separately) — the whole point of aria-disabled over native
+    // `disabled` is that real clicks still reach the button so it can react.
+    await addBtn.click({ force: true });
+    await expect(areaInfo).toHaveClass(/ghost-hint--flash/);
 
     await page.locator("#b-width").fill("200");
     await page.locator("#b-width").dispatchEvent("input");
     await page.locator("#b-height").fill("100");
     await page.locator("#b-height").dispatchEvent("input");
 
-    await expect(addBtn).toBeEnabled();
-    await expect(hint).toBeHidden();
+    await expect(addBtn).toHaveAttribute("aria-disabled", "false");
+    await expect(materialHint).toHaveText("");
   });
 
   test("wlepki-naklejki: hint reflects the real validation message from the calc path, not a generic fallback", async ({

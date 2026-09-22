@@ -12,7 +12,8 @@
   --text-primary: #003B5C;
   --text-secondary: #495057;
   --border: #8A9199;
-  
+  --ghost-hint: #97A2AC;
+
   --primary: #006494;
   --primary-hover: #004F7A;
   --primary-text: #FFFFFF;
@@ -1048,7 +1049,11 @@ body:not(.home-compact-layout):not(.settings-pricing-layout) .app-grid {
 .btn-primary:disabled,
 .btn-success:disabled,
 .btn-danger:disabled,
-.btn-secondary:disabled {
+.btn-secondary:disabled,
+.btn-primary.is-disabled,
+.btn-success.is-disabled,
+.btn-danger.is-disabled,
+.btn-secondary.is-disabled {
   opacity: 0.6;
   cursor: not-allowed;
 }
@@ -1059,7 +1064,7 @@ body:not(.home-compact-layout):not(.settings-pricing-layout) .app-grid {
   border-color: var(--primary);
   transition: background 0.2s;
 }
-.btn-primary:hover { background: var(--primary-hover); box-shadow: 0 4px 12px rgba(0, 100, 148, 0.2); }
+.btn-primary:hover:not(:disabled):not(.is-disabled) { background: var(--primary-hover); box-shadow: 0 4px 12px rgba(0, 100, 148, 0.2); }
 
 .btn-success {
   background: var(--success);
@@ -1067,7 +1072,7 @@ body:not(.home-compact-layout):not(.settings-pricing-layout) .app-grid {
   border-color: var(--success);
   transition: background 0.2s;
 }
-.btn-success:hover:not(:disabled) { background: var(--success-hover); box-shadow: 0 4px 12px rgba(43, 138, 62, 0.2); }
+.btn-success:hover:not(:disabled):not(.is-disabled) { background: var(--success-hover); box-shadow: 0 4px 12px rgba(43, 138, 62, 0.2); }
 
 .btn-danger {
   background: var(--danger);
@@ -1075,7 +1080,7 @@ body:not(.home-compact-layout):not(.settings-pricing-layout) .app-grid {
   border-color: var(--danger);
   transition: background 0.2s;
 }
-.btn-danger:hover:not(:disabled) { background: var(--danger-hover); box-shadow: 0 4px 12px rgba(201, 42, 42, 0.2); }
+.btn-danger:hover:not(:disabled):not(.is-disabled) { background: var(--danger-hover); box-shadow: 0 4px 12px rgba(201, 42, 42, 0.2); }
 
 .btn-secondary {
   background: transparent;
@@ -1083,7 +1088,7 @@ body:not(.home-compact-layout):not(.settings-pricing-layout) .app-grid {
   border-color: var(--primary);
   transition: all 0.2s;
 }
-.btn-secondary:hover:not(:disabled) { background: var(--surface-alt); box-shadow: 0 4px 12px rgba(0, 100, 148, 0.2); }
+.btn-secondary:hover:not(:disabled):not(.is-disabled) { background: var(--surface-alt); box-shadow: 0 4px 12px rgba(0, 100, 148, 0.2); }
 
 /* ===== SETTINGS VIEW ===== */
 .settings-wrap {
@@ -4259,12 +4264,31 @@ a.employee-mode-btn {
   line-height: 1.4;
 }
 
-.add-to-cart-hint {
-  display: none;
+.ghost-hint {
+  display: block;
   font-size: 12px;
-  color: var(--text-secondary);
-  margin-top: 6px;
+  color: var(--ghost-hint);
+  min-height: 16px;
+  margin-top: 4px;
   line-height: 1.4;
+  transition: color 200ms ease;
+}
+
+.ghost-hint--flash {
+  color: var(--danger);
+  animation: ghost-hint-nudge 380ms ease;
+}
+
+@keyframes ghost-hint-nudge {
+  0% { transform: translateX(0); }
+  25% { transform: translateX(-3px); }
+  55% { transform: translateX(2px); }
+  80% { transform: translateX(-1px); }
+  100% { transform: translateX(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ghost-hint--flash { animation: none; }
 }
 
 .field-error {
