@@ -1,6 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
 import {
-  setDisabledHint,
   setFieldHint,
   flashFieldHints,
   setButtonGuarded,
@@ -43,27 +42,6 @@ function makeButton(): HTMLButtonElement {
     getAttribute: (name: string) => attrs.get(name) ?? null,
   } as unknown as HTMLButtonElement;
 }
-
-describe("setDisabledHint (deprecated, still used until Faza 2 migration)", () => {
-  it("sets text and shows the hint when given a reason", () => {
-    const el = { textContent: "", style: { display: "" } } as unknown as HTMLElement;
-    setDisabledHint(el, "Podaj ilość sztuk, aby zobaczyć cenę.");
-    expect(el.textContent).toBe("Podaj ilość sztuk, aby zobaczyć cenę.");
-    expect(el.style.display).toBe("block");
-  });
-
-  it("clears text and hides the hint when reason is null", () => {
-    const el = { textContent: "", style: { display: "" } } as unknown as HTMLElement;
-    setDisabledHint(el, "some reason");
-    setDisabledHint(el, null);
-    expect(el.textContent).toBe("");
-    expect(el.style.display).toBe("none");
-  });
-
-  it("does nothing when hintEl is null", () => {
-    expect(() => setDisabledHint(null, "reason")).not.toThrow();
-  });
-});
 
 describe("setFieldHint", () => {
   it("sets textContent to the reason", () => {

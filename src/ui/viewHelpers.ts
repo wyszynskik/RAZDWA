@@ -1,13 +1,3 @@
-/**
- * @deprecated zastępowany przez setFieldHint/flashFieldHints/setButtonGuarded —
- * zostaje do czasu aż wszystkie widoki przejdą na nowy wzorzec (Faza 2).
- */
-export function setDisabledHint(hintEl: HTMLElement | null, reason: string | null): void {
-  if (!hintEl) return;
-  hintEl.textContent = reason ?? "";
-  hintEl.style.display = reason ? "block" : "none";
-}
-
 export function setFieldHint(hintEl: HTMLElement | null, reason: string | null): void {
   if (!hintEl) return;
   hintEl.textContent = reason ?? "";

@@ -5,7 +5,12 @@ import { getPlakatyMalyCanonLegendPanels } from "../../categories/plakaty";
 import { formatPLN } from "../../core/money";
 import { getPrice } from "../../services/priceService";
 import { resolveStoredPrice } from "../../core/compat";
-import { setDisabledHint } from "../viewHelpers";
+import {
+  setFieldHint,
+  flashFieldHints,
+  setButtonGuarded,
+  isButtonGuardDisabled,
+} from "../viewHelpers";
 
 const data: any = getPrice("plakaty");
 
@@ -117,7 +122,8 @@ export const PlakatyA4A3View: View = {
     ) as HTMLInputElement | null;
 
     const addBtn = container.querySelector("#pa-add-to-cart") as HTMLButtonElement;
-    const addBtnHint = container.querySelector("#pa-add-to-cart-hint") as HTMLElement | null;
+    const malyQtyHint = container.querySelector("#pa-canon-qty-hint") as HTMLElement | null;
+    const duzyQtyHint = container.querySelector("#pa-duzy-canon-qty-hint") as HTMLElement | null;
     const resultBox = container.querySelector("#pa-result-area") as HTMLElement;
     const unitPriceEl = container.querySelector("#pa-unit-price") as HTMLElement;
     const totalPriceEl = container.querySelector("#pa-total-price") as HTMLElement;
@@ -362,15 +368,28 @@ export const PlakatyA4A3View: View = {
     let currentResult: any = null;
     let currentOptions: any = null;
     let activeCanonInput: "maly" | "duzy" = "maly";
+    let blockedHints: (HTMLElement | null)[] = [];
+
+    type ClearReasonTarget = "both" | "maly" | "duzy" | "none";
 
     const clearResult = (
-      reason: string | null = "Podaj ilość sztuk w Mały Canon lub Duży Canon."
+      reason: string | null = "Podaj ilość sztuk w Mały Canon lub Duży Canon.",
+      target: ClearReasonTarget = "both"
     ) => {
       resultBox.style.display = "none";
       const paBreakdownBox = container.querySelector<HTMLElement>("#pa-breakdown-display");
       if (paBreakdownBox) paBreakdownBox.style.display = "none";
-      addBtn.disabled = true;
-      setDisabledHint(addBtnHint, reason);
+      setButtonGuarded(addBtn, false);
+      setFieldHint(malyQtyHint, target === "maly" || target === "both" ? reason : null);
+      setFieldHint(duzyQtyHint, target === "duzy" || target === "both" ? reason : null);
+      blockedHints =
+        target === "maly"
+          ? [malyQtyHint]
+          : target === "duzy"
+            ? [duzyQtyHint]
+            : target === "both"
+              ? [malyQtyHint, duzyQtyHint]
+              : [];
       if (discountRow) discountRow.style.display = "none";
     };
 
@@ -452,8 +471,10 @@ export const PlakatyA4A3View: View = {
 
       if (expressHint) expressHint.style.display = "none";
       resultBox.style.display = "block";
-      addBtn.disabled = false;
-      setDisabledHint(addBtnHint, null);
+      setButtonGuarded(addBtn, true);
+      setFieldHint(malyQtyHint, null);
+      setFieldHint(duzyQtyHint, null);
+      blockedHints = [];
       ctx.updateLastCalculated(totalWithTrim, "Plakaty A4-A3 (Mały Canon)");
     };
 
@@ -545,8 +566,10 @@ export const PlakatyA4A3View: View = {
 
       if (expressHint) expressHint.style.display = "none";
       resultBox.style.display = "block";
-      addBtn.disabled = false;
-      setDisabledHint(addBtnHint, null);
+      setButtonGuarded(addBtn, true);
+      setFieldHint(malyQtyHint, null);
+      setFieldHint(duzyQtyHint, null);
+      blockedHints = [];
       ctx.updateLastCalculated(currentResult.totalPrice, "Plakaty A4-A3 (Duży Canon)");
     };
 
@@ -560,7 +583,7 @@ export const PlakatyA4A3View: View = {
             ? "USUŃ ILOŚĆ SZTUK Z MAŁY CANON"
             : "USUŃ ILOŚĆ SZTUK Z DUŻY CANON"
         );
-        clearResult(null);
+        clearResult(null, "none");
         return;
       }
 
@@ -571,7 +594,10 @@ export const PlakatyA4A3View: View = {
           calcMalyCanon(malyQty);
         } catch (err) {
           clearResult(
-            err instanceof Error ? err.message : "Nie udało się obliczyć ceny — spróbuj inną ilość."
+            err instanceof Error
+              ? err.message
+              : "Nie udało się obliczyć ceny — spróbuj inną ilość.",
+            "maly"
           );
         }
         return;
@@ -582,7 +608,10 @@ export const PlakatyA4A3View: View = {
           calcDuzyCanon(duzyQty);
         } catch (err) {
           clearResult(
-            err instanceof Error ? err.message : "Nie udało się obliczyć ceny — spróbuj inną ilość."
+            err instanceof Error
+              ? err.message
+              : "Nie udało się obliczyć ceny — spróbuj inną ilość.",
+            "duzy"
           );
         }
         return;
@@ -657,6 +686,10 @@ export const PlakatyA4A3View: View = {
     });
 
     addBtn.onclick = () => {
+      if (isButtonGuardDisabled(addBtn)) {
+        flashFieldHints(blockedHints);
+        return;
+      }
       if (!currentResult || !currentOptions) return;
 
       if (currentOptions.type === "canon") {

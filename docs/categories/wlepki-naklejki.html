@@ -20,6 +20,7 @@
                 <option value="wlepki_polipropylen">Wlepki po obrysie - Polipropylen</option>
                 <option value="wlepki_standard_folia">Folia Biała / Transparentna (standard)</option>
             </select>
+            <div id="wlepki-group-hint" class="ghost-hint"></div>
         </div>
 
         <div class="form-group" id="wlepki-piece-group" style="display:none;">
@@ -31,6 +32,7 @@
                 <option value="plotowane-papier">Plotowane + cięte na sztuki (papier)</option>
                 <option value="plotowane-folia">Plotowane + cięte na sztuki (folia)</option>
             </select>
+            <div id="wlepki-piece-table-hint" class="ghost-hint"></div>
 
             <div id="wlepki-piece-paper-group" style="display:none; margin-top: 12px;">
                 <label>Wykończenie papieru:</label>
@@ -44,6 +46,7 @@
                         <span class="wlepki-option-text">Papier błysk</span>
                     </label>
                 </div>
+                <div id="wlepki-piece-paper-hint" class="ghost-hint"></div>
             </div>
 
             <div id="wlepki-piece-foil-group" style="display:none; margin-top: 12px;">
@@ -58,11 +61,13 @@
                         <span class="wlepki-option-text">Folia transparentna</span>
                     </label>
                 </div>
+                <div id="wlepki-piece-foil-hint" class="ghost-hint"></div>
             </div>
 
             <label for="wlepki-piece-qty">Ilość (szt):</label>
             <input type="number" id="wlepki-piece-qty" class="form-control" min="1" step="1" placeholder="ilość" inputmode="numeric">
             <small class="form-text">Dostępne progi: 1-10, 15, 20, 25, 30 szt.</small>
+            <div id="wlepki-piece-qty-hint" class="ghost-hint"></div>
         </div>
 
         <div class="form-group" id="wlepki-area-foil-group" style="display:none;">
@@ -77,6 +82,7 @@
                     <span class="wlepki-option-text">Folia transparentna</span>
                 </label>
             </div>
+            <div id="wlepki-area-foil-hint" class="ghost-hint"></div>
         </div>
 
         <div class="form-group" id="wlepki-area-foil-finish-group" style="display:none;">
@@ -91,12 +97,14 @@
                     <span class="wlepki-option-text">Błysk</span>
                 </label>
             </div>
+            <div id="wlepki-area-foil-finish-hint" class="ghost-hint"></div>
         </div>
 
         <div class="form-group" id="wlepki-area-group">
             <label for="wlepki-area">Powierzchnia (m2):</label>
             <input type="number" id="wlepki-area" class="form-control" value="1" min="0.1" step="0.1">
             <small class="form-text">Minimalnie 1m2 (minimalka).</small>
+            <div id="wlepki-area-hint" class="ghost-hint"></div>
         </div>
 
         <div class="form-group modifiers-list" id="wlepki-modifiers-group">
@@ -119,8 +127,8 @@
         </div>
 
         <div class="form-actions">
-            <button id="btn-add-to-cart" class="btn-success" disabled>DODAJ DO KOSZYKA</button>
-            <div id="btn-add-to-cart-hint" class="add-to-cart-hint" style="display:none"></div>
+            <button id="btn-add-to-cart" class="btn-success is-disabled" aria-disabled="true">DODAJ DO KOSZYKA</button>
+            <div id="btn-add-to-cart-fallback-hint" class="ghost-hint"></div>
         </div>
     </div>
 

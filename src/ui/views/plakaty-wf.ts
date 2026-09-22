@@ -5,7 +5,12 @@ import { formatPLN } from "../../core/money";
 import { parseNumericInput } from "../../core/numericInput";
 import { getPrice } from "../../services/priceService";
 import { resolveStoredPrice } from "../../core/compat";
-import { setDisabledHint } from "../viewHelpers";
+import {
+  setFieldHint,
+  flashFieldHints,
+  setButtonGuarded,
+  isButtonGuardDisabled,
+} from "../viewHelpers";
 
 function renderHintContent(target: HTMLElement, lines: string[]): void {
   target.replaceChildren();
@@ -59,7 +64,8 @@ export const PlakatyWFView: View = {
     const trim2QtyInput = container.querySelector("#p-trim-2-qty") as HTMLInputElement | null;
     const trim4QtyInput = container.querySelector("#p-trim-4-qty") as HTMLInputElement | null;
     const addBtn = container.querySelector("#p-add-to-cart") as HTMLButtonElement;
-    const addBtnHint = container.querySelector("#p-add-to-cart-hint") as HTMLElement | null;
+    const materialHint = container.querySelector("#p-material-hint") as HTMLElement | null;
+    const qtyHint = container.querySelector("#p-qty-hint") as HTMLElement | null;
     const resultBox = container.querySelector("#p-result-display") as HTMLElement;
     const breakdownBox = container.querySelector("#p-breakdown-display") as HTMLElement | null;
     const breakdownLines = container.querySelector("#p-breakdown-lines") as HTMLElement | null;
@@ -219,6 +225,7 @@ export const PlakatyWFView: View = {
 
     let currentResult: any = null;
     let currentOptions: any = null;
+    let blockedHints: (HTMLElement | null)[] = [];
 
     const getTrimSurcharge = (): number => {
       let surcharge = 0;
@@ -241,8 +248,10 @@ export const PlakatyWFView: View = {
         resultBox.style.display = "none";
         if (breakdownBox) breakdownBox.style.display = "none";
         if (breakdownLines) breakdownLines.innerHTML = "";
-        addBtn.disabled = true;
-        setDisabledHint(addBtnHint, "Podaj ilość sztuk, aby zobaczyć cenę.");
+        setFieldHint(materialHint, null);
+        setFieldHint(qtyHint, "Podaj ilość sztuk, aby zobaczyć cenę.");
+        setButtonGuarded(addBtn, false);
+        blockedHints = [qtyHint];
         return;
       }
 
@@ -320,13 +329,14 @@ export const PlakatyWFView: View = {
       if (expressHint) expressHint.style.display = ctx.expressMode ? "block" : "none";
 
       resultBox.style.display = "block";
-      addBtn.disabled = currentResult.totalPrice <= 0;
-      setDisabledHint(
-        addBtnHint,
-        currentResult.totalPrice <= 0
-          ? "Brak ceny dla tej kombinacji — skontaktuj się z nami."
-          : null
+      const isValid = currentResult.totalPrice > 0;
+      setButtonGuarded(addBtn, isValid);
+      setFieldHint(qtyHint, null);
+      setFieldHint(
+        materialHint,
+        isValid ? null : "Brak ceny dla tej kombinacji — skontaktuj się z nami."
       );
+      blockedHints = isValid ? [] : [materialHint];
       ctx.updateLastCalculated(currentResult.totalPrice, "Plakaty wielkoformatowe");
     };
 
@@ -360,6 +370,10 @@ export const PlakatyWFView: View = {
     trim4QtyInput?.addEventListener("input", calcWielkoformatowe);
 
     addBtn.onclick = () => {
+      if (isButtonGuardDisabled(addBtn)) {
+        flashFieldHints(blockedHints);
+        return;
+      }
       if (!currentResult || !currentOptions) return;
 
       const matName = materialSelect.options[materialSelect.selectedIndex].text;
@@ -408,8 +422,10 @@ export const PlakatyWFView: View = {
       currentOptions = null;
       resultBox.style.display = "none";
       if (breakdownBox) breakdownBox.style.display = "none";
-      addBtn.disabled = true;
-      setDisabledHint(addBtnHint, "Podaj ilość sztuk, aby zobaczyć cenę.");
+      setFieldHint(materialHint, null);
+      setFieldHint(qtyHint, "Podaj ilość sztuk, aby zobaczyć cenę.");
+      setButtonGuarded(addBtn, false);
+      blockedHints = [qtyHint];
       container.dispatchEvent(new CustomEvent("view:reset"));
     };
   },

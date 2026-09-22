@@ -9,7 +9,12 @@ import { formatPLN } from "../../core/money";
 import { parseNumericInput } from "../../core/numericInput";
 import { getPrice } from "../../services/priceService";
 import { mergeStoredNumericTiers, resolveStoredPrice } from "../../core/compat";
-import { setDisabledHint } from "../viewHelpers";
+import {
+  setFieldHint,
+  flashFieldHints,
+  setButtonGuarded,
+  isButtonGuardDisabled,
+} from "../viewHelpers";
 
 type BreakdownRow = {
   label: string;
@@ -85,7 +90,23 @@ export const WlepkiView: View = {
     const modifiersGroup = container.querySelector("#wlepki-modifiers-group") as HTMLElement;
     const areaInput = container.querySelector("#wlepki-area") as HTMLInputElement;
     const addBtn = container.querySelector("#btn-add-to-cart") as HTMLButtonElement;
-    const addBtnHint = container.querySelector("#btn-add-to-cart-hint") as HTMLElement | null;
+    const fallbackHint = container.querySelector(
+      "#btn-add-to-cart-fallback-hint"
+    ) as HTMLElement | null;
+    const groupHint = container.querySelector("#wlepki-group-hint") as HTMLElement | null;
+    const pieceTableHint = container.querySelector(
+      "#wlepki-piece-table-hint"
+    ) as HTMLElement | null;
+    const piecePaperHint = container.querySelector(
+      "#wlepki-piece-paper-hint"
+    ) as HTMLElement | null;
+    const pieceFoilHint = container.querySelector("#wlepki-piece-foil-hint") as HTMLElement | null;
+    const pieceQtyHint = container.querySelector("#wlepki-piece-qty-hint") as HTMLElement | null;
+    const areaFoilHint = container.querySelector("#wlepki-area-foil-hint") as HTMLElement | null;
+    const areaFoilFinishHint = container.querySelector(
+      "#wlepki-area-foil-finish-hint"
+    ) as HTMLElement | null;
+    const areaHint = container.querySelector("#wlepki-area-hint") as HTMLElement | null;
     const resultDiv = container.querySelector("#wlepki-result") as HTMLElement;
     const unitPriceEl = container.querySelector("#unit-price") as HTMLElement | null;
     const basePriceEl = container.querySelector("#base-price") as HTMLElement | null;
@@ -163,6 +184,7 @@ export const WlepkiView: View = {
           foilType?: "biala" | "transparentna";
         }
       | null = null;
+    let blockedHints: (HTMLElement | null)[] = [];
 
     const syncMode = () => {
       const mode = modeSelect.value === "szt" ? "szt" : "m2";
@@ -260,20 +282,36 @@ export const WlepkiView: View = {
     const calculate = () => {
       const mode = modeSelect.value === "szt" ? "szt" : "m2";
 
+      // Clear every structural hint up front; the checks below re-populate
+      // only the one(s) that are still actually unmet.
+      setFieldHint(pieceTableHint, null);
+      setFieldHint(groupHint, null);
+      setFieldHint(piecePaperHint, null);
+      setFieldHint(pieceFoilHint, null);
+      setFieldHint(areaFoilHint, null);
+      setFieldHint(areaFoilFinishHint, null);
+      setFieldHint(pieceQtyHint, null);
+      setFieldHint(areaHint, null);
+      setFieldHint(fallbackHint, null);
+
       if (mode === "szt" && !pieceTableSelect.value) {
         if (resultDiv) resultDiv.style.display = "none";
         if (detailedBreakdownDisplay) detailedBreakdownDisplay.style.display = "none";
-        addBtn.disabled = true;
-        setDisabledHint(addBtnHint, "Wybierz rozmiar naklejki, aby zobaczyć cenę.");
+        setFieldHint(pieceTableHint, "Wybierz rozmiar naklejki, aby zobaczyć cenę.");
+        setButtonGuarded(addBtn, false);
+        blockedHints = [pieceTableHint];
         return;
       }
       if (mode === "m2" && !groupSelect.value) {
         if (resultDiv) resultDiv.style.display = "none";
         if (detailedBreakdownDisplay) detailedBreakdownDisplay.style.display = "none";
-        addBtn.disabled = true;
-        setDisabledHint(addBtnHint, "Wybierz rodzaj folii/materiału, aby zobaczyć cenę.");
+        setFieldHint(groupHint, "Wybierz rodzaj folii/materiału, aby zobaczyć cenę.");
+        setButtonGuarded(addBtn, false);
+        blockedHints = [groupHint];
         return;
       }
+
+      let lastThrownHint: HTMLElement | null = null;
 
       try {
         if (mode === "szt") {
@@ -288,11 +326,17 @@ export const WlepkiView: View = {
             | undefined;
 
           if (selectedTable === "papier-sra3" && !paperFinish) {
-            throw new Error("Dla Papier SRA3 wybierz: mat albo błysk.");
+            const msg = "Wybierz wykończenie: mat albo błysk.";
+            setFieldHint(piecePaperHint, msg);
+            lastThrownHint = piecePaperHint;
+            throw new Error(msg);
           }
 
           if (selectedTable.includes("folia") && !foilType) {
-            throw new Error("Dla opcji foliowej wybierz: folia biała albo transparentna.");
+            const msg = "Wybierz rodzaj folii: biała albo transparentna.";
+            setFieldHint(pieceFoilHint, msg);
+            lastThrownHint = pieceFoilHint;
+            throw new Error(msg);
           }
 
           const qty = parseNumericInput(pieceQtyInput.value, { integer: true, min: 1 });
@@ -304,8 +348,9 @@ export const WlepkiView: View = {
               sztQtyErrEl.style.display = "none";
             }
             if (resultDiv) resultDiv.style.display = "none";
-            addBtn.disabled = true;
-            setDisabledHint(addBtnHint, "Podaj ilość sztuk (min. 1), aby zobaczyć cenę.");
+            setFieldHint(pieceQtyHint, "Podaj ilość sztuk (min. 1), aby zobaczyć cenę.");
+            setButtonGuarded(addBtn, false);
+            blockedHints = [pieceQtyHint];
             return;
           }
           sztQtyErrEl.style.display = "none";
@@ -379,7 +424,10 @@ export const WlepkiView: View = {
             | undefined;
 
           if (groupSelect.value.includes("folia") && !foilType) {
-            throw new Error("Dla opcji foliowej wybierz: folia biała albo transparentna.");
+            const msg = "Wybierz kolor folii: biała albo transparentna.";
+            setFieldHint(areaFoilHint, msg);
+            lastThrownHint = areaFoilHint;
+            throw new Error(msg);
           }
 
           const foilFinish = getSelectedValue(".wlepki-area-foil-finish") as
@@ -388,7 +436,10 @@ export const WlepkiView: View = {
             | undefined;
 
           if (groupSelect.value.includes("folia") && !foilFinish) {
-            throw new Error("Dla opcji foliowej wybierz wykończenie: mat albo błysk.");
+            const msg = "Wybierz wykończenie: mat albo błysk.";
+            setFieldHint(areaFoilFinishHint, msg);
+            lastThrownHint = areaFoilFinishHint;
+            throw new Error(msg);
           }
 
           const area = parseNumericInput(areaInput.value);
@@ -400,8 +451,9 @@ export const WlepkiView: View = {
               m2AreaErrEl.style.display = "none";
             }
             if (resultDiv) resultDiv.style.display = "none";
-            addBtn.disabled = true;
-            setDisabledHint(addBtnHint, "Podaj powierzchnię większą niż 0, aby zobaczyć cenę.");
+            setFieldHint(areaHint, "Podaj powierzchnię większą niż 0, aby zobaczyć cenę.");
+            setButtonGuarded(addBtn, false);
+            blockedHints = [areaHint];
             return;
           }
           m2AreaErrEl.style.display = "none";
@@ -518,18 +570,22 @@ export const WlepkiView: View = {
         totalPriceEl.textContent = formatPLN(currentResult.totalPrice);
         if (resultDiv) resultDiv.style.display = "block";
         if (detailedBreakdownDisplay) detailedBreakdownDisplay.style.display = "block";
-        addBtn.disabled = false;
-        setDisabledHint(addBtnHint, null);
+        setButtonGuarded(addBtn, true);
+        blockedHints = [];
 
         ctx.updateLastCalculated(currentResult.totalPrice, "Wlepki");
       } catch (err) {
         if (resultDiv) resultDiv.style.display = "none";
         if (detailedBreakdownDisplay) detailedBreakdownDisplay.style.display = "none";
-        addBtn.disabled = true;
-        setDisabledHint(
-          addBtnHint,
-          err instanceof Error ? err.message : "Uzupełnij wymagane opcje, aby zobaczyć cenę."
-        );
+        setButtonGuarded(addBtn, false);
+        if (lastThrownHint) {
+          blockedHints = [lastThrownHint];
+        } else {
+          const msg =
+            err instanceof Error ? err.message : "Uzupełnij wymagane opcje, aby zobaczyć cenę.";
+          setFieldHint(fallbackHint, msg);
+          blockedHints = [fallbackHint];
+        }
       }
     };
 
@@ -544,6 +600,10 @@ export const WlepkiView: View = {
     });
 
     addBtn.addEventListener("click", () => {
+      if (isButtonGuardDisabled(addBtn)) {
+        flashFieldHints(blockedHints);
+        return;
+      }
       if (!currentResult || !currentInput) return;
 
       if (currentInput.mode === "szt") {
@@ -617,8 +677,9 @@ export const WlepkiView: View = {
       currentInput = null;
       if (resultDiv) resultDiv.style.display = "none";
       if (detailedBreakdownDisplay) detailedBreakdownDisplay.style.display = "none";
-      addBtn.disabled = true;
-      setDisabledHint(addBtnHint, "Wybierz opcje, aby zobaczyć cenę.");
+      setButtonGuarded(addBtn, false);
+      setFieldHint(fallbackHint, "Wybierz opcje, aby zobaczyć cenę.");
+      blockedHints = [fallbackHint];
       container.dispatchEvent(new CustomEvent("view:reset"));
     });
   },

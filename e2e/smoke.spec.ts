@@ -130,22 +130,28 @@ test.describe("disabled add-to-cart hint (dlaczego przycisk wyłączony)", () =>
     await expect(materialHint).toHaveText("");
   });
 
-  test("wlepki-naklejki: hint reflects the real validation message from the calc path, not a generic fallback", async ({
+  test("wlepki-naklejki: checkbox-group hint sits under the relevant checkboxes and reflects the real validation message", async ({
     page,
   }) => {
     await page.goto("/#/wlepki-naklejki");
     const addBtn = page.locator("#btn-add-to-cart");
-    const hint = page.locator("#btn-add-to-cart-hint");
+    const groupHint = page.locator("#wlepki-group-hint");
+    const areaFoilHint = page.locator("#wlepki-area-foil-hint");
 
-    await expect(addBtn).toBeDisabled();
-    await expect(hint).toBeVisible();
-    await expect(hint).toHaveText("Wybierz rodzaj folii/materiału, aby zobaczyć cenę.");
+    await expect(addBtn).toHaveAttribute("aria-disabled", "true");
+    await expect(groupHint).toHaveText("Wybierz rodzaj folii/materiału, aby zobaczyć cenę.");
 
     await page.locator("#wlepki-group").selectOption("wlepki_polipropylen");
     await page.locator("#wlepki-area").fill("2");
     await page.locator("#wlepki-area").dispatchEvent("input");
 
-    await expect(hint).toBeHidden();
-    await expect(addBtn).toBeEnabled();
+    await expect(groupHint).toHaveText("");
+    await expect(addBtn).toHaveAttribute("aria-disabled", "false");
+
+    // Switching to a folia-based group surfaces the real, field-specific message
+    // under the relevant checkbox group (not a generic fallback).
+    await page.locator("#wlepki-group").selectOption("wlepki_obrys_folia");
+    await page.locator("#wlepki-area").dispatchEvent("input");
+    await expect(areaFoilHint).toHaveText("Wybierz kolor folii: biała albo transparentna.");
   });
 });
