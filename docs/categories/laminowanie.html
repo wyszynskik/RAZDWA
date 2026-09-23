@@ -332,15 +332,17 @@
         <option value="A5">A5</option>
         <option value="A6">A6</option>
       </select>
+      <div id="lam-format-hint" class="ghost-hint"></div>
     </div>
 
     <div class="row">
       <label for="lam-qty">Ilość (szt):</label>
       <input type="number" id="lam-qty" min="1" max="200" placeholder="ilość" inputmode="numeric">
+      <div id="lam-qty-hint" class="ghost-hint"></div>
     </div>
 
     <div class="form-actions">
-      <button id="lam-add-to-cart" class="btn-success" disabled>DODAJ DO KOSZYKA</button>
+      <button id="lam-add-to-cart" class="btn-success is-disabled" aria-disabled="true">DODAJ DO KOSZYKA</button>
     </div>
 
     <div id="lamResult" class="result-area" style="display:none; margin-top: 20px;">
@@ -382,6 +384,7 @@
           </label>
         </div>
       </div>
+      <div id="bind-type-hint" class="ghost-hint"></div>
     </div>
     <div class="row">
       <label>Kolor:</label>
@@ -395,17 +398,19 @@
           <span>Biały</span>
         </label>
       </div>
+      <div id="bind-color-hint" class="ghost-hint"></div>
     </div>
     <div class="row">
       <label for="bind-qty">Ilość sztuk:</label>
       <input type="number" id="bind-qty" min="1" placeholder="ilość" inputmode="numeric">
+      <div id="bind-qty-hint" class="ghost-hint"></div>
     </div>
     <div class="row">
       <label for="bind-pages">Ilość kartek:</label>
       <input type="number" id="bind-pages" value="20" min="1" placeholder="np. 50">
     </div>
     <div class="form-actions">
-      <button id="bind-add-to-cart" class="btn-success" disabled>DODAJ DO KOSZYKA</button>
+      <button id="bind-add-to-cart" class="btn-success is-disabled" aria-disabled="true">DODAJ DO KOSZYKA</button>
     </div>
     <div id="bindResult" class="result-area" style="display:none; margin-top: 20px;">
       <div class="price-line highlight">SUMA ZA WSZYSTKO: <span id="bind-total-price">0.00</span></div>
@@ -436,6 +441,7 @@
         <option value="zbijana">Zbijana</option>
         <option value="skrecana">Skręcana</option>
       </select>
+      <div id="opr-type-hint" class="ghost-hint"></div>
     </div>
     <div class="row is-hidden" id="opr-color-row">
       <label for="opr-color">Wariant / kolor:</label>
@@ -531,9 +537,10 @@
     <div class="row">
       <label for="opr-qty">Ilość sztuk:</label>
       <input type="number" id="opr-qty" min="1" placeholder="ilość" inputmode="numeric">
+      <div id="opr-qty-hint" class="ghost-hint"></div>
     </div>
     <div class="form-actions">
-      <button id="opr-add-to-cart" class="btn-success" disabled>DODAJ DO KOSZYKA</button>
+      <button id="opr-add-to-cart" class="btn-success is-disabled" aria-disabled="true">DODAJ DO KOSZYKA</button>
     </div>
     <div id="oprResult" class="result-area" style="display:none; margin-top: 20px;">
       <div class="price-line highlight">SUMA ZA WSZYSTKO: <span id="opr-total-price">0.00</span></div>
@@ -590,14 +597,16 @@
         <option value="broszurowanie">Broszurowanie / docinanie</option>
         <option value="bigowanie">Bigowanie</option>
       </select>
+      <div id="intro-service-hint" class="ghost-hint"></div>
     </div>
     <div class="row">
       <label for="intro-qty">Ilość operacji:</label>
       <input type="number" id="intro-qty" min="1" placeholder="ilość" inputmode="numeric">
+      <div id="intro-qty-hint" class="ghost-hint"></div>
     </div>
 
     <div class="form-actions">
-      <button id="intro-add-to-cart" class="btn-success" disabled>DODAJ DO KOSZYKA</button>
+      <button id="intro-add-to-cart" class="btn-success is-disabled" aria-disabled="true">DODAJ DO KOSZYKA</button>
     </div>
     <div id="introResult" class="result-area" style="display:none; margin-top: 20px;">
       <div class="price-line highlight">SUMA ZA WSZYSTKO: <span id="intro-total-price">0.00</span></div>

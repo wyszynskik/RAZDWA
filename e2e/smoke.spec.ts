@@ -199,4 +199,39 @@ test.describe("disabled add-to-cart hint (dlaczego przycisk wyłączony)", () =>
 
     await expect(btn).toHaveAttribute("aria-disabled", "false");
   });
+
+  test("laminowanie: Bindowanie tab (no hint mechanism at all before this PR) gets a quiet qty hint", async ({
+    page,
+  }) => {
+    await page.goto("/#/laminowanie");
+    await page.locator('.lam-tab-btn[data-tab="bindowanie"]').click();
+    const btn = page.locator("#bind-add-to-cart");
+    const qtyHint = page.locator("#bind-qty-hint");
+    await expect(btn).toHaveAttribute("aria-disabled", "true");
+    await expect(qtyHint).toHaveText("Podaj ilość sztuk, aby zobaczyć cenę.");
+    await page.locator("#bind-qty").fill("5");
+    await page.locator("#bind-qty").dispatchEvent("input");
+    await expect(btn).toHaveAttribute("aria-disabled", "false");
+    await expect(qtyHint).toHaveText("");
+  });
+
+  test("wizytowki: external form extends the existing #w-ext-price-err element (qty then price) instead of a duplicate mechanism", async ({
+    page,
+  }) => {
+    await page.goto("/#/wizytowki-druk-cyfrowy");
+    await page.locator("#w-family").selectOption("softtouch");
+    const extBtn = page.locator("#w-ext-add-to-cart");
+    const errEl = page.locator("#w-ext-price-err");
+    await expect(extBtn).toHaveAttribute("aria-disabled", "true");
+    await expect(errEl).toHaveText("Podaj ilość sztuk.");
+
+    await page.locator("#w-ext-qty").fill("50");
+    await page.locator("#w-ext-qty").dispatchEvent("input");
+    await expect(errEl).toHaveText("Podaj cenę za sztukę.");
+
+    await page.locator("#w-ext-price").fill("2.50");
+    await page.locator("#w-ext-price").dispatchEvent("input");
+    await expect(errEl).toHaveText("");
+    await expect(extBtn).toHaveAttribute("aria-disabled", "false");
+  });
 });

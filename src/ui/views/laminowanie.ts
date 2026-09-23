@@ -4,6 +4,12 @@ import { quoteLaminowanie, quoteIntroligatornia } from "../../categories/laminow
 import { formatPLN } from "../../core/money";
 import { resolveStoredPrice } from "../../core/compat";
 import { getPrice } from "../../services/priceService";
+import {
+  setFieldHint,
+  flashFieldHints,
+  setButtonGuarded,
+  isButtonGuardDisabled,
+} from "../viewHelpers";
 
 type BreakdownRow = {
   label: string;
@@ -632,6 +638,8 @@ export const LaminowanieView: View = {
     const formatSelect = container.querySelector("#lam-format") as HTMLSelectElement;
     const qtyInput = container.querySelector("#lam-qty") as HTMLInputElement;
     const addToCartBtn = container.querySelector("#lam-add-to-cart") as HTMLButtonElement;
+    const lamFormatHint = container.querySelector("#lam-format-hint") as HTMLElement | null;
+    const lamQtyHint = container.querySelector("#lam-qty-hint") as HTMLElement | null;
     const resultDisplay = container.querySelector("#lamResult") as HTMLElement;
     const totalPriceSpan = container.querySelector("#lam-total-price") as HTMLElement;
     const lamTierHint = container.querySelector("#lamTierHint") as HTMLElement;
@@ -640,19 +648,27 @@ export const LaminowanieView: View = {
 
     let currentResult: any = null;
     let currentOptions: any = null;
+    let lamBlockedHints: (HTMLElement | null)[] = [];
 
     const performCalculation = () => {
       const qty = parseInt(qtyInput.value);
       if (isNaN(qty) || qty <= 0) {
         if (totalPriceSpan) totalPriceSpan.innerText = "0.00 zł";
-        addToCartBtn.disabled = true;
+        setFieldHint(lamQtyHint, "Podaj ilość sztuk, aby zobaczyć cenę.");
+        setButtonGuarded(addToCartBtn, false);
+        lamBlockedHints = [lamQtyHint];
         clearCalcBreakdown();
         return;
       }
+      setFieldHint(lamQtyHint, null);
       if (!formatSelect.value) {
         if (totalPriceSpan) totalPriceSpan.innerText = "0.00 zł";
+        setFieldHint(lamFormatHint, "Wybierz format, aby zobaczyć cenę.");
+        setButtonGuarded(addToCartBtn, false);
+        lamBlockedHints = [lamFormatHint];
         return;
       }
+      setFieldHint(lamFormatHint, null);
 
       currentOptions = {
         format: formatSelect.value,
@@ -699,12 +715,22 @@ export const LaminowanieView: View = {
       }
 
       if (resultDisplay) resultDisplay.style.display = "block";
-      addToCartBtn.disabled = result.totalPrice <= 0;
+      const lamIsValid = result.totalPrice > 0;
+      setButtonGuarded(addToCartBtn, lamIsValid);
+      setFieldHint(
+        lamFormatHint,
+        lamIsValid ? null : "Brak ceny dla tej kombinacji — skontaktuj się z nami."
+      );
+      lamBlockedHints = lamIsValid ? [] : [lamFormatHint];
 
       ctx.updateLastCalculated(result.totalPrice, "Introligatornia - laminowanie");
     };
 
     addToCartBtn.onclick = () => {
+      if (isButtonGuardDisabled(addToCartBtn)) {
+        flashFieldHints(lamBlockedHints);
+        return;
+      }
       if (currentResult && currentOptions) {
         const expressLabel = currentOptions.express ? ", EXPRESS" : "";
 
@@ -725,7 +751,9 @@ export const LaminowanieView: View = {
         currentOptions = null;
         if (resultDisplay) resultDisplay.style.display = "none";
         if (lamBreakdownBox) lamBreakdownBox.style.display = "none";
-        addToCartBtn.disabled = true;
+        setFieldHint(lamQtyHint, "Podaj ilość sztuk, aby zobaczyć cenę.");
+        setButtonGuarded(addToCartBtn, false);
+        lamBlockedHints = [lamQtyHint];
         clearCalcBreakdown();
         container.dispatchEvent(new CustomEvent("view:reset"));
       }
@@ -740,6 +768,9 @@ export const LaminowanieView: View = {
     const bindQty = container.querySelector("#bind-qty") as HTMLInputElement | null;
     const bindPages = container.querySelector("#bind-pages") as HTMLInputElement | null;
     const bindAddBtn = container.querySelector("#bind-add-to-cart") as HTMLButtonElement | null;
+    const bindTypeHint = container.querySelector("#bind-type-hint") as HTMLElement | null;
+    const bindColorHint = container.querySelector("#bind-color-hint") as HTMLElement | null;
+    const bindQtyHint = container.querySelector("#bind-qty-hint") as HTMLElement | null;
     const bindResult = container.querySelector("#bindResult") as HTMLElement | null;
     const bindUnitPrice = container.querySelector("#bind-unit-price") as HTMLElement | null;
     const bindTotalPrice = container.querySelector("#bind-total-price") as HTMLElement | null;
@@ -773,6 +804,7 @@ export const LaminowanieView: View = {
       unitPrice: number;
       total: number;
     } | null = null;
+    let bindBlockedHints: (HTMLElement | null)[] = [];
 
     const recalcBind = () => {
       if (!bindQty || !bindPages) return;
@@ -781,16 +813,24 @@ export const LaminowanieView: View = {
       const selectedColor = bindColorChecks.find((c) => c.checked);
       if (!selectedType || !selectedColor) {
         if (bindResult) bindResult.style.display = "none";
-        if (bindAddBtn) bindAddBtn.disabled = true;
+        setFieldHint(bindTypeHint, selectedType ? null : "Wybierz typ bindowania.");
+        setFieldHint(bindColorHint, selectedColor ? null : "Wybierz kolor.");
+        if (bindAddBtn) setButtonGuarded(bindAddBtn, false);
+        bindBlockedHints = [bindTypeHint, bindColorHint];
         clearCalcBreakdown();
         return;
       }
+      setFieldHint(bindTypeHint, null);
+      setFieldHint(bindColorHint, null);
       if (!bindQty.value) {
         if (bindResult) bindResult.style.display = "none";
-        if (bindAddBtn) bindAddBtn.disabled = true;
+        setFieldHint(bindQtyHint, "Podaj ilość sztuk, aby zobaczyć cenę.");
+        if (bindAddBtn) setButtonGuarded(bindAddBtn, false);
+        bindBlockedHints = [bindQtyHint];
         clearCalcBreakdown();
         return;
       }
+      setFieldHint(bindQtyHint, null);
 
       const type = (selectedType.dataset.type === "metal" ? "metal" : "plastik") as
         | "plastik"
@@ -811,7 +851,13 @@ export const LaminowanieView: View = {
       if (bindTierHint)
         bindTierHint.innerText = `Liczone: ${qty} szt. × ${formatPLN(unitPrice)}${ctx.expressMode ? " + EXPRESS 20%" : ""}.`;
       if (bindResult) bindResult.style.display = "block";
-      if (bindAddBtn) bindAddBtn.disabled = total <= 0;
+      const bindIsValid = total > 0;
+      if (bindAddBtn) setButtonGuarded(bindAddBtn, bindIsValid);
+      setFieldHint(
+        bindQtyHint,
+        bindIsValid ? null : "Brak ceny dla tej kombinacji — skontaktuj się z nami."
+      );
+      bindBlockedHints = bindIsValid ? [] : [bindQtyHint];
 
       renderCalcBreakdown("Bindowanie", [
         `Typ: ${type} / ${subtype}`,
@@ -855,6 +901,10 @@ export const LaminowanieView: View = {
     };
 
     bindAddBtn?.addEventListener("click", () => {
+      if (bindAddBtn && isButtonGuardDisabled(bindAddBtn)) {
+        flashFieldHints(bindBlockedHints);
+        return;
+      }
       if (!bindState) return;
 
       ctx.cart.addItem({
@@ -871,7 +921,9 @@ export const LaminowanieView: View = {
       });
 
       bindState = null;
-      if (bindAddBtn) bindAddBtn.disabled = true;
+      if (bindAddBtn) setButtonGuarded(bindAddBtn, false);
+      setFieldHint(bindQtyHint, "Podaj ilość sztuk, aby zobaczyć cenę.");
+      bindBlockedHints = [bindQtyHint];
       if (bindResult) bindResult.style.display = "none";
       if (bindBreakdown) bindBreakdown.style.display = "none";
       clearCalcBreakdown();
@@ -904,6 +956,8 @@ export const LaminowanieView: View = {
     const oprThicknessRow = container.querySelector("#opr-thickness-row") as HTMLElement | null;
     const oprThicknessCm = container.querySelector("#opr-thickness-cm") as HTMLInputElement | null;
     const oprAddBtn = container.querySelector("#opr-add-to-cart") as HTMLButtonElement | null;
+    const oprTypeHint = container.querySelector("#opr-type-hint") as HTMLElement | null;
+    const oprQtyHint = container.querySelector("#opr-qty-hint") as HTMLElement | null;
     const oprResult = container.querySelector("#oprResult") as HTMLElement | null;
     const oprUnitPrice = container.querySelector("#opr-unit-price") as HTMLElement | null;
     const oprTotalPrice = container.querySelector("#opr-total-price") as HTMLElement | null;
@@ -1118,20 +1172,28 @@ export const LaminowanieView: View = {
     oprColor?.addEventListener("change", syncOprCustomColorRow);
     syncOprRows();
 
+    let oprBlockedHints: (HTMLElement | null)[] = [];
+
     const recalcOpr = () => {
       if (!oprType || !oprFormat || !oprPages || !oprQty || !oprColor) return;
       if (!oprType.value) {
         if (oprResult) oprResult.style.display = "none";
-        if (oprAddBtn) oprAddBtn.disabled = true;
+        setFieldHint(oprTypeHint, "Wybierz typ oprawy, aby zobaczyć cenę.");
+        if (oprAddBtn) setButtonGuarded(oprAddBtn, false);
+        oprBlockedHints = [oprTypeHint];
         clearCalcBreakdown();
         return;
       }
+      setFieldHint(oprTypeHint, null);
       if (!oprQty.value) {
         if (oprResult) oprResult.style.display = "none";
-        if (oprAddBtn) oprAddBtn.disabled = true;
+        setFieldHint(oprQtyHint, "Podaj ilość sztuk, aby zobaczyć cenę.");
+        if (oprAddBtn) setButtonGuarded(oprAddBtn, false);
+        oprBlockedHints = [oprQtyHint];
         clearCalcBreakdown();
         return;
       }
+      setFieldHint(oprQtyHint, null);
       const type = (
         oprType.value === "kanałowa" ||
         oprType.value === "zaciskowa" ||
@@ -1252,7 +1314,13 @@ export const LaminowanieView: View = {
       }
       if (oprExpressHint) oprExpressHint.style.display = ctx.expressMode ? "block" : "none";
       if (oprResult) oprResult.style.display = "block";
-      if (oprAddBtn) oprAddBtn.disabled = total <= 0;
+      const oprIsValid = total > 0;
+      if (oprAddBtn) setButtonGuarded(oprAddBtn, oprIsValid);
+      setFieldHint(
+        oprQtyHint,
+        oprIsValid ? null : "Brak ceny dla tej kombinacji — skontaktuj się z nami."
+      );
+      oprBlockedHints = oprIsValid ? [] : [oprQtyHint];
 
       const typeLabel = type === "skrecana" ? "skręcana" : type;
       const details: string[] = [
@@ -1363,6 +1431,10 @@ export const LaminowanieView: View = {
     };
 
     oprAddBtn?.addEventListener("click", () => {
+      if (oprAddBtn && isButtonGuardDisabled(oprAddBtn)) {
+        flashFieldHints(oprBlockedHints);
+        return;
+      }
       if (!oprState) return;
 
       const options: string[] = [];
@@ -1434,7 +1506,9 @@ export const LaminowanieView: View = {
       if (oprResult) oprResult.style.display = "none";
       if (oprBreakdown) oprBreakdown.style.display = "none";
       if (oprTierHint) oprTierHint.innerText = "";
-      if (oprAddBtn) oprAddBtn.disabled = true;
+      if (oprAddBtn) setButtonGuarded(oprAddBtn, false);
+      setFieldHint(oprTypeHint, "Wybierz typ oprawy, aby zobaczyć cenę.");
+      oprBlockedHints = [oprTypeHint];
       if (oprExpressHint) oprExpressHint.style.display = "none";
       clearCalcBreakdown();
       container.dispatchEvent(new CustomEvent("view:reset"));
@@ -1460,6 +1534,8 @@ export const LaminowanieView: View = {
     const introService = container.querySelector("#intro-service") as HTMLSelectElement | null;
     const introQty = container.querySelector("#intro-qty") as HTMLInputElement | null;
     const introAddBtn = container.querySelector("#intro-add-to-cart") as HTMLButtonElement | null;
+    const introServiceHint = container.querySelector("#intro-service-hint") as HTMLElement | null;
+    const introQtyHint = container.querySelector("#intro-qty-hint") as HTMLElement | null;
     const introResult = container.querySelector("#introResult") as HTMLElement | null;
     const introTotalPrice = container.querySelector("#intro-total-price") as HTMLElement | null;
     const introUnitPrice = container.querySelector("#intro-unit-price") as HTMLElement | null;
@@ -1484,21 +1560,28 @@ export const LaminowanieView: View = {
     }
 
     let introState: ReturnType<typeof quoteIntroligatornia> | null = null;
+    let introBlockedHints: (HTMLElement | null)[] = [];
 
     const recalcIntro = () => {
       if (!introService || !introQty) return;
       if (!introService.value) {
         if (introResult) introResult.style.display = "none";
-        if (introAddBtn) introAddBtn.disabled = true;
+        setFieldHint(introServiceHint, "Wybierz usługę, aby zobaczyć cenę.");
+        if (introAddBtn) setButtonGuarded(introAddBtn, false);
+        introBlockedHints = [introServiceHint];
         clearCalcBreakdown();
         return;
       }
+      setFieldHint(introServiceHint, null);
       if (!introQty.value) {
         if (introResult) introResult.style.display = "none";
-        if (introAddBtn) introAddBtn.disabled = true;
+        setFieldHint(introQtyHint, "Podaj ilość operacji, aby zobaczyć cenę.");
+        if (introAddBtn) setButtonGuarded(introAddBtn, false);
+        introBlockedHints = [introQtyHint];
         clearCalcBreakdown();
         return;
       }
+      setFieldHint(introQtyHint, null);
       const result = quoteIntroligatornia({
         serviceId: introService.value,
         qty: parseInt(introQty.value, 10) || 1,
@@ -1513,7 +1596,13 @@ export const LaminowanieView: View = {
       if (introTierHint)
         introTierHint.innerText = `Liczone: ${result.qty} operacji × ${formatPLN(result.totalPrice / result.qty)}.`;
       if (introExpressHint) introExpressHint.style.display = "none";
-      if (introAddBtn) introAddBtn.disabled = result.totalPrice <= 0;
+      const introIsValid = result.totalPrice > 0;
+      if (introAddBtn) setButtonGuarded(introAddBtn, introIsValid);
+      setFieldHint(
+        introQtyHint,
+        introIsValid ? null : "Brak ceny dla tej usługi — skontaktuj się z nami."
+      );
+      introBlockedHints = introIsValid ? [] : [introQtyHint];
 
       const unitPrice = parseFloat((result.totalPrice / result.qty).toFixed(2));
       if (introBreakdown && introBreakdownLines) {
@@ -1530,6 +1619,10 @@ export const LaminowanieView: View = {
     };
 
     introAddBtn?.addEventListener("click", () => {
+      if (introAddBtn && isButtonGuardDisabled(introAddBtn)) {
+        flashFieldHints(introBlockedHints);
+        return;
+      }
       if (!introState) return;
       ctx.cart.addItem({
         id: `intro-${Date.now()}`,
@@ -1545,7 +1638,9 @@ export const LaminowanieView: View = {
       });
 
       introState = null;
-      if (introAddBtn) introAddBtn.disabled = true;
+      if (introAddBtn) setButtonGuarded(introAddBtn, false);
+      setFieldHint(introServiceHint, "Wybierz usługę, aby zobaczyć cenę.");
+      introBlockedHints = [introServiceHint];
       if (introExpressHint) introExpressHint.style.display = "none";
       if (introResult) introResult.style.display = "none";
       if (introBreakdown) introBreakdown.style.display = "none";
@@ -1577,21 +1672,6 @@ export const LaminowanieView: View = {
       root: container,
       calc: recalcAll,
       cancelOn: [addToCartBtn, bindAddBtn, oprAddBtn, introAddBtn],
-    });
-    addToCartBtn.addEventListener("pointerdown", () => {
-      if (addToCartBtn.disabled && !formatSelect.value) {
-        ctx.showToast?.("Wybierz format laminowania przed dodaniem do koszyka.", "error");
-      }
-    });
-    oprAddBtn?.addEventListener("pointerdown", () => {
-      if (oprAddBtn.disabled && !oprType?.value) {
-        ctx.showToast?.("Wybierz rodzaj oprawy przed dodaniem do koszyka.", "error");
-      }
-    });
-    introAddBtn?.addEventListener("pointerdown", () => {
-      if (introAddBtn.disabled && !introService?.value) {
-        ctx.showToast?.("Wybierz usługę introligatorni przed dodaniem do koszyka.", "error");
-      }
     });
     ctx?.on?.("prices-updated", () => {
       ensureLegend(getActiveTab());
