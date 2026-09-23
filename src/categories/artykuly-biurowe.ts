@@ -152,13 +152,16 @@ function renderArticleItem(item: RenderedArticleItem): string {
   const addDisabled = !(typeof item.price === "number" && item.price > 0);
 
   return `
-    <div style="display: grid; grid-template-columns: 1fr auto auto auto; align-items: center; column-gap: 8px; padding: 5px 8px; background-color: #ffffff; border: 1px solid #e7edf5; border-radius: 6px;">
-      <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; margin: 0; min-width: 0;">
-        <span style="font-size: 0.93em; line-height: 1.2;">${escapeHtml(item.name)}</span>
-      </label>
-      <input type="number" data-qty-for="${item.id}" value="1" min="1" max="999" style="width: 54px; padding: 4px; font-size: 0.9em;" class="item-quantity">
-      <span class="item-price" data-item-id="${item.id}" data-base-price="${itemPrice}" data-has-price="${typeof item.price === "number" ? "1" : "0"}" style="font-weight: bold; color: ${priceColor}; min-width: 68px; text-align: right; font-size: 0.9em;">${priceDisplay}</span>
-      <button type="button" data-add-item-id="${item.id}" data-item-name="${escapeHtml(item.name)}" data-price="${itemPrice}" class="btn btn-success item-add-btn add-pill-btn" aria-label="Dodaj artykuł ${escapeHtml(item.name)} do koszyka" ${addDisabled ? "disabled" : ""}>+</button>
+    <div>
+      <div style="display: grid; grid-template-columns: 1fr auto auto auto; align-items: center; column-gap: 8px; padding: 5px 8px; background-color: #ffffff; border: 1px solid #e7edf5; border-radius: 6px;">
+        <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; margin: 0; min-width: 0;">
+          <span style="font-size: 0.93em; line-height: 1.2;">${escapeHtml(item.name)}</span>
+        </label>
+        <input type="number" data-qty-for="${item.id}" value="1" min="1" max="999" style="width: 54px; padding: 4px; font-size: 0.9em;" class="item-quantity">
+        <span class="item-price" data-item-id="${item.id}" data-base-price="${itemPrice}" data-has-price="${typeof item.price === "number" ? "1" : "0"}" style="font-weight: bold; color: ${priceColor}; min-width: 68px; text-align: right; font-size: 0.9em;">${priceDisplay}</span>
+        <button type="button" data-add-item-id="${item.id}" data-item-name="${escapeHtml(item.name)}" data-price="${itemPrice}" class="btn btn-success item-add-btn add-pill-btn" aria-label="Dodaj artykuł ${escapeHtml(item.name)} do koszyka" ${addDisabled ? "disabled" : ""}>+</button>
+      </div>
+      ${addDisabled ? '<small style="display:block; margin-top:3px; padding-left:4px; font-size:0.78em; color:#9aa7b2;">Brak ceny — wycena indywidualna.</small>' : ""}
     </div>
   `;
 }
