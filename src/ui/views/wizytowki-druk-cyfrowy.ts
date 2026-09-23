@@ -6,6 +6,12 @@ import { autoCalc } from "../autoCalc";
 import { getPrice } from "../../services/priceService";
 import { parseNumericInput } from "../../core/numericInput";
 import { VIPERPRINT_URL } from "../../core/external-links";
+import {
+  setFieldHint,
+  flashFieldHints,
+  setButtonGuarded,
+  isButtonGuardDisabled,
+} from "../viewHelpers";
 
 const SATIN_MULTIPLIER = 1.12;
 
@@ -68,6 +74,8 @@ export const WizytowkiView: View = {
     const qtyInput = container.querySelector("#w-qty") as HTMLInputElement;
     const qtyGroup = container.querySelector("#w-qty-group") as HTMLElement | null;
     const addToCartBtn = container.querySelector("#w-add-to-cart") as HTMLButtonElement | null;
+    const familyHint = container.querySelector("#w-family-hint") as HTMLElement | null;
+    const qtyHint = container.querySelector("#w-qty-hint") as HTMLElement | null;
     const resultDisplay = container.querySelector("#w-result-display") as HTMLElement;
     const totalPriceSpan = container.querySelector("#w-total-price") as HTMLElement;
     const breakdownDisplay = container.querySelector("#w-breakdown-display") as HTMLElement;
@@ -163,14 +171,18 @@ export const WizytowkiView: View = {
       }
       if (addToCartBtn) {
         addToCartBtn.style.display = external ? "none" : "";
-        addToCartBtn.disabled = true;
+        setButtonGuarded(addToCartBtn, false);
       }
+      setFieldHint(familyHint, family ? null : "Wybierz rodzaj, aby zobaczyć cenę.");
+      setFieldHint(qtyHint, null);
+      blockedHints = [familyHint];
       if (stdFormActions) stdFormActions.style.display = external ? "none" : "";
       if (external) {
         if (resultDisplay) resultDisplay.style.display = "none";
         if (breakdownDisplay) breakdownDisplay.style.display = "none";
         currentResult = null;
         currentOptions = null;
+        validateExtForm();
       }
     };
 
@@ -178,13 +190,21 @@ export const WizytowkiView: View = {
 
     const validateExtForm = () => {
       const qty = parseInt(extQtyInput?.value ?? "", 10);
+      const qtyValid = Number.isFinite(qty) && qty > 0;
       const price = parseNumericInput(extPriceInput?.value);
-      if (extAddToCartBtn) extAddToCartBtn.disabled = !(qty > 0 && price !== null);
+      const priceValid = price !== null;
+      if (extAddToCartBtn) setButtonGuarded(extAddToCartBtn, qtyValid && priceValid);
+
+      let message = "";
+      if (!qtyValid) {
+        message = "Podaj ilość sztuk.";
+      } else if (!priceValid) {
+        const priceRaw = (extPriceInput?.value ?? "").trim();
+        message = priceRaw !== "" ? "Podaj cenę większą niż 0." : "Podaj cenę za sztukę.";
+      }
       if (extPriceErrEl) {
-        const raw = (extPriceInput?.value ?? "").trim();
-        const showErr = raw !== "" && price === null;
-        extPriceErrEl.textContent = showErr ? "Podaj cenę większą niż 0." : "";
-        extPriceErrEl.style.display = showErr ? "" : "none";
+        extPriceErrEl.textContent = message;
+        extPriceErrEl.style.display = message ? "" : "none";
       }
     };
 
@@ -197,6 +217,10 @@ export const WizytowkiView: View = {
 
     if (extAddToCartBtn) {
       extAddToCartBtn.onclick = () => {
+        if (isButtonGuardDisabled(extAddToCartBtn)) {
+          flashFieldHints([extPriceErrEl]);
+          return;
+        }
         const family = familySelect?.value || "softtouch";
         const qty = parseInt(extQtyInput?.value || "0", 10);
         if (!qty || qty <= 0) return;
@@ -226,12 +250,13 @@ export const WizytowkiView: View = {
         });
 
         container.dispatchEvent(new CustomEvent("view:reset"));
-        if (extAddToCartBtn) extAddToCartBtn.disabled = true;
+        if (extAddToCartBtn) setButtonGuarded(extAddToCartBtn, false);
       };
     }
 
     let currentResult: any = null;
     let currentOptions: any = null;
+    let blockedHints: (HTMLElement | null)[] = [familyHint];
 
     const satinRate = resolveStoredPrice("modifier-satyna", 0.12);
     const expressRate = resolveStoredPrice("modifier-express", 0.2);
@@ -275,16 +300,22 @@ export const WizytowkiView: View = {
       if (isExternal() || !familySelect?.value) {
         if (resultDisplay) resultDisplay.style.display = "none";
         if (breakdownDisplay) breakdownDisplay.style.display = "none";
-        if (addToCartBtn) addToCartBtn.disabled = true;
+        setFieldHint(familyHint, "Wybierz rodzaj, aby zobaczyć cenę.");
+        if (addToCartBtn) setButtonGuarded(addToCartBtn, false);
+        blockedHints = [familyHint];
         return;
       }
+      setFieldHint(familyHint, null);
       const qty = parseNumericInput(qtyInput?.value, { integer: true, min: 1 });
       if (qty === null) {
         if (resultDisplay) resultDisplay.style.display = "none";
         if (breakdownDisplay) breakdownDisplay.style.display = "none";
-        if (addToCartBtn) addToCartBtn.disabled = true;
+        setFieldHint(qtyHint, "Podaj ilość sztuk, aby zobaczyć cenę.");
+        if (addToCartBtn) setButtonGuarded(addToCartBtn, false);
+        blockedHints = [qtyHint];
         return;
       }
+      setFieldHint(qtyHint, null);
 
       const paperVal = paperSelect.value;
       const isSatin = paperVal.startsWith("satyna");
@@ -313,21 +344,21 @@ export const WizytowkiView: View = {
         if (satinHint) satinHint.style.display = isSatin ? "block" : "none";
         renderBreakdown(currentResult, currentOptions, isSatin);
         if (resultDisplay) resultDisplay.style.display = "block";
-        if (addToCartBtn) addToCartBtn.disabled = false;
+        if (addToCartBtn) setButtonGuarded(addToCartBtn, true);
+        blockedHints = [];
 
         ctx.updateLastCalculated(totalPrice, "Wizytówki");
       } catch (err) {
         if (resultDisplay) resultDisplay.style.display = "none";
-        if (addToCartBtn) addToCartBtn.disabled = true;
+        if (addToCartBtn) setButtonGuarded(addToCartBtn, false);
+        const msg =
+          err instanceof Error ? err.message : "Nie udało się obliczyć ceny dla wybranych opcji.";
+        setFieldHint(qtyHint, msg);
+        blockedHints = [qtyHint];
       }
     };
 
     autoCalc({ root: container, calc: calculate, cancelOn: [addToCartBtn] });
-    addToCartBtn?.addEventListener("pointerdown", () => {
-      if (addToCartBtn.disabled && !familySelect?.value) {
-        ctx.showToast?.("Wybierz rodzaj wizytówki przed dodaniem do koszyka.", "error");
-      }
-    });
     updateLegend();
     ctx?.on?.("prices-updated", () => {
       updateLegend();
@@ -337,6 +368,10 @@ export const WizytowkiView: View = {
     if (addToCartBtn) {
       addToCartBtn.onclick = () => {
         if (isExternal()) return;
+        if (isButtonGuardDisabled(addToCartBtn)) {
+          flashFieldHints(blockedHints);
+          return;
+        }
         if (currentResult && currentOptions) {
           const pv = paperSelect.value;
           const paperLabel = pv.startsWith("satyna_")
@@ -366,7 +401,9 @@ export const WizytowkiView: View = {
           currentOptions = null;
           if (resultDisplay) resultDisplay.style.display = "none";
           if (breakdownDisplay) breakdownDisplay.style.display = "none";
-          if (addToCartBtn) addToCartBtn.disabled = true;
+          setFieldHint(qtyHint, "Podaj ilość sztuk, aby zobaczyć cenę.");
+          if (addToCartBtn) setButtonGuarded(addToCartBtn, false);
+          blockedHints = [qtyHint];
           container.dispatchEvent(new CustomEvent("view:reset"));
         }
       };
