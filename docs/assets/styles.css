@@ -4275,8 +4275,18 @@ a.employee-mode-btn {
 }
 
 .ghost-hint--flash {
-  color: var(--danger);
+  color: var(--danger) !important;
   animation: ghost-hint-nudge 380ms ease;
+}
+
+/* Two-ID specificity, unambiguously above any single-ID !important rule:
+   banner.ts and wycinanie-folii.ts reuse a pre-existing .hint element
+   (#b-computed-area-info / #wf-computed-area-info) as their flash target,
+   and "#viewContainer .hint { color: ... !important }" would otherwise win
+   the tie and leave the flash silently gray instead of red. */
+#viewContainer #b-computed-area-info.ghost-hint--flash,
+#viewContainer #wf-computed-area-info.ghost-hint--flash {
+  color: var(--danger) !important;
 }
 
 @keyframes ghost-hint-nudge {
