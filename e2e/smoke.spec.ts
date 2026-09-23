@@ -234,4 +234,27 @@ test.describe("disabled add-to-cart hint (dlaczego przycisk wyłączony)", () =>
     await expect(errEl).toHaveText("");
     await expect(extBtn).toHaveAttribute("aria-disabled", "false");
   });
+
+  test("druk-cad: qty-sheets hint quiet -> filled (length starts pre-filled with base dim) -> enabled", async ({
+    page,
+  }) => {
+    await page.goto("/#/druk-cad");
+    const btn = page.locator("#cad-add-to-cart");
+    const qtyHint = page.locator("#qty-sheets-hint");
+    const lengthHint = page.locator("#cad-length-hint");
+    await expect(btn).toHaveAttribute("aria-disabled", "true");
+    await expect(qtyHint).toHaveText("Podaj ilość arkuszy, aby zobaczyć cenę.");
+
+    await page.locator("#qty-sheets").fill("5");
+    await page.locator("#qty-sheets").dispatchEvent("input");
+    await expect(qtyHint).toHaveText("");
+    await expect(btn).toHaveAttribute("aria-disabled", "false");
+
+    // Manually clearing the pre-filled length is the only way to reach that
+    // branch in practice -- confirms the hint is real, not dead code.
+    await page.locator("#cad-length").fill("");
+    await page.locator("#cad-length").dispatchEvent("input");
+    await expect(lengthHint).toHaveText("Podaj długość, aby zobaczyć cenę.");
+    await expect(btn).toHaveAttribute("aria-disabled", "true");
+  });
 });

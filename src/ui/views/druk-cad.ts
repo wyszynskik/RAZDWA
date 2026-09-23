@@ -5,6 +5,12 @@ import { quoteCadFold, quoteCadWfScan } from "../../categories/cad-ops";
 import { formatPLN } from "../../core/money";
 import { getPrice } from "../../services/priceService";
 import { resolveStoredPrice } from "../../core/compat";
+import {
+  setFieldHint,
+  flashFieldHints,
+  setButtonGuarded,
+  isButtonGuardDisabled,
+} from "../viewHelpers";
 
 export const DrukCADView: View = {
   id: "druk-cad",
@@ -46,6 +52,8 @@ export const DrukCADView: View = {
     const scanStatus = container.querySelector("#cad-scan-status") as HTMLElement | null;
 
     const addToCartBtn = container.querySelector("#cad-add-to-cart") as HTMLButtonElement;
+    const qtySheetsHint = container.querySelector("#qty-sheets-hint") as HTMLElement | null;
+    const cadLengthHint = container.querySelector("#cad-length-hint") as HTMLElement | null;
     const resultDisplay = container.querySelector("#cad-result-display") as HTMLElement;
     const totalPriceSpan = container.querySelector("#cad-total-price") as HTMLElement | null;
     const qtyHintSpan = container.querySelector("#cad-qty-hint") as HTMLElement | null;
@@ -513,6 +521,7 @@ export const DrukCADView: View = {
 
     let currentResult: any = null;
     let currentOptions: any = null;
+    let blockedHints: (HTMLElement | null)[] = [];
 
     const resetCadScanState = () => {
       if (foldStatusTimer != null) {
@@ -540,7 +549,10 @@ export const DrukCADView: View = {
       currentResult = null;
       currentOptions = null;
       resultDisplay.style.display = "none";
-      addToCartBtn.disabled = true;
+      setFieldHint(qtySheetsHint, "Podaj ilość arkuszy, aby zobaczyć cenę.");
+      setFieldHint(cadLengthHint, null);
+      setButtonGuarded(addToCartBtn, false);
+      blockedHints = [qtySheetsHint];
       updateOptionsSummary();
       updateGrandTotal();
     };
@@ -551,7 +563,9 @@ export const DrukCADView: View = {
       calcCount++;
       if (qtySheetsInput && qtySheetsInput.value.trim() === "") {
         resultDisplay.style.display = "none";
-        addToCartBtn.disabled = true;
+        setFieldHint(qtySheetsHint, "Podaj ilość arkuszy, aby zobaczyć cenę.");
+        setButtonGuarded(addToCartBtn, false);
+        blockedHints = [qtySheetsHint];
         currentResult = null;
         updateOptionsSummary();
         updateGrandTotal();
@@ -560,21 +574,27 @@ export const DrukCADView: View = {
       const parsedQty = qtySheetsInput ? parseInt(qtySheetsInput.value, 10) : NaN;
       if (isNaN(parsedQty) || parsedQty <= 0) {
         resultDisplay.style.display = "none";
-        addToCartBtn.disabled = true;
+        setFieldHint(qtySheetsHint, "Podaj poprawną ilość arkuszy, aby zobaczyć cenę.");
+        setButtonGuarded(addToCartBtn, false);
+        blockedHints = [qtySheetsHint];
         currentResult = null;
         updateOptionsSummary();
         updateGrandTotal();
         return;
       }
+      setFieldHint(qtySheetsHint, null);
       const parsedLength = parseInt(lengthInput.value, 10);
       if (isNaN(parsedLength) || parsedLength <= 0) {
         resultDisplay.style.display = "none";
-        addToCartBtn.disabled = true;
+        setFieldHint(cadLengthHint, "Podaj długość, aby zobaczyć cenę.");
+        setButtonGuarded(addToCartBtn, false);
+        blockedHints = [cadLengthHint];
         currentResult = null;
         updateOptionsSummary();
         updateGrandTotal();
         return;
       }
+      setFieldHint(cadLengthHint, null);
 
       currentOptions = {
         mode: modeSelect.value,
@@ -600,7 +620,13 @@ export const DrukCADView: View = {
       if (totalPriceSpan) totalPriceSpan.innerText = formatPLN(result.totalPrice);
       if (expressHint) expressHint.style.display = ctx.expressMode ? "block" : "none";
       resultDisplay.style.display = "block";
-      addToCartBtn.disabled = result.totalPrice <= 0;
+      const cadIsValid = result.totalPrice > 0;
+      setButtonGuarded(addToCartBtn, cadIsValid);
+      setFieldHint(
+        cadLengthHint,
+        cadIsValid ? null : "Brak ceny dla tej kombinacji — skontaktuj się z nami."
+      );
+      blockedHints = cadIsValid ? [] : [cadLengthHint];
 
       updateOptionsSummary();
       updateGrandTotal();
@@ -620,6 +646,10 @@ export const DrukCADView: View = {
     });
 
     addToCartBtn.onclick = () => {
+      if (isButtonGuardDisabled(addToCartBtn)) {
+        flashFieldHints(blockedHints);
+        return;
+      }
       if (currentResult && currentOptions) {
         const qtyLabel = currentResult.isMeter ? "" : `${currentOptions.qty} szt, `;
         const printOptions = getPrintOptionsBreakdown(currentResult.totalPrice);
@@ -690,7 +720,9 @@ export const DrukCADView: View = {
         currentResult = null;
         currentOptions = null;
         resultDisplay.style.display = "none";
-        addToCartBtn.disabled = true;
+        setFieldHint(qtySheetsHint, "Podaj ilość arkuszy, aby zobaczyć cenę.");
+        setButtonGuarded(addToCartBtn, false);
+        blockedHints = [qtySheetsHint];
         container.dispatchEvent(new CustomEvent("view:reset"));
       }
     };

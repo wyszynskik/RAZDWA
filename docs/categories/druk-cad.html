@@ -404,6 +404,7 @@
       <input type="number" id="cad-length" placeholder="np. 1200" min="1" class="cad-length-input" aria-label="Długość (mm)">
     </div>
     <div id="cad-base-info" class="hint">Wymiar bazowy: 1292 mm</div>
+    <div id="cad-length-hint" class="ghost-hint"></div>
     <div class="cad-base-actions">
       <button id="cad-use-base" class="secondary btn-use-base cad-use-base-btn">Użyj bazowej</button>
     </div>
@@ -412,6 +413,7 @@
   <div class="row cad-qty-row" id="qty-sheets-group">
     <label for="qty-sheets">Ilość arkuszy:</label>
     <input type="number" id="qty-sheets" min="1" inputmode="numeric" placeholder="np. 1" class="cad-qty-input">
+    <div id="qty-sheets-hint" class="ghost-hint"></div>
   </div>
 
   <div class="row cad-options-group" id="cad-options-group">
@@ -508,7 +510,7 @@
   </div>
 
   <div class="form-actions cad-actions">
-    <button id="cad-add-to-cart" class="btn-success" disabled>DODAJ DO KOSZYKA</button>
+    <button id="cad-add-to-cart" class="btn-success is-disabled" aria-disabled="true">DODAJ DO KOSZYKA</button>
   </div>
 
   <div id="cad-result-display" class="cad-result-box" style="display:none">
