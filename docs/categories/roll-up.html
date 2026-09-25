@@ -15,10 +15,6 @@
     <label for="rollUpFormat">Format:</label>
     <select id="rollUpFormat">
       <option value="" disabled selected>— wybierz format —</option>
-      <option value="85x200">85 x 200 cm</option>
-      <option value="100x200">100 x 200 cm</option>
-      <option value="120x200">120 x 200 cm</option>
-      <option value="150x200">150 x 200 cm</option>
     </select>
     <div id="rollUpFormat-hint" class="ghost-hint"></div>
   </div>
@@ -50,24 +46,11 @@
       </div>
     </div>
 
-    <div class="legend-badges">
-      <span class="legend-badge"><strong>Progi:</strong> 1–5 szt. oraz 6–10 szt.</span>
-    </div>
-
     <table>
       <thead>
-        <tr>
-          <th>Format</th>
-          <th>1–5 szt. [zł/szt.]</th>
-          <th>6–10 szt. [zł/szt.]</th>
-        </tr>
+        <tr id="rollup-legend-header"></tr>
       </thead>
-      <tbody>
-        <tr><td>85 × 200 cm</td><td id="rollup-legend-85x200-1-5">290,00</td><td id="rollup-legend-85x200-6-10">275,00</td></tr>
-        <tr><td>100 × 200 cm</td><td id="rollup-legend-100x200-1-5">305,00</td><td id="rollup-legend-100x200-6-10">285,00</td></tr>
-        <tr><td>120 × 200 cm</td><td id="rollup-legend-120x200-1-5">330,00</td><td id="rollup-legend-120x200-6-10">310,00</td></tr>
-        <tr><td>150 × 200 cm</td><td id="rollup-legend-150x200-1-5">440,00</td><td id="rollup-legend-150x200-6-10">425,00</td></tr>
-      </tbody>
+      <tbody id="rollup-legend-body"></tbody>
     </table>
 
     <p class="cennik-note" id="rollup-legend-note">* Wymiana wkładu: 50,00 zł + 80,00 zł/m² wydruku (blockout z czarnym środkiem).</p>

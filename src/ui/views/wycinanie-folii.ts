@@ -1,9 +1,14 @@
-﻿import { View, ViewContext } from "../types";
+import { View, ViewContext } from "../types";
 import { autoCalc } from "../autoCalc";
-import { calculateWycinanieFolii, WycinanieFoliiOptions } from "../../categories/wycinanie-folii";
+import {
+  calculateWycinanieFolii,
+  resolveVariantRates,
+  WycinanieFoliiOptions,
+} from "../../categories/wycinanie-folii";
 import { formatPLN } from "../../core/money";
 import { getPrice } from "../../services/priceService";
-import { resolveStoredPrice } from "../../core/compat";
+import { getCombinedMaterials, type MaterialDefinition } from "../../core/dynamicMaterials";
+import { escapeHtml } from "../../core/validation";
 import {
   setFieldHint,
   flashFieldHints,
@@ -26,17 +31,9 @@ export const WycinanieFoliiView: View = {
   },
 
   initLogic(container: HTMLElement, ctx: ViewContext) {
-    const data = getPrice("wycinanieFolii") as any;
-    const defaultPrices = getPrice("defaultPrices") as any;
     const widthInput = container.querySelector("#wf-width") as HTMLInputElement;
     const heightInput = container.querySelector("#wf-height") as HTMLInputElement;
-    const colorInput = container.querySelector("#wf-color") as HTMLInputElement;
-    const goldCheck = container.querySelector("#wf-gold") as HTMLInputElement;
-    const silverCheck = container.querySelector("#wf-silver") as HTMLInputElement;
-    const customCheck = container.querySelector("#wf-custom") as HTMLInputElement;
-    const foilTypeCheckboxes = container.querySelectorAll(
-      ".wf-foil-type"
-    ) as NodeListOf<HTMLInputElement>;
+    const foilListEl = container.querySelector("#wf-foil-type-list") as HTMLElement | null;
     const addBtn = container.querySelector("#wf-add-to-cart") as HTMLButtonElement;
     const colorHintEl = container.querySelector("#wf-color-hint") as HTMLElement | null;
 
@@ -50,42 +47,61 @@ export const WycinanieFoliiView: View = {
       "#wf-computed-area-info"
     ) as HTMLElement | null;
     const legendMinEl = container.querySelector("#wf-legend-min") as HTMLElement | null;
-    const legendKolorowaBelowEl = container.querySelector(
-      "#wf-legend-kolorowa-below"
-    ) as HTMLElement | null;
-    const legendKolorowaAboveEl = container.querySelector(
-      "#wf-legend-kolorowa-above"
-    ) as HTMLElement | null;
-    const legendZlotoBelowEl = container.querySelector(
-      "#wf-legend-zloto-below"
-    ) as HTMLElement | null;
-    const legendZlotoAboveEl = container.querySelector(
-      "#wf-legend-zloto-above"
-    ) as HTMLElement | null;
+    const legendBodyEl = container.querySelector("#wf-legend-body") as HTMLElement | null;
     const legendNoteEl = container.querySelector("#wf-legend-note") as HTMLElement | null;
     const priceTiersEl = container.querySelector("#wf-price-tiers") as HTMLElement;
 
+    let materials: MaterialDefinition[] = [];
+
+    const getSelectedMaterialId = (): string | undefined =>
+      foilListEl?.querySelector<HTMLInputElement>(".wf-foil-type:checked")?.value;
+
+    const renderFoilTypeList = () => {
+      materials = getCombinedMaterials("wycinanieFolii");
+      if (!foilListEl) return;
+      const previouslySelected = getSelectedMaterialId();
+
+      foilListEl.innerHTML = materials
+        .map(
+          (m) => `
+        <label class="checkbox-label" style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+          <input type="checkbox" class="wf-foil-type" value="${escapeHtml(m.id)}" style="width: 18px; height: 18px; cursor: pointer;">
+          <span>${escapeHtml(m.name)}</span>
+        </label>`
+        )
+        .join("");
+
+      const checkboxes = foilListEl.querySelectorAll<HTMLInputElement>(".wf-foil-type");
+      checkboxes.forEach((checkbox) => {
+        checkbox.addEventListener("change", () => {
+          if (!checkbox.checked) return;
+          checkboxes.forEach((other) => {
+            if (other !== checkbox) other.checked = false;
+          });
+          calculate();
+        });
+      });
+
+      if (previouslySelected && materials.some((m) => m.id === previouslySelected)) {
+        const match = Array.from(checkboxes).find((cb) => cb.value === previouslySelected);
+        if (match) match.checked = true;
+      }
+    };
+
     const updateLegend = () => {
+      const data = getPrice("wycinanieFolii") as any;
       const minRule =
         (data?.rules ?? []).find((r: any) => r.type === "minimum" && r.unit === "pln")?.value ?? 30;
-
-      const kolorowa = (data?.variants ?? []).find((v: any) => v.id === "kolorowa");
-      const zloto = (data?.variants ?? []).find((v: any) => v.id === "zloto-srebro");
-
-      const kolorowaBelow =
-        defaultPrices?.["wycinanie-folii-kolorowa-ponizej"] ?? kolorowa?.rates?.below1m2 ?? 200;
-      const kolorowaAbove =
-        defaultPrices?.["wycinanie-folii-kolorowa"] ?? kolorowa?.rates?.aboveOrEqual1m2 ?? 125;
-      const zlotoBelow =
-        defaultPrices?.["wycinanie-folii-zloto-srebro-ponizej"] ?? zloto?.rates?.below1m2 ?? 220;
-      const zlotoAbove =
-        defaultPrices?.["wycinanie-folii-zloto-srebro"] ?? zloto?.rates?.aboveOrEqual1m2 ?? 150;
-
       if (legendMinEl) legendMinEl.innerText = `${formatPLN(minRule)} / zlecenie`;
-      if (legendKolorowaBelowEl) legendKolorowaBelowEl.innerText = `${formatPLN(kolorowaBelow)}/m²`;
-      if (legendKolorowaAboveEl) legendKolorowaAboveEl.innerText = `${formatPLN(kolorowaAbove)}/m²`;
-      if (legendZlotoBelowEl) legendZlotoBelowEl.innerText = `${formatPLN(zlotoBelow)}/m²`;
-      if (legendZlotoAboveEl) legendZlotoAboveEl.innerText = `${formatPLN(zlotoAbove)}/m²`;
+
+      if (legendBodyEl) {
+        legendBodyEl.innerHTML = materials
+          .map((m) => {
+            const { below, above } = resolveVariantRates(m);
+            return `<tr><td>${escapeHtml(m.name)}</td><td>${formatPLN(below)}/m²</td><td>${formatPLN(above)}/m²</td></tr>`;
+          })
+          .join("");
+      }
 
       if (legendNoteEl) {
         const note = (data?.notes ?? [])[0] ?? "Cena zawiera: folia + wycinanie + wybieranie";
@@ -93,43 +109,24 @@ export const WycinanieFoliiView: View = {
       }
 
       if (priceTiersEl) {
-        priceTiersEl.innerHTML = [
-          `<div>Poniżej 1 m² → ${formatPLN(kolorowaBelow)}/m² (kolorowa)</div>`,
-          `<div>Od 1 m² → ${formatPLN(kolorowaAbove)}/m² (kolorowa)</div>`,
-          `<div>Poniżej 1 m² → ${formatPLN(zlotoBelow)}/m² (złoto/srebro)</div>`,
-          `<div>Od 1 m² → ${formatPLN(zlotoAbove)}/m² (złoto/srebro)</div>`,
-        ].join("");
+        priceTiersEl.innerHTML = materials
+          .map((m) => {
+            const { below, above } = resolveVariantRates(m);
+            return [
+              `<div>Poniżej 1 m² → ${formatPLN(below)}/m² (${escapeHtml(m.name)})</div>`,
+              `<div>Od 1 m² → ${formatPLN(above)}/m² (${escapeHtml(m.name)})</div>`,
+            ].join("");
+          })
+          .join("");
       }
     };
 
+    renderFoilTypeList();
     updateLegend();
 
-    let currentOptions: (WycinanieFoliiOptions & { color?: string }) | null = null;
+    let currentOptions: (WycinanieFoliiOptions & { colorLabel?: string }) | null = null;
     let currentResult: any = null;
     let blockedHints: (HTMLElement | null)[] = [];
-
-    // Single-choice for foil type
-    const enforceSingleChoiceFoilType = () => {
-      foilTypeCheckboxes.forEach((checkbox) => {
-        checkbox.addEventListener("change", () => {
-          if (!checkbox.checked) return;
-          foilTypeCheckboxes.forEach((other) => {
-            if (other !== checkbox) other.checked = false;
-          });
-        });
-      });
-    };
-    enforceSingleChoiceFoilType();
-
-    const getSelectedColor = (): string | undefined => {
-      if (goldCheck.checked) return "złota";
-      if (silverCheck.checked) return "srebrna";
-      if (customCheck.checked) {
-        const custom = (colorInput?.value || "").trim();
-        return custom || undefined;
-      }
-      return undefined;
-    };
 
     const updateAreaMonitor = () => {
       const width = parseInt(widthInput.value, 10) || 0;
@@ -151,9 +148,10 @@ export const WycinanieFoliiView: View = {
     updateAreaMonitor();
 
     const calculate = () => {
-      const color = getSelectedColor();
+      const variantId = getSelectedMaterialId();
+      const material = materials.find((m) => m.id === variantId);
 
-      if (!color) {
+      if (!variantId || !material) {
         if (resultEl) resultEl.style.display = "none";
         setFieldHint(colorHintEl, "Wybierz kolor/rodzaj folii, aby zobaczyć cenę.");
         setButtonGuarded(addBtn, false);
@@ -175,9 +173,6 @@ export const WycinanieFoliiView: View = {
         return;
       }
 
-      const variantId: WycinanieFoliiOptions["variantId"] =
-        goldCheck.checked || silverCheck.checked ? "zloto-srebro" : "kolorowa";
-
       const options: WycinanieFoliiOptions = {
         variantId,
         widthMm,
@@ -187,17 +182,8 @@ export const WycinanieFoliiView: View = {
 
       const result = calculateWycinanieFolii(options);
       const areaM2 = (options.widthMm * options.heightMm) / 1_000_000;
-      const basePrice = Number(result.basePrice || 0);
-      const expressValue = Number(result.modifiersTotal || 0);
-      const minRule =
-        (data?.rules ?? []).find((r: any) => r.type === "minimum" && r.unit === "pln")?.value ?? 30;
-      const appliedRate =
-        areaM2 < 1
-          ? (defaultPrices?.[`wycinanie-folii-${variantId}-ponizej`] ??
-            (variantId === "zloto-srebro" ? 220 : 200))
-          : (defaultPrices?.[`wycinanie-folii-${variantId}`] ??
-            (variantId === "zloto-srebro" ? 150 : 125));
-      const colorLabel = color ?? "-";
+      const { below, above } = resolveVariantRates(material);
+      const appliedRate = areaM2 < 1 ? below : above;
 
       if (unitEl) unitEl.innerText = formatPLN(result.tierPrice);
       totalEl.innerText = formatPLN(result.totalPrice);
@@ -216,7 +202,7 @@ export const WycinanieFoliiView: View = {
 
       currentOptions = {
         ...options,
-        color: color,
+        colorLabel: material.name,
       };
       currentResult = result;
       ctx.updateLastCalculated(result.totalPrice, "Wycinanie z folii");
@@ -224,6 +210,7 @@ export const WycinanieFoliiView: View = {
 
     autoCalc({ root: container, calc: calculate, cancelOn: [addBtn] });
     ctx?.on?.("prices-updated", () => {
+      renderFoilTypeList();
       updateLegend();
       calculate();
     });
@@ -235,9 +222,11 @@ export const WycinanieFoliiView: View = {
       }
       if (!currentOptions || !currentResult) return;
 
-      const foilName = currentOptions.color ? `Folia ${currentOptions.color}` : "Wycinanie z folii";
+      const foilName = currentOptions.colorLabel
+        ? `Folia ${currentOptions.colorLabel}`
+        : "Wycinanie z folii";
       const areaM2 = (currentOptions.widthMm * currentOptions.heightMm) / 1_000_000;
-      const colorHint = currentOptions.color ? `, kolor: ${currentOptions.color}` : "";
+      const colorHint = currentOptions.colorLabel ? `, kolor: ${currentOptions.colorLabel}` : "";
 
       ctx.cart.addItem({
         id: `wycinanie-${Date.now()}`,

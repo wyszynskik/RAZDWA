@@ -1,10 +1,16 @@
 import { View, ViewContext } from "../types";
 import { autoCalc } from "../autoCalc";
-import { calculateRollUp, RollUpOptions } from "../../categories/roll-up";
+import {
+  calculateRollUp,
+  getRollUpFormats,
+  isFactoryRollUpFormat,
+  RollUpOptions,
+} from "../../categories/roll-up";
 import { formatPLN } from "../../core/money";
 import { getPrice } from "../../services/priceService";
 import { resolveStoredPrice } from "../../core/compat";
 import { parseNumericInput } from "../../core/numericInput";
+import { escapeHtml } from "../../core/validation";
 import {
   setFieldHint,
   flashFieldHints,
@@ -52,8 +58,6 @@ function renderBreakdownRows(target: HTMLElement, rows: BreakdownRow[]): void {
   }
 }
 
-const rollUpData: any = getPrice("rollUp");
-
 export const RollUpView: View = {
   id: "roll-up",
   name: "Roll-up",
@@ -73,42 +77,66 @@ export const RollUpView: View = {
       const resultArea = container.querySelector("#rollUpResult") as HTMLElement;
       const breakdownBox = container.querySelector("#rollUpBreakdown") as HTMLElement;
       const legendNote = container.querySelector("#rollup-legend-note") as HTMLElement | null;
-
-      const legendTierEls: Record<string, HTMLElement | null> = {
-        "85x200-1-5": container.querySelector("#rollup-legend-85x200-1-5"),
-        "85x200-6-10": container.querySelector("#rollup-legend-85x200-6-10"),
-        "100x200-1-5": container.querySelector("#rollup-legend-100x200-1-5"),
-        "100x200-6-10": container.querySelector("#rollup-legend-100x200-6-10"),
-        "120x200-1-5": container.querySelector("#rollup-legend-120x200-1-5"),
-        "120x200-6-10": container.querySelector("#rollup-legend-120x200-6-10"),
-        "150x200-1-5": container.querySelector("#rollup-legend-150x200-1-5"),
-        "150x200-6-10": container.querySelector("#rollup-legend-150x200-6-10"),
-      };
+      const legendHeaderRow = container.querySelector(
+        "#rollup-legend-header"
+      ) as HTMLElement | null;
+      const legendBody = container.querySelector("#rollup-legend-body") as HTMLElement | null;
 
       const expressRate = resolveStoredPrice("modifier-express", 0.2);
 
+      const populateFormatSelect = () => {
+        const previouslySelected = formatSel.value;
+        const materials = getRollUpFormats();
+        formatSel.innerHTML =
+          `<option value="" disabled${previouslySelected ? "" : " selected"}>— wybierz format —</option>` +
+          materials
+            .map((m) => `<option value="${escapeHtml(m.id)}">${escapeHtml(m.name)}</option>`)
+            .join("");
+        if (previouslySelected && materials.some((m) => m.id === previouslySelected)) {
+          formatSel.value = previouslySelected;
+        }
+      };
+      populateFormatSelect();
+
       const updateLegend = () => {
-        const formats: Array<"85x200" | "100x200" | "120x200" | "150x200"> = [
-          "85x200",
-          "100x200",
-          "120x200",
-          "150x200",
-        ];
-        for (const format of formats) {
-          const formatData = rollUpData?.formats?.[format];
-          if (!formatData?.tiers) continue;
-          for (const tier of formatData.tiers as Array<{
-            min: number;
-            max: number | null;
-            price: number;
-          }>) {
+        const materials = getRollUpFormats();
+        const rangeOrder: string[] = [];
+        const rangeIndex = new Set<string>();
+        const formatRangePrice: Record<string, Record<string, number>> = {};
+
+        materials.forEach((material) => {
+          formatRangePrice[material.id] = {};
+          material.tiers.forEach((tier) => {
             const suffix = tier.max == null ? `${tier.min}+` : `${tier.min}-${tier.max}`;
-            const value = resolveStoredPrice(`rollup-${format}-${suffix}`, tier.price);
-            const el = legendTierEls[`${format}-${suffix}`];
-            if (el) el.innerText = formatPLN(value);
-          }
+            const range = tier.max == null ? `${tier.min}+ szt` : `${tier.min}-${tier.max} szt`;
+            const value = resolveStoredPrice(`rollup-${material.id}-${suffix}`, tier.price);
+            if (!rangeIndex.has(range)) {
+              rangeIndex.add(range);
+              rangeOrder.push(range);
+            }
+            formatRangePrice[material.id][range] = value;
+          });
+        });
+
+        if (legendHeaderRow) {
+          legendHeaderRow.innerHTML =
+            `<th>Format</th>` + rangeOrder.map((r) => `<th>${r} [zł/szt.]</th>`).join("");
+        }
+        if (legendBody) {
+          legendBody.innerHTML = materials
+            .map((material) => {
+              const cells = rangeOrder
+                .map((range) => {
+                  const price = formatRangePrice[material.id]?.[range];
+                  return `<td>${typeof price === "number" ? formatPLN(price) : "-"}</td>`;
+                })
+                .join("");
+              return `<tr><td>${escapeHtml(material.name)}</td>${cells}</tr>`;
+            })
+            .join("");
         }
 
+        const rollUpData = getPrice("rollUp") as any;
         const replacementLabor = resolveStoredPrice(
           "rollup-wymiana-labor",
           rollUpData?.replacement?.labor ?? 50
@@ -119,7 +147,7 @@ export const RollUpView: View = {
         );
 
         if (legendNote) {
-          legendNote.innerText = `* Wymiana wkładu: ${formatPLN(replacementLabor)} + ${formatPLN(replacementM2)}/m² wydruku (blockout z czarnym środkiem).`;
+          legendNote.innerText = `* Wymiana wkładu: ${formatPLN(replacementLabor)} + ${formatPLN(replacementM2)}/m² wydruku (blockout z czarnym środkiem, wyłącznie dla formatów fabrycznych).`;
         }
       };
 
@@ -144,6 +172,19 @@ export const RollUpView: View = {
         }
         setFieldHint(typeHint, null);
         setFieldHint(formatHint, null);
+
+        if (typeSel.value === "replacement" && !isFactoryRollUpFormat(formatSel.value)) {
+          resultArea.style.display = "none";
+          breakdownBox.style.display = "none";
+          setFieldHint(
+            formatHint,
+            "Wymiana wkładu jest dostępna tylko dla formatów fabrycznych — wybierz inny format lub tryb „Komplet”."
+          );
+          setButtonGuarded(addToCartBtn, false);
+          blockedHints = [formatHint];
+          return;
+        }
+
         const qty = parseNumericInput(qtyInput.value, { integer: true, min: 1 });
         if (qty === null) {
           resultArea.style.display = "none";
@@ -164,6 +205,9 @@ export const RollUpView: View = {
         currentOptions = options;
         currentResult = result;
 
+        const formatLabel =
+          getRollUpFormats().find((m) => m.id === options.format)?.name ?? options.format;
+
         const unitBase = parseFloat((result.basePrice / options.qty).toFixed(2));
         const expressAmount = options.express
           ? parseFloat((result.basePrice * expressRate).toFixed(2))
@@ -172,11 +216,12 @@ export const RollUpView: View = {
         const breakdown: BreakdownRow[] = [
           {
             label: "Parametry",
-            value: `${options.format}, ${options.qty} szt, ${options.isReplacement ? "wymiana wkładu" : "komplet"}`,
+            value: `${formatLabel}, ${options.qty} szt, ${options.isReplacement ? "wymiana wkładu" : "komplet"}`,
           },
         ];
 
         if (options.isReplacement) {
+          const rollUpData = getPrice("rollUp") as any;
           const fmt = rollUpData.formats[options.format];
           const areaM2 = parseFloat((fmt.width * fmt.height).toFixed(4));
           const labor = resolveStoredPrice("rollup-wymiana-labor", rollUpData.replacement.labor);
@@ -223,6 +268,7 @@ export const RollUpView: View = {
       autoCalc({ root: container, calc: calculate, cancelOn: [addToCartBtn] });
 
       ctx?.on?.("prices-updated", () => {
+        populateFormatSelect();
         updateLegend();
         calculate();
       });
@@ -234,16 +280,20 @@ export const RollUpView: View = {
         }
         if (!currentOptions || !currentResult) return;
 
+        const formatLabel =
+          getRollUpFormats().find((m) => m.id === currentOptions!.format)?.name ??
+          currentOptions.format;
+
         ctx.cart.addItem({
           id: `rollup-${Date.now()}`,
           category: "Roll-up",
-          name: `${currentOptions.isReplacement ? "Wymiana wkładu" : "Roll-up Komplet"} ${currentOptions.format}`,
+          name: `${currentOptions.isReplacement ? "Wymiana wkładu" : "Roll-up Komplet"} ${formatLabel}`,
           quantity: currentOptions.qty,
           unit: "szt",
           unitPrice: currentResult.totalPrice / currentOptions.qty,
           isExpress: currentOptions.express,
           totalPrice: currentResult.totalPrice,
-          optionsHint: `${currentOptions.format}, ${currentOptions.qty} szt`,
+          optionsHint: `${formatLabel}, ${currentOptions.qty} szt`,
           payload: currentOptions,
         });
 

@@ -391,6 +391,407 @@ test.describe("Dodaj materiał — przypisanie do wielu kategorii", () => {
   });
 });
 
+test.describe("Wycinanie z folii: nowy wariant folii (Nowy materiał) trafia do kalkulatora po zapisie", () => {
+  test.beforeEach(async ({ page }) => {
+    await neutralizeReloadTriggers(page);
+    await seedAdminSession(page);
+    await stubAppsScript(page);
+  });
+
+  test("nowy wariant pojawia się jako checkbox u klienta i liczy cenę wg progu poniżej/od 1 m²", async ({
+    page,
+  }) => {
+    await openSettings(page);
+
+    await page.fill("#new-material-name", "ZZZ-E2E Folia Fiolet");
+    await page.click("#new-material-category-summary");
+    await page.check('.new-material-category[value="wycinanieFolii"]');
+    const tierRows = page.locator("#new-material-tiers .material-tier-row");
+    await tierRows.nth(0).locator(".tier-min").fill("0");
+    await tierRows.nth(0).locator(".tier-max").fill("0");
+    await tierRows.nth(0).locator(".tier-price").fill("300");
+    await page.click("#btn-add-material-tier");
+    await tierRows.nth(1).locator(".tier-min").fill("1");
+    await tierRows.nth(1).locator(".tier-price").fill("180");
+    await page.click("#btn-add-material");
+    await expect(page.locator("#save-msg")).toContainText("Dodano materiał");
+
+    await savePrices(page);
+
+    const variants = await readVariants(page);
+    const sentinel = variants.find(
+      (v: any) => v.key === "mat__wycinanieFolii__zzz-e2e-folia-fiolet"
+    );
+    expect(sentinel).toBeTruthy();
+
+    // Bez przeładowania strony -- wchodzimy na widok klienta i sprawdzamy, że
+    // nowy wariant jest widoczny i realnie liczy cenę (nie tylko widoczny w DOM).
+    await page.goto("/#/wycinanie-folii");
+    await expect(page.locator("#wf-foil-type-list")).toContainText("ZZZ-E2E Folia Fiolet");
+
+    await page.locator("#wf-foil-type-list .wf-foil-type").last().check();
+    await page.locator("#wf-width").fill("2000");
+    await page.locator("#wf-width").dispatchEvent("input");
+    await page.locator("#wf-height").fill("2000");
+    await page.locator("#wf-height").dispatchEvent("input");
+
+    await expect(page.locator("#wf-unit")).toContainText("180");
+    await expect(page.locator("#wf-legend-body")).toContainText("ZZZ-E2E Folia Fiolet");
+  });
+});
+
+test.describe("Canvas: nowy format (Nowy materiał) trafia do kalkulatora po zapisie", () => {
+  test.beforeEach(async ({ page }) => {
+    await neutralizeReloadTriggers(page);
+    await seedAdminSession(page);
+    await stubAppsScript(page);
+  });
+
+  test("nowy format 'z oprawą' pojawia się w selekcie u klienta i liczy poprawną cenę", async ({
+    page,
+  }) => {
+    await openSettings(page);
+
+    await page.fill("#new-material-name", "ZZZ-E2E Canvas 60x90");
+    await page.click("#new-material-category-summary");
+    await page.check('.new-material-category[value="canvasFramed"]');
+    const tierRow = page.locator("#new-material-tiers .material-tier-row").first();
+    await tierRow.locator(".tier-min").fill("1");
+    await tierRow.locator(".tier-price").fill("199");
+    await page.click("#btn-add-material");
+    await expect(page.locator("#save-msg")).toContainText("Dodano materiał");
+
+    await savePrices(page);
+
+    const variants = await readVariants(page);
+    const sentinel = variants.find((v: any) => v.key === "mat__canvasFramed__zzz-e2e-canvas-60x90");
+    expect(sentinel).toBeTruthy();
+
+    await page.goto("/#/canvas");
+    await page.selectOption("#cv-mode", "framed");
+    await expect(page.locator("#cv-format")).toContainText("ZZZ-E2E Canvas 60x90");
+    await page.selectOption("#cv-format", { label: "ZZZ-E2E Canvas 60x90" });
+    await page.fill("#cv-qty", "1");
+    await page.locator("#cv-qty").dispatchEvent("input");
+
+    await expect(page.locator("#cv-unit")).toContainText("199");
+  });
+});
+
+test.describe("Laminowanie: nowy format i nowa usługa introligatorska (Nowy materiał) trafiają do kalkulatora", () => {
+  test.beforeEach(async ({ page }) => {
+    await neutralizeReloadTriggers(page);
+    await seedAdminSession(page);
+    await stubAppsScript(page);
+  });
+
+  test("zakładka Laminowanie: nowy format pojawia się w selekcie i liczy cenę z jego progu", async ({
+    page,
+  }) => {
+    await openSettings(page);
+
+    await page.fill("#new-material-name", "ZZZ-E2E-A2");
+    await page.click("#new-material-category-summary");
+    await page.check('.new-material-category[value="laminowanieFormat"]');
+    const tierRow = page.locator("#new-material-tiers .material-tier-row").first();
+    await tierRow.locator(".tier-min").fill("1");
+    await tierRow.locator(".tier-max").fill("50");
+    await tierRow.locator(".tier-price").fill("12");
+    await page.click("#btn-add-material");
+    await expect(page.locator("#save-msg")).toContainText("Dodano materiał");
+
+    await savePrices(page);
+
+    await page.goto("/#/laminowanie");
+    await expect(page.locator("#lam-format")).toContainText("ZZZ-E2E-A2");
+    await page.selectOption("#lam-format", { label: "ZZZ-E2E-A2" });
+    await page.fill("#lam-qty", "10");
+    await page.locator("#lam-qty").dispatchEvent("input");
+
+    await expect(page.locator("#lam-total-price")).toContainText("120");
+  });
+
+  test("zakładka Introligatornia: nowa usługa pojawia się w selekcie i liczy cenę jednostkową", async ({
+    page,
+  }) => {
+    await openSettings(page);
+
+    await page.fill("#new-material-name", "ZZZ-E2E Perforacja");
+    await page.click("#new-material-category-summary");
+    await page.check('.new-material-category[value="laminowanieIntro"]');
+    const tierRow = page.locator("#new-material-tiers .material-tier-row").first();
+    await tierRow.locator(".tier-min").fill("1");
+    await tierRow.locator(".tier-price").fill("2");
+    await page.click("#btn-add-material");
+    await expect(page.locator("#save-msg")).toContainText("Dodano materiał");
+
+    await savePrices(page);
+
+    await page.goto("/#/laminowanie");
+    await page.click('.lam-tab-btn[data-tab="introligatornia"]');
+    await expect(page.locator("#intro-service")).toContainText("ZZZ-E2E Perforacja");
+    await page.selectOption("#intro-service", { label: "ZZZ-E2E Perforacja" });
+    await page.fill("#intro-qty", "5");
+    await page.locator("#intro-qty").dispatchEvent("input");
+
+    await expect(page.locator("#intro-total-price")).toContainText("10");
+  });
+});
+
+test.describe("Roll-up: nowy format (Nowy materiał) trafia do kalkulatora, tylko w trybie Komplet", () => {
+  test.beforeEach(async ({ page }) => {
+    await neutralizeReloadTriggers(page);
+    await seedAdminSession(page);
+    await stubAppsScript(page);
+  });
+
+  test("nowy format pojawia się w selekcie, liczy cenę w trybie Komplet, blokuje Wymianę wkładu", async ({
+    page,
+  }) => {
+    await openSettings(page);
+
+    await page.fill("#new-material-name", "ZZZ-E2E 180x200");
+    await page.click("#new-material-category-summary");
+    await page.check('.new-material-category[value="rollup"]');
+    const tierRow = page.locator("#new-material-tiers .material-tier-row").first();
+    await tierRow.locator(".tier-min").fill("1");
+    await tierRow.locator(".tier-max").fill("5");
+    await tierRow.locator(".tier-price").fill("350");
+    await page.click("#btn-add-material-tier");
+    const secondRow = page.locator("#new-material-tiers .material-tier-row").nth(1);
+    await secondRow.locator(".tier-min").fill("6");
+    await secondRow.locator(".tier-price").fill("330");
+    await page.click("#btn-add-material");
+    await expect(page.locator("#save-msg")).toContainText("Dodano materiał");
+
+    await savePrices(page);
+
+    await page.goto("/#/roll-up");
+    await expect(page.locator("#rollUpFormat")).toContainText("ZZZ-E2E 180x200");
+
+    await page.selectOption("#rollUpType", "full");
+    await page.selectOption("#rollUpFormat", { label: "ZZZ-E2E 180x200" });
+    await page.fill("#rollUpQty", "2");
+    await page.locator("#rollUpQty").dispatchEvent("input");
+    await expect(page.locator("#resUnitPrice")).toContainText("350");
+
+    // Wymiana wkładu wymaga fizycznych wymiarów ramy -- niedostępna dla
+    // formatów dodanych dynamicznie (nie mają width/height w prices.json).
+    await page.selectOption("#rollUpType", "replacement");
+    await page.locator("#rollUpQty").dispatchEvent("input");
+    await expect(page.locator("#rollUpFormat-hint")).toContainText(
+      "dostępna tylko dla formatów fabrycznych"
+    );
+  });
+});
+
+test.describe("Wlepki/Naklejki: nowa grupa m² i nowa tabela szt (Nowy materiał) trafiają do kalkulatora", () => {
+  test.beforeEach(async ({ page }) => {
+    await neutralizeReloadTriggers(page);
+    await seedAdminSession(page);
+    await stubAppsScript(page);
+  });
+
+  test("tryb m²: nowa grupa pojawia się w selekcie i liczy cenę z jej progu", async ({ page }) => {
+    await openSettings(page);
+
+    await page.fill("#new-material-name", "ZZZ-E2E Grupa Testowa");
+    await page.click("#new-material-category-summary");
+    await page.check('.new-material-category[value="wlepkiM2"]');
+    const tierRow = page.locator("#new-material-tiers .material-tier-row").first();
+    await tierRow.locator(".tier-min").fill("1");
+    await tierRow.locator(".tier-price").fill("50");
+    await page.click("#btn-add-material");
+    await expect(page.locator("#save-msg")).toContainText("Dodano materiał");
+
+    await savePrices(page);
+
+    await page.goto("/#/wlepki-naklejki");
+    await expect(page.locator("#wlepki-group")).toContainText("ZZZ-E2E Grupa Testowa");
+    await page.selectOption("#wlepki-group", { label: "ZZZ-E2E Grupa Testowa" });
+    await page.fill("#wlepki-area", "2");
+    await page.locator("#wlepki-area").dispatchEvent("input");
+
+    await expect(page.locator("#total-price")).toContainText("100");
+  });
+
+  test("tryb szt: nowa tabela pojawia się w selekcie i liczy cenę wg progu ilościowego", async ({
+    page,
+  }) => {
+    await openSettings(page);
+
+    await page.fill("#new-material-name", "ZZZ-E2E Tabela Testowa");
+    await page.click("#new-material-category-summary");
+    await page.check('.new-material-category[value="wlepkiSzt"]');
+    const tierRow = page.locator("#new-material-tiers .material-tier-row").first();
+    await tierRow.locator(".tier-min").fill("1");
+    await tierRow.locator(".tier-max").fill("10");
+    await tierRow.locator(".tier-price").fill("25");
+    await page.click("#btn-add-material-tier");
+    const secondRow = page.locator("#new-material-tiers .material-tier-row").nth(1);
+    await secondRow.locator(".tier-min").fill("11");
+    await secondRow.locator(".tier-price").fill("18");
+    await page.click("#btn-add-material");
+    await expect(page.locator("#save-msg")).toContainText("Dodano materiał");
+
+    await savePrices(page);
+
+    await page.goto("/#/wlepki-naklejki");
+    await page.selectOption("#wlepki-mode", "szt");
+    await expect(page.locator("#wlepki-piece-table")).toContainText("ZZZ-E2E Tabela Testowa");
+    await page.selectOption("#wlepki-piece-table", { label: "ZZZ-E2E Tabela Testowa" });
+    await page.fill("#wlepki-piece-qty", "5");
+    await page.locator("#wlepki-piece-qty").dispatchEvent("input");
+
+    await expect(page.locator("#total-price")).toContainText("25");
+  });
+});
+
+test.describe("Druk CAD: nowy format (bespoke formularz) trafia do kalkulatora po zapisie", () => {
+  test.beforeEach(async ({ page }) => {
+    await neutralizeReloadTriggers(page);
+    await seedAdminSession(page);
+    await stubAppsScript(page);
+  });
+
+  test("nowy format pojawia się w selekcie, liczy cenę formatową wg wpisanej stawki", async ({
+    page,
+  }) => {
+    await openSettings(page);
+
+    await page.fill("#new-cad-format-name", "ZZZ-E2E Rolka 1372");
+    await page.fill("#new-cad-format-base-length", "1000");
+    await page.fill("#new-cad-format-bw-fmt", "15");
+    await page.click("#btn-add-cad-format");
+    await expect(page.locator("#save-msg")).toContainText("Dodano format CAD");
+
+    await savePrices(page);
+
+    const variants = await readVariants(page);
+    const sentinel = variants.find((v: any) => v.key === "__cad_format__zzz-e2e-rolka-1372");
+    expect(sentinel).toBeTruthy();
+
+    await page.goto("/#/druk-cad");
+    await expect(page.locator("#cad-format")).toContainText("ZZZ-E2E Rolka 1372");
+    await page.selectOption("#cad-mode", "bw");
+    await page.selectOption("#cad-format", { label: "ZZZ-E2E Rolka 1372 (1000 mm)" });
+    await page.locator("#cad-length").dispatchEvent("input");
+    await page.fill("#qty-sheets", "1");
+    await page.locator("#qty-sheets").dispatchEvent("input");
+
+    await expect(page.locator("#cad-total-with-options")).toContainText("15");
+  });
+
+  test("format bez stawki formatowej (tylko mb) liczy cenę mb mimo domyślnej długości = bazowa", async ({
+    page,
+  }) => {
+    await openSettings(page);
+
+    await page.fill("#new-cad-format-name", "ZZZ-E2E Rolka MB-only");
+    await page.fill("#new-cad-format-base-length", "1000");
+    await page.fill("#new-cad-format-bw-mb", "12");
+    await page.click("#btn-add-cad-format");
+    await expect(page.locator("#save-msg")).toContainText("Dodano format CAD");
+
+    await savePrices(page);
+
+    await page.goto("/#/druk-cad");
+    await expect(page.locator("#cad-format")).toContainText("ZZZ-E2E Rolka MB-only");
+    await page.selectOption("#cad-mode", "bw");
+    await page.selectOption("#cad-format", { label: "ZZZ-E2E Rolka MB-only (1000 mm)" });
+    await page.fill("#qty-sheets", "1");
+    await page.locator("#qty-sheets").dispatchEvent("input");
+
+    // Długość jest auto-ustawiona na bazową (1000mm = 1mb) przy wyborze formatu,
+    // więc bez fallbacku formatowe→mb ta kombinacja rzucałaby "Brak stawki".
+    await expect(page.locator("#cad-length")).toHaveValue("1000");
+    await expect(page.locator("#cad-total-with-options")).toContainText("12");
+  });
+});
+
+function readCartItems(page: Page) {
+  return page.evaluate(() => {
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && key.startsWith("razdwa-cart__")) {
+        const raw = JSON.parse(localStorage.getItem(key) ?? "{}");
+        return Array.isArray(raw) ? raw : (raw.items ?? []);
+      }
+    }
+    return [];
+  });
+}
+
+test.describe("Laminowanie: Bindowanie/Oprawy — nowa pozycja poza macierzą (etykieta+cena)", () => {
+  test.beforeEach(async ({ page }) => {
+    await neutralizeReloadTriggers(page);
+    await seedAdminSession(page);
+    await stubAppsScript(page);
+  });
+
+  test("Bindowanie: nowa pozycja liczy qty x cena i trafia do koszyka", async ({ page }) => {
+    await openSettings(page);
+    await page.selectOption("#new-price-category", "laminowanie");
+    await page.selectOption("#new-price-prefix", {
+      label: "Bindowanie – nowa pozycja (etykieta + cena, poza macierzą)",
+    });
+    await page.fill("#new-price-label", "ZZZ-E2E Bindowanie Twarde");
+    await page.fill("#new-price-value", "12");
+    await page.click("#btn-add-row");
+    await expect(page.locator("#save-msg")).toBeVisible();
+    await savePrices(page);
+
+    await page.goto("/#/laminowanie");
+    await page.click('.lam-tab-btn[data-tab="bindowanie"]');
+    await expect(page.locator("#bind-custom-group")).toBeVisible();
+    await expect(page.locator("#bind-custom-item")).toContainText("ZZZ-E2E Bindowanie Twarde");
+
+    await page.selectOption("#bind-custom-item", { label: "ZZZ-E2E Bindowanie Twarde" });
+    await page.fill("#bind-custom-qty", "3");
+    await page.locator("#bind-custom-qty").dispatchEvent("input");
+    await expect(page.locator("#bind-custom-add")).toHaveAttribute("aria-disabled", "false");
+
+    await page.click("#bind-custom-add");
+    const items = await readCartItems(page);
+    const added = items.find((i: any) => i.name === "ZZZ-E2E Bindowanie Twarde");
+    expect(added).toBeTruthy();
+    expect(added.quantity).toBe(3);
+    expect(added.unitPrice).toBe(12);
+    expect(added.totalPrice).toBe(36);
+  });
+
+  test("Oprawy: nowa pozycja liczy qty x cena i trafia do koszyka", async ({ page }) => {
+    await openSettings(page);
+    await page.selectOption("#new-price-category", "laminowanie");
+    await page.selectOption("#new-price-prefix", {
+      label: "Oprawy – nowa pozycja (etykieta + cena, poza macierzą)",
+    });
+    await page.fill("#new-price-label", "ZZZ-E2E Oprawa Specjalna");
+    await page.fill("#new-price-value", "9");
+    await page.click("#btn-add-row");
+    await expect(page.locator("#save-msg")).toBeVisible();
+    await savePrices(page);
+
+    await page.goto("/#/laminowanie");
+    await page.click('.lam-tab-btn[data-tab="oprawy"]');
+    await expect(page.locator("#opr-custom-group")).toBeVisible();
+    await expect(page.locator("#opr-custom-item")).toContainText("ZZZ-E2E Oprawa Specjalna");
+
+    await page.selectOption("#opr-custom-item", { label: "ZZZ-E2E Oprawa Specjalna" });
+    await page.fill("#opr-custom-qty", "2");
+    await page.locator("#opr-custom-qty").dispatchEvent("input");
+    await expect(page.locator("#opr-custom-add")).toHaveAttribute("aria-disabled", "false");
+
+    await page.click("#opr-custom-add");
+    const items = await readCartItems(page);
+    const added = items.find((i: any) => i.name === "ZZZ-E2E Oprawa Specjalna");
+    expect(added).toBeTruthy();
+    expect(added.quantity).toBe(2);
+    expect(added.unitPrice).toBe(9);
+    expect(added.totalPrice).toBe(18);
+  });
+});
+
 test.describe("Dodaj papier do kilku kategorii naraz (bulk-dodawacz)", () => {
   test.beforeEach(async ({ page }) => {
     await neutralizeReloadTriggers(page);

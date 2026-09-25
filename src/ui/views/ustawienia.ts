@@ -32,6 +32,14 @@ import {
   type MaterialPriceFormula,
 } from "../../core/dynamicMaterials";
 import {
+  getDynamicCadFormats,
+  buildCadFormatVariant,
+  buildCadFormatAssignmentKey,
+  CAD_FORMAT_ASSIGNMENT_PREFIX,
+  cadRateKey,
+  cadBaseLengthKey,
+} from "../../core/dynamicCadFormats";
+import {
   getCustomSubgroupDefinitions,
   type PrefixOption,
   type SubgroupRegistry,
@@ -128,6 +136,14 @@ const MATERIAL_CATEGORY_OPTIONS: { value: DynamicMaterialCategoryId; label: stri
   { value: "banner", label: "Bannery" },
   { value: "solwentPlakaty", label: "Solwent - Plakaty" },
   { value: "foliaSzroniona", label: "Folia szroniona / OWV" },
+  { value: "wycinanieFolii", label: "Wycinanie z folii" },
+  { value: "canvasFramed", label: "Canvas – z oprawą" },
+  { value: "canvasUnframed", label: "Canvas – bez oprawy" },
+  { value: "laminowanieFormat", label: "Laminowanie – format" },
+  { value: "laminowanieIntro", label: "Introligatornia – usługa" },
+  { value: "rollup", label: "Roll-up – format" },
+  { value: "wlepkiM2", label: "Wlepki – grupa m²" },
+  { value: "wlepkiSzt", label: "Wlepki – tabela szt" },
 ];
 
 /**
@@ -716,11 +732,12 @@ function getAddablePrefixOptions(category: PriceCategory): PrefixOption[] {
       );
       break;
     case "canvas":
-      options.push(
-        { value: "canvas-framed-", label: "Canvas z oprawą" },
-        { value: "canvas-unframed-", label: "Canvas bez oprawy" },
-        { value: "canvas-m2-unframed", label: "Canvas bez oprawy – cena za m²" }
-      );
+      // Nowe formaty (z oprawą / bez oprawy) dodaje się przez formularz
+      // "Nowy materiał" (kategorie "Canvas – z oprawą"/"Canvas – bez oprawy") —
+      // kalkulator czyta je z getCombinedMaterials(), nie z tego pickera.
+      // Stawka trybu "cena za m²" to pojedyncza wartość, edytowalna wprost
+      // w tabeli cennika poniżej.
+      options.push({ value: "canvas-m2-unframed", label: "Canvas bez oprawy – cena za m²" });
       break;
     case "ulotki":
       options.push(
@@ -748,15 +765,9 @@ function getAddablePrefixOptions(category: PriceCategory): PrefixOption[] {
       );
       break;
     case "wlepki":
-      options.push(
-        { value: "wlepki-obrys-folia-", label: "Naklejki po obrysie – folia (m²)" },
-        { value: "wlepki-polipropylen-", label: "Naklejki polipropylen (m²)" },
-        { value: "wlepki-standard-folia-", label: "Naklejki standardowe folia (m²)" },
-        { value: "wlepki-szt-papier-sra3-", label: "Naklejki papier SRA3 (szt)" },
-        { value: "wlepki-szt-folia-sra3-", label: "Naklejki folia SRA3 (szt)" },
-        { value: "wlepki-szt-plotowane-papier-", label: "Naklejki plotowane papier (szt)" },
-        { value: "wlepki-szt-plotowane-folia-", label: "Naklejki plotowane folia (szt)" }
-      );
+      // Nowa grupa m² i nowa tabela sztukowa dodaje się przez formularz
+      // "Nowy materiał" (kategorie "Wlepki – grupa m²"/"Wlepki – tabela szt") —
+      // kalkulator czyta je z getCombinedMaterials(), nie z tego pickera.
       break;
     case "banner":
       options.push(
@@ -765,13 +776,11 @@ function getAddablePrefixOptions(category: PriceCategory): PrefixOption[] {
       );
       break;
     case "rollup":
-      options.push(
-        { value: "rollup-85x200-", label: "Roll-up 85×200 cm" },
-        { value: "rollup-100x200-", label: "Roll-up 100×200 cm" },
-        { value: "rollup-120x200-", label: "Roll-up 120×200 cm" },
-        { value: "rollup-150x200-", label: "Roll-up 150×200 cm" },
-        { value: "rollup-wymiana-", label: "Wymiana wkładu roll-up" }
-      );
+      // Nowy format dodaje się przez formularz "Nowy materiał" (kategoria
+      // "Roll-up – format") — kalkulator czyta go z getCombinedMaterials().
+      // Stawki wymiany wkładu to 2 pojedyncze wartości, edytowalne wprost w
+      // tabeli cennika poniżej.
+      options.push({ value: "rollup-wymiana-", label: "Wymiana wkładu roll-up" });
       break;
     case "folia":
       options.push(
@@ -847,12 +856,10 @@ function getAddablePrefixOptions(category: PriceCategory): PrefixOption[] {
       );
       break;
     case "laminowanie":
+      // Nowy format (Laminowanie) i nowa usługa (Introligatornia) dodaje się
+      // przez formularz "Nowy materiał" — kalkulator czyta je z
+      // getCombinedMaterials(), nie z tego pickera prefiksów.
       options.push(
-        { value: "laminowanie-a4-", label: "Laminowanie A4" },
-        { value: "laminowanie-a5-", label: "Laminowanie A5" },
-        { value: "laminowanie-a3-", label: "Laminowanie A3" },
-        { value: "laminowanie-a6-", label: "Laminowanie A6" },
-        { value: "laminowanie-intro-", label: "Introligatornia – usługi jednostkowe" },
         { value: "laminowanie-oprawa-grzbietowa-", label: "Oprawa grzbietowa (listwa wsuwana)" },
         { value: "laminowanie-oprawa-kanalowa-", label: "Oprawa kanałowa dyplomowa" },
         { value: "laminowanie-oprawa-zaciskowa-", label: "Oprawa zaciskowa" },
@@ -861,7 +868,15 @@ function getAddablePrefixOptions(category: PriceCategory): PrefixOption[] {
           value: "laminowanie-oprawa-skrecane-",
           label: "Oprawa skręcana (śruby introligatorskie)",
         },
-        { value: "laminowanie-bindowanie-", label: "Bindowanie (plastik / metal)" }
+        { value: "laminowanie-bindowanie-", label: "Bindowanie (plastik / metal)" },
+        {
+          value: "laminowanie-oprawa-custom-",
+          label: "Oprawy – nowa pozycja (etykieta + cena, poza macierzą)",
+        },
+        {
+          value: "laminowanie-bindowanie-custom-",
+          label: "Bindowanie – nowa pozycja (etykieta + cena, poza macierzą)",
+        }
       );
       break;
     case "vouchery":
@@ -871,8 +886,9 @@ function getAddablePrefixOptions(category: PriceCategory): PrefixOption[] {
       );
       break;
     case "wycinanie-folii":
-      // Kalkulator czyta dokładnie 4 stałe klucze (kolorowa/zloto-srebro × ponizej/powyzej 1m²).
-      // Dodawanie nowych wariantów nie ma efektu – brak opcji prefiksu jest celowy.
+      // Nowe warianty (kolory/rodzaje folii) dodaje się przez formularz
+      // "Nowy materiał" (kategoria "Wycinanie z folii"), nie przez ten
+      // ogólny picker prefiksów – kalkulator czyta je z getCombinedMaterials().
       break;
     case "dyplomy":
       options.push({ value: "dyplomy-qty-", label: "Dyplomy – nowy próg ilościowy" });
@@ -1724,6 +1740,8 @@ function getLaminowanieSectionTitle(key: string): string {
   )
     return "OPRAWA ZBIJANA / SKRĘCANA";
   if (key.startsWith("laminowanie-oprawa-twarda-")) return "OPRAWY TWARDE";
+  if (key.startsWith("laminowanie-oprawa-custom-")) return "OPRAWY – DODANE RĘCZNIE";
+  if (key.startsWith("laminowanie-bindowanie-custom-")) return "BINDOWANIE – DODANE RĘCZNIE";
   if (key.startsWith("laminowanie-bindowanie-")) return "BINDOWANIE";
 
   return "LAMINOWANIE";
@@ -4094,6 +4112,49 @@ export const UstawieniaView: View = {
                 <button id="btn-add-material" type="button" class="btn-success settings-action-btn">+ Dodaj materiał</button>
               </div>
 
+              <div class="settings-add-group" id="add-cad-format-group" style="margin-top:12px;">
+                <div class="hint" style="margin-bottom:8px;">
+                  Dodaje nowy format CAD (np. inny rozmiar rolki) — pojawi się od razu w
+                  formularzu druku CAD. Format niesie własną długość bazową (do rozpoznania
+                  druku formatowego vs. za metr bieżący) i do 4 stawek — wypełnij tylko te
+                  tryby/rodzaje rozliczenia, które mają obowiązywać.
+                </div>
+
+                <label class="settings-field">
+                  <span class="settings-action-label">Nazwa formatu</span>
+                  <input id="new-cad-format-name" type="text" class="settings-input" placeholder="np. Rolka 1372">
+                </label>
+
+                <label class="settings-field">
+                  <span class="settings-action-label">Długość bazowa (mm) — do rozpoznania formatowe/za mb</span>
+                  <input id="new-cad-format-base-length" type="number" min="1" step="1" class="settings-input" placeholder="np. 1000">
+                </label>
+
+                <div class="settings-field">
+                  <span class="settings-action-label">Stawki (puste = tryb/rodzaj niedostępny dla tego formatu)</span>
+                  <div style="display:grid; grid-template-columns: 1fr 1fr; gap:8px; margin-top:6px;">
+                    <label style="display:flex; flex-direction:column; gap:4px;">
+                      <span style="font-size:12px;">Cz-B, formatowa (zł/szt)</span>
+                      <input id="new-cad-format-bw-fmt" type="number" min="0" step="0.01" class="settings-input">
+                    </label>
+                    <label style="display:flex; flex-direction:column; gap:4px;">
+                      <span style="font-size:12px;">Cz-B, za mb (zł/mb)</span>
+                      <input id="new-cad-format-bw-mb" type="number" min="0" step="0.01" class="settings-input">
+                    </label>
+                    <label style="display:flex; flex-direction:column; gap:4px;">
+                      <span style="font-size:12px;">Kolor, formatowa (zł/szt)</span>
+                      <input id="new-cad-format-color-fmt" type="number" min="0" step="0.01" class="settings-input">
+                    </label>
+                    <label style="display:flex; flex-direction:column; gap:4px;">
+                      <span style="font-size:12px;">Kolor, za mb (zł/mb)</span>
+                      <input id="new-cad-format-color-mb" type="number" min="0" step="0.01" class="settings-input">
+                    </label>
+                  </div>
+                </div>
+
+                <button id="btn-add-cad-format" type="button" class="btn-success settings-action-btn">+ Dodaj format CAD</button>
+              </div>
+
               <div class="settings-add-group" id="add-bulk-paper-group" style="display:none; margin-top:12px;">
                 <div class="hint" style="margin-bottom:8px;">
                   Tworzy nową, niezależną podkategorię o tej samej nazwie w każdej zaznaczonej
@@ -5166,6 +5227,103 @@ export const UstawieniaView: View = {
       renderTable();
       ctx?.emit?.("prices-updated", { timestamp: Date.now() });
       resetMaterialForm();
+    });
+
+    container.querySelector("#btn-add-cad-format")?.addEventListener("click", () => {
+      const nameInput = container.querySelector<HTMLInputElement>("#new-cad-format-name");
+      const baseLengthInput = container.querySelector<HTMLInputElement>(
+        "#new-cad-format-base-length"
+      );
+      const bwFmtInput = container.querySelector<HTMLInputElement>("#new-cad-format-bw-fmt");
+      const bwMbInput = container.querySelector<HTMLInputElement>("#new-cad-format-bw-mb");
+      const colorFmtInput = container.querySelector<HTMLInputElement>("#new-cad-format-color-fmt");
+      const colorMbInput = container.querySelector<HTMLInputElement>("#new-cad-format-color-mb");
+
+      const name = (nameInput?.value ?? "").trim();
+      if (!name) {
+        showStatus("⚠️ Wpisz nazwę formatu.", "error");
+        nameInput?.focus();
+        return;
+      }
+
+      const formatId = slugifyKeySegment(name);
+      if (!formatId) {
+        showStatus("⚠️ Nazwa formatu musi zawierać przynajmniej jedną literę lub cyfrę.", "error");
+        nameInput?.focus();
+        return;
+      }
+
+      const baseLengthRaw = (baseLengthInput?.value ?? "").replace(",", ".");
+      const baseLengthMm = Number.parseFloat(baseLengthRaw);
+      if (!Number.isFinite(baseLengthMm) || baseLengthMm <= 0) {
+        showStatus("⚠️ Podaj poprawną długość bazową (mm).", "error");
+        baseLengthInput?.focus();
+        return;
+      }
+
+      const parseRate = (input: HTMLInputElement | null): number | null => {
+        const raw = (input?.value ?? "").trim().replace(",", ".");
+        if (raw === "") return null;
+        const value = Number.parseFloat(raw);
+        return Number.isFinite(value) && value >= 0 ? value : null;
+      };
+
+      const bwFmt = parseRate(bwFmtInput);
+      const bwMb = parseRate(bwMbInput);
+      const colorFmt = parseRate(colorFmtInput);
+      const colorMb = parseRate(colorMbInput);
+
+      if (bwFmt === null && bwMb === null && colorFmt === null && colorMb === null) {
+        showStatus("⚠️ Wypełnij przynajmniej jedną stawkę (Cz-B lub kolor).", "error");
+        return;
+      }
+
+      const variantKey = buildCadFormatAssignmentKey(formatId);
+      const isStaticCollision = Boolean((getPrice("drukCAD.base") as any)?.[formatId]);
+      const isDynamicCollision =
+        getDynamicCadFormats().some((f) => f.id === formatId) ||
+        _draftVariantDefs.some((d) => d.categoryId === "druk-cad" && d.key === variantKey);
+      if (isStaticCollision || isDynamicCollision) {
+        showStatus(
+          "⚠️ Format o takiej nazwie już istnieje/jest w niezapisanym drafcie. Wybierz inną nazwę albo najpierw kliknij „Zapisz cennik”.",
+          "error"
+        );
+        return;
+      }
+
+      const variantDef = buildCadFormatVariant(formatId, name);
+      _draftVariantDefs = _draftVariantDefs
+        .filter((d) => d.key !== variantDef.key)
+        .concat(variantDef);
+
+      prices[cadBaseLengthKey(formatId)] = baseLengthMm;
+      if (bwFmt !== null) prices[cadRateKey("bw", "fmt", formatId)] = bwFmt;
+      if (bwMb !== null) prices[cadRateKey("bw", "mb", formatId)] = bwMb;
+      if (colorFmt !== null) prices[cadRateKey("color", "fmt", formatId)] = colorFmt;
+      if (colorMb !== null) prices[cadRateKey("color", "mb", formatId)] = colorMb;
+
+      logVariantOperation({
+        action: "add",
+        key: variantDef.key,
+        categoryId: "druk-cad",
+        prefix: CAD_FORMAT_ASSIGNMENT_PREFIX,
+        label: name,
+        qty: "",
+        price: bwFmt ?? bwMb ?? colorFmt ?? colorMb ?? null,
+        timestamp: variantDef.createdAt,
+      });
+
+      showStatus(`✓ Dodano format CAD (niezapisany): "${name}"`);
+      updateDraftIndicator();
+      renderTable();
+      ctx?.emit?.("prices-updated", { timestamp: Date.now() });
+
+      if (nameInput) nameInput.value = "";
+      if (baseLengthInput) baseLengthInput.value = "";
+      if (bwFmtInput) bwFmtInput.value = "";
+      if (bwMbInput) bwMbInput.value = "";
+      if (colorFmtInput) colorFmtInput.value = "";
+      if (colorMbInput) colorMbInput.value = "";
     });
 
     // ── "Dodaj papier do kilku kategorii naraz" — bulk-dodawacz (wersja

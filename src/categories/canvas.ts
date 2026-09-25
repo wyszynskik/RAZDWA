@@ -2,6 +2,7 @@
 import { CalculationResult, PriceTable } from "../core/types";
 import { getPrice } from "../services/priceService";
 import { resolveStoredPrice } from "../core/compat";
+import { getCombinedMaterials, type MaterialDefinition } from "../core/dynamicMaterials";
 
 export interface CanvasOptions {
   modeId: "framed" | "unframed" | "m2-unframed";
@@ -10,6 +11,48 @@ export interface CanvasOptions {
   widthMm?: number;
   heightMm?: number;
   express: boolean;
+}
+
+export type CanvasFormatModeId = "framed" | "unframed";
+
+/**
+ * Statyczne formaty (`mode.formats[]`, z wyłączeniem "custom") jako pula
+ * bazowa dla getCombinedMaterials() — canvas nie ma top-level węzła
+ * "materials" w prices.json, więc pula bazowa jest budowana z istniejącego
+ * kształtu na żywo, a nie czytana automatycznie przez getPrice(categoryId).
+ */
+export function getCanvasMaterials(modeId: CanvasFormatModeId, mode: any): MaterialDefinition[] {
+  const staticFormats: MaterialDefinition[] = ((mode?.formats ?? []) as any[])
+    .filter((f) => !f.customSize && !f.customQuote)
+    .map((f) => ({
+      id: f.id,
+      name: String(f.label ?? f.id),
+      tiers: [{ min: 1, max: null, price: Number(f.price) || 0 }],
+    }));
+
+  const dynamicCategoryId = modeId === "framed" ? "canvasFramed" : "canvasUnframed";
+  return getCombinedMaterials(dynamicCategoryId, staticFormats);
+}
+
+/**
+ * Statyczne formaty mają swoją cenę pod starym, płaskim kluczem (bez
+ * konwencji progowej dynamicMaterials.ts) — sprzed tego mechanizmu, admin
+ * mógł już nadpisać ich ceny przez panel ustawień. Nowe (dynamicznie dodane)
+ * formaty nie mają takiej historii, więc ich tiers[] z getCanvasMaterials()
+ * to już aktualna, zapisana cena.
+ */
+export function resolveCanvasUnitPrice(
+  modeId: CanvasFormatModeId,
+  mode: any,
+  material: MaterialDefinition
+): number {
+  const flatPrice = material.tiers[0]?.price ?? 0;
+  const isStaticFormat = ((mode?.formats ?? []) as any[]).some(
+    (f) => f.id === material.id && !f.customSize && !f.customQuote
+  );
+  return isStaticFormat
+    ? resolveStoredPrice(`canvas-${modeId}-${material.id}`, flatPrice)
+    : flatPrice;
 }
 
 export type CanvasResult = CalculationResult & {
@@ -88,16 +131,12 @@ export function calculateCanvas(options: CanvasOptions): CanvasResult {
     qtyForCalc = areaM2 * qtyForCalc;
     formatLabel = "Sam wydruk (m2)";
   } else {
-    const selectedFormat = mode?.formats?.find((f: any) => f.id === options.formatId);
-    if (!selectedFormat) {
-      throw new Error("Wybierz format canvas");
-    }
+    const customFormatEntry = (mode?.formats ?? []).find(
+      (f: any) => f.id === options.formatId && (f.customSize || f.customQuote)
+    );
 
-    if (
-      (selectedFormat.customSize || selectedFormat.customQuote) &&
-      (!options.widthMm || !options.heightMm)
-    ) {
-      formatLabel = selectedFormat.label;
+    if (customFormatEntry && (!options.widthMm || !options.heightMm)) {
+      formatLabel = customFormatEntry.label;
       return {
         basePrice: 0,
         tierPrice: 0,
@@ -111,7 +150,7 @@ export function calculateCanvas(options: CanvasOptions): CanvasResult {
       };
     }
 
-    if (selectedFormat.customSize || selectedFormat.customQuote) {
+    if (customFormatEntry) {
       const width = Number(options.widthMm) || 0;
       const height = Number(options.heightMm) || 0;
       areaM2 = (width * height) / 1_000_000;
@@ -156,8 +195,14 @@ export function calculateCanvas(options: CanvasOptions): CanvasResult {
         frameCost: frameCostUnit > 0 ? frameCostUnit : undefined,
       };
     } else {
-      const key = "canvas-" + options.modeId + "-" + selectedFormat.id;
-      const unitPrice = resolveStoredPrice(key, selectedFormat.price);
+      const modeId = options.modeId as CanvasFormatModeId;
+      const materials = getCanvasMaterials(modeId, mode);
+      const material = materials.find((m) => m.id === options.formatId);
+      if (!material) {
+        throw new Error("Wybierz format canvas");
+      }
+      const unitPrice = resolveCanvasUnitPrice(modeId, mode, material);
+      const key = "canvas-" + options.modeId + "-" + material.id;
       table = {
         id: key,
         title: data?.title ?? "Canvas",
@@ -166,7 +211,7 @@ export function calculateCanvas(options: CanvasOptions): CanvasResult {
         tiers: [{ min: 1, max: null, price: unitPrice }],
         modifiers: data?.modifiers,
       };
-      formatLabel = selectedFormat.label;
+      formatLabel = material.name;
     }
   }
 

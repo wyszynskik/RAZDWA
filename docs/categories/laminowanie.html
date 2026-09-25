@@ -327,10 +327,6 @@
       <label for="lam-format">Format:</label>
       <select id="lam-format">
         <option value="" disabled selected>— wybierz format —</option>
-        <option value="A3">A3</option>
-        <option value="A4">A4</option>
-        <option value="A5">A5</option>
-        <option value="A6">A6</option>
       </select>
       <div id="lam-format-hint" class="ghost-hint"></div>
     </div>
@@ -421,6 +417,21 @@
     <div id="bindBreakdown" class="card" style="display: none; margin-top: 16px;">
       <h3 style="margin: 0 0 12px 0; font-size: 16px;">Jak liczona jest cena</h3>
       <div id="bindBreakdownLines" style="display: grid; gap: 8px; font-size: 14px; line-height: 1.45; padding-left: 20px;"></div>
+    </div>
+
+    <div id="bind-custom-group" class="card" style="display:none; margin-top: 16px;">
+      <h3 style="margin: 0 0 12px 0; font-size: 16px;">Inne pozycje (dodane przez administratora)</h3>
+      <div class="row">
+        <label for="bind-custom-item">Pozycja:</label>
+        <select id="bind-custom-item"></select>
+      </div>
+      <div class="row">
+        <label for="bind-custom-qty">Ilość sztuk:</label>
+        <input type="number" id="bind-custom-qty" min="1" placeholder="ilość" inputmode="numeric">
+      </div>
+      <div class="form-actions">
+        <button id="bind-custom-add" class="btn-success is-disabled" aria-disabled="true">DODAJ DO KOSZYKA</button>
+      </div>
     </div>
   </div>
 </div>
@@ -579,6 +590,21 @@
         </tbody>
       </table>
     </div>
+
+    <div id="opr-custom-group" class="card" style="display:none; margin-top: 16px;">
+      <h3 style="margin: 0 0 12px 0; font-size: 16px;">Inne pozycje (dodane przez administratora)</h3>
+      <div class="row">
+        <label for="opr-custom-item">Pozycja:</label>
+        <select id="opr-custom-item"></select>
+      </div>
+      <div class="row">
+        <label for="opr-custom-qty">Ilość sztuk:</label>
+        <input type="number" id="opr-custom-qty" min="1" placeholder="ilość" inputmode="numeric">
+      </div>
+      <div class="form-actions">
+        <button id="opr-custom-add" class="btn-success is-disabled" aria-disabled="true">DODAJ DO KOSZYKA</button>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -590,12 +616,6 @@
       <label for="intro-service">Usługa:</label>
       <select id="intro-service">
         <option value="" disabled selected>— wybierz usługę —</option>
-        <option value="gilotyna">Cięcie na gilotynie</option>
-        <option value="trymer">Cięcie ręczne (trymer)</option>
-        <option value="dziurkowanie-powyzej-20">Dziurkowanie powyżej 20 kartek</option>
-        <option value="zszywanie">Zszywanie kartek</option>
-        <option value="broszurowanie">Broszurowanie / docinanie</option>
-        <option value="bigowanie">Bigowanie</option>
       </select>
       <div id="intro-service-hint" class="ghost-hint"></div>
     </div>

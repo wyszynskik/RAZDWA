@@ -1,9 +1,16 @@
 import { View, ViewContext } from "../types";
 import { autoCalc } from "../autoCalc";
-import { quoteLaminowanie, quoteIntroligatornia } from "../../categories/laminowanie";
+import {
+  quoteLaminowanie,
+  quoteIntroligatornia,
+  getLaminowanieFormats,
+  getLaminowanieFormatTiers,
+  getIntroligatorniaServices,
+  resolveIntroligatorniaUnitPrice,
+} from "../../categories/laminowanie";
 import { formatPLN } from "../../core/money";
 import { resolveStoredPrice } from "../../core/compat";
-import { getPrice } from "../../services/priceService";
+import { getPrice, getVariantDefinitions } from "../../services/priceService";
 import {
   setFieldHint,
   flashFieldHints,
@@ -389,7 +396,6 @@ export const LaminowanieView: View = {
   },
 
   initLogic(container: HTMLElement, ctx: ViewContext) {
-    const data = getPrice("laminowanie") as any;
     const tabBtns = Array.from(container.querySelectorAll<HTMLButtonElement>(".tab-btn"));
     const tabContents = Array.from(container.querySelectorAll<HTMLElement>(".tab-content"));
     const calcBreakdownBox = container.querySelector("#lam-calc-breakdown") as HTMLElement | null;
@@ -421,6 +427,105 @@ export const LaminowanieView: View = {
       calcBreakdownBox.style.display = "none";
     };
 
+    /**
+     * Bindowanie i Oprawy mają nieregularne, wielowymiarowe macierze cen
+     * (typ × strony × ilość × podtyp) — nowa pozycja dodana przez admina NIE
+     * wpina się w tę macierz (byłby to osobny, znacznie większy projekt:
+     * edytor reguł). Zamiast tego renderuje się jak w artykuly-biurowe.ts /
+     * uslugi.ts: samodzielna pozycja z etykietą i jedną ceną za sztukę,
+     * czytana wprost z getVariantDefinitions() (prefiks
+     * "laminowanie-{bindowanie|oprawa}-custom-", zapisywana już dziś przez
+     * generyczny formularz "Dodaj wariant" w trybie nazwa+cena).
+     */
+    const setupCustomItemsWidget = (
+      prefix: string,
+      cartCategoryLabel: string,
+      ids: { groupId: string; selectId: string; qtyId: string; addBtnId: string }
+    ) => {
+      const group = container.querySelector<HTMLElement>(`#${ids.groupId}`);
+      const select = container.querySelector<HTMLSelectElement>(`#${ids.selectId}`);
+      const qtyInput = container.querySelector<HTMLInputElement>(`#${ids.qtyId}`);
+      const addBtn = container.querySelector<HTMLButtonElement>(`#${ids.addBtnId}`);
+      if (!group || !select || !qtyInput || !addBtn) return { refresh: () => {} };
+
+      const getItems = () =>
+        getVariantDefinitions()
+          .filter((v) => v.categoryId === "laminowanie" && v.subcategoryPrefix === prefix)
+          .map((v) => ({ id: v.key, name: v.label, price: resolveStoredPrice(v.key, 0) }));
+
+      const recalc = () => {
+        const items = getItems();
+        const item = items.find((i) => i.id === select.value);
+        const qty = Number.parseInt(qtyInput.value, 10);
+        setButtonGuarded(addBtn, Boolean(item) && Number.isFinite(qty) && qty > 0);
+      };
+
+      const populate = () => {
+        const items = getItems();
+        group.style.display = items.length > 0 ? "" : "none";
+        if (items.length === 0) return;
+
+        const previouslySelected = select.value;
+        select.innerHTML = items
+          .map((i) => `<option value="${i.id}">${normalizePolishText(i.name)}</option>`)
+          .join("");
+        if (previouslySelected && items.some((i) => i.id === previouslySelected)) {
+          select.value = previouslySelected;
+        }
+        recalc();
+      };
+
+      addBtn.addEventListener("click", () => {
+        if (isButtonGuardDisabled(addBtn)) return;
+        const items = getItems();
+        const item = items.find((i) => i.id === select.value);
+        const qty = Number.parseInt(qtyInput.value, 10);
+        if (!item || !Number.isFinite(qty) || qty <= 0) return;
+
+        const totalPrice = parseFloat((item.price * qty).toFixed(2));
+        ctx.cart.addItem({
+          id: `${prefix}${Date.now()}`,
+          category: cartCategoryLabel,
+          name: item.name,
+          quantity: qty,
+          unit: "szt",
+          unitPrice: item.price,
+          isExpress: false,
+          totalPrice,
+          optionsHint: `${qty} szt.`,
+          payload: { key: item.id, price: item.price, qty },
+        });
+
+        qtyInput.value = "";
+        setButtonGuarded(addBtn, false);
+        ctx.updateLastCalculated(totalPrice, cartCategoryLabel);
+        container.dispatchEvent(new CustomEvent("view:reset"));
+      });
+
+      select.addEventListener("change", recalc);
+      qtyInput.addEventListener("input", recalc);
+
+      populate();
+      return { refresh: populate };
+    };
+
+    const bindCustomItems = setupCustomItemsWidget(
+      "laminowanie-bindowanie-custom-",
+      "Introligatornia",
+      {
+        groupId: "bind-custom-group",
+        selectId: "bind-custom-item",
+        qtyId: "bind-custom-qty",
+        addBtnId: "bind-custom-add",
+      }
+    );
+    const oprCustomItems = setupCustomItemsWidget("laminowanie-oprawa-custom-", "Introligatornia", {
+      groupId: "opr-custom-group",
+      selectId: "opr-custom-item",
+      qtyId: "opr-custom-qty",
+      addBtnId: "opr-custom-add",
+    });
+
     const ensureLegend = (activeTab: string = "laminowanie") => {
       let legend = container.querySelector<HTMLElement>("#lam-dynamic-legend");
       const activeTabEl = container.querySelector<HTMLElement>(`#tab-${activeTab}`);
@@ -442,40 +547,40 @@ export const LaminowanieView: View = {
         }
       }
 
-      const formatOrder = ["A3", "A4", "A5", "A6"];
+      const laminowanieMaterials = getLaminowanieFormats();
       const rangeOrder: string[] = [];
       const rangeIndex = new Set<string>();
       const formatRangePrice: Record<string, Record<string, number>> = {};
 
-      formatOrder.forEach((format) => {
-        const tiers = data?.formats?.[format] ?? [];
-        formatRangePrice[format] = {};
+      laminowanieMaterials.forEach((material) => {
+        formatRangePrice[material.id] = {};
 
-        (tiers ?? []).forEach((tier: any) => {
-          const suffix = tier.max == null ? `${tier.min}+` : `${tier.min}-${tier.max}`;
+        getLaminowanieFormatTiers(material).forEach((tier) => {
           const range = tier.max == null ? `${tier.min}+ szt` : `${tier.min}-${tier.max} szt`;
-          const price = resolveStoredPrice(
-            `laminowanie-${format.toLowerCase()}-${suffix}`,
-            tier.price
-          );
 
           if (!rangeIndex.has(range)) {
             rangeIndex.add(range);
             rangeOrder.push(range);
           }
 
-          formatRangePrice[format][range] = price;
+          formatRangePrice[material.id][range] = tier.price;
         });
       });
 
       const lamRows = rangeOrder
         .map((range) => {
-          const a3 = formatRangePrice.A3?.[range];
-          const a4 = formatRangePrice.A4?.[range];
-          const a5 = formatRangePrice.A5?.[range];
-          const a6 = formatRangePrice.A6?.[range];
-          return `<tr><td>${range}</td><td>${typeof a3 === "number" ? formatPLN(a3) : "-"}</td><td>${typeof a4 === "number" ? formatPLN(a4) : "-"}</td><td>${typeof a5 === "number" ? formatPLN(a5) : "-"}</td><td>${typeof a6 === "number" ? formatPLN(a6) : "-"}</td></tr>`;
+          const cells = laminowanieMaterials
+            .map((material) => {
+              const price = formatRangePrice[material.id]?.[range];
+              return `<td>${typeof price === "number" ? formatPLN(price) : "-"}</td>`;
+            })
+            .join("");
+          return `<tr><td>${range}</td>${cells}</tr>`;
         })
+        .join("");
+
+      const lamHeaderCells = laminowanieMaterials
+        .map((material) => `<th>${normalizePolishText(material.name)}</th>`)
         .join("");
 
       const lamTables = `
@@ -485,15 +590,15 @@ export const LaminowanieView: View = {
           </div>
         </div>
         <table>
-          <tr><th>Nakład</th><th>A3</th><th>A4</th><th>A5</th><th>A6</th></tr>
+          <tr><th>Nakład</th>${lamHeaderCells}</tr>
           ${lamRows}
         </table>
       `;
 
-      const introRows = (data?.introligatornia?.items ?? [])
-        .map((item: any) => {
-          const price = resolveStoredPrice(`laminowanie-intro-${item.id}`, item.price);
-          return `<tr><td>${normalizePolishText(String(item.name ?? ""))}</td><td>${formatPLN(price)}</td></tr>`;
+      const introRows = getIntroligatorniaServices()
+        .map((item) => {
+          const price = resolveIntroligatorniaUnitPrice(item);
+          return `<tr><td>${normalizePolishText(item.name)}</td><td>${formatPLN(price)}</td></tr>`;
         })
         .join("");
 
@@ -636,6 +741,21 @@ export const LaminowanieView: View = {
     });
 
     const formatSelect = container.querySelector("#lam-format") as HTMLSelectElement;
+
+    const populateLamFormatSelect = () => {
+      const previouslySelected = formatSelect.value;
+      const materials = getLaminowanieFormats();
+      formatSelect.innerHTML =
+        `<option value="" disabled${previouslySelected ? "" : " selected"}>— wybierz format —</option>` +
+        materials
+          .map((m) => `<option value="${m.id}">${normalizePolishText(m.name)}</option>`)
+          .join("");
+      if (previouslySelected && materials.some((m) => m.id === previouslySelected)) {
+        formatSelect.value = previouslySelected;
+      }
+    };
+    populateLamFormatSelect();
+
     const qtyInput = container.querySelector("#lam-qty") as HTMLInputElement;
     const addToCartBtn = container.querySelector("#lam-add-to-cart") as HTMLButtonElement;
     const lamFormatHint = container.querySelector("#lam-format-hint") as HTMLElement | null;
@@ -670,8 +790,13 @@ export const LaminowanieView: View = {
       }
       setFieldHint(lamFormatHint, null);
 
+      const formatLabel =
+        getLaminowanieFormats().find((m) => m.id === formatSelect.value)?.name ??
+        formatSelect.value;
+
       currentOptions = {
         format: formatSelect.value,
+        formatLabel,
         qty: qty,
         express: ctx.expressMode,
       };
@@ -686,13 +811,13 @@ export const LaminowanieView: View = {
         unitPriceSpan.innerText = formatPLN(unitPrice);
       }
       if (lamTierHint) {
-        lamTierHint.textContent = `${qty} szt, format: ${currentOptions.format} → ${formatPLN(unitPrice)} zł/szt${ctx.expressMode ? " × 1.20 (EXPRESS)" : ""}`;
+        lamTierHint.textContent = `${qty} szt, format: ${formatLabel} → ${formatPLN(unitPrice)} zł/szt${ctx.expressMode ? " × 1.20 (EXPRESS)" : ""}`;
       }
 
       // Add breakdown section for laminowanie
       if (lamBreakdownBox && lamBreakdownLines) {
         const breakdown: BreakdownRow[] = [
-          { label: "Parametry", value: `${qty} szt, format ${currentOptions.format}` },
+          { label: "Parametry", value: `${qty} szt, format ${formatLabel}` },
           { label: "Cena z tabeli", value: formatPLN(result.tierPrice) },
           { label: "Cena bazowa", value: formatPLN(result.basePrice) },
         ];
@@ -737,13 +862,13 @@ export const LaminowanieView: View = {
         ctx.cart.addItem({
           id: `laminowanie-${Date.now()}`,
           category: "Introligatornia",
-          name: `Laminowanie ${currentOptions.format}`,
+          name: `Laminowanie ${currentOptions.formatLabel ?? currentOptions.format}`,
           quantity: currentOptions.qty,
           unit: "szt",
           unitPrice: currentResult.totalPrice / currentOptions.qty,
           isExpress: currentOptions.express,
           totalPrice: currentResult.totalPrice,
-          optionsHint: `${currentOptions.qty} szt, Format ${currentOptions.format}${expressLabel}`,
+          optionsHint: `${currentOptions.qty} szt, Format ${currentOptions.formatLabel ?? currentOptions.format}${expressLabel}`,
           payload: currentResult,
         });
 
@@ -1547,17 +1672,32 @@ export const LaminowanieView: View = {
     ) as HTMLElement | null;
     const introPriceTiers = container.querySelector("#intro-price-tiers") as HTMLElement;
 
-    // Fill intro price tiers
-    const laminowanieData = getPrice("laminowanie") as any;
-    if (introPriceTiers && laminowanieData?.introligatornia?.items) {
-      const items = laminowanieData.introligatornia.items;
-      introPriceTiers.innerHTML = items
+    const populateIntroServiceSelect = () => {
+      if (!introService) return;
+      const previouslySelected = introService.value;
+      const services = getIntroligatorniaServices();
+      introService.innerHTML =
+        `<option value="" disabled${previouslySelected ? "" : " selected"}>— wybierz usługę —</option>` +
+        services
+          .map((s) => `<option value="${s.id}">${normalizePolishText(s.name)}</option>`)
+          .join("");
+      if (previouslySelected && services.some((s) => s.id === previouslySelected)) {
+        introService.value = previouslySelected;
+      }
+    };
+
+    const updateIntroPriceTiers = () => {
+      if (!introPriceTiers) return;
+      introPriceTiers.innerHTML = getIntroligatorniaServices()
         .map(
-          (item: any) =>
-            `<div>${normalizePolishText(String(item.name ?? ""))} → ${formatPLN(resolveStoredPrice(`laminowanie-intro-${item.id}`, item.price))}</div>`
+          (item) =>
+            `<div>${normalizePolishText(item.name)} → ${formatPLN(resolveIntroligatorniaUnitPrice(item))}</div>`
         )
         .join("");
-    }
+    };
+
+    populateIntroServiceSelect();
+    updateIntroPriceTiers();
 
     let introState: ReturnType<typeof quoteIntroligatornia> | null = null;
     let introBlockedHints: (HTMLElement | null)[] = [];
@@ -1674,6 +1814,11 @@ export const LaminowanieView: View = {
       cancelOn: [addToCartBtn, bindAddBtn, oprAddBtn, introAddBtn],
     });
     ctx?.on?.("prices-updated", () => {
+      populateLamFormatSelect();
+      populateIntroServiceSelect();
+      updateIntroPriceTiers();
+      bindCustomItems.refresh();
+      oprCustomItems.refresh();
       ensureLegend(getActiveTab());
       recalcAll();
     });
