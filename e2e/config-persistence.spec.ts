@@ -1152,3 +1152,63 @@ test.describe("Dyplomy Ekonomiczne: dwie niezależne przyczyny, dla których now
     await expect(page.locator("body")).toContainText("ZZZ-DYPEKO-TEST");
   });
 });
+
+test.describe("Cena relatywna od materiału STATYCZNEGO z ceną nadpisaną przez zwykłą edycję cennika", () => {
+  test.beforeEach(async ({ page }) => {
+    await neutralizeReloadTriggers(page);
+    await seedAdminSession(page);
+    await stubAppsScript(page);
+  });
+
+  test("materiał relatywny do 'Banner powlekany' liczy się od NADPISANEJ ceny, nie z prices.json", async ({
+    page,
+  }) => {
+    await openSettings(page);
+
+    // Admin nadpisuje 1. próg (1-25 m²) "Banner powlekany" przez zwykłą edycję
+    // cennika (nie przez formularz "Nowy materiał").
+    await page.selectOption("#new-price-category", "banner");
+    await page
+      .locator('tr[data-key="banner-powlekany-1-25"] input[data-field="unitPrice"]')
+      .fill("999");
+    await savePrices(page);
+
+    const pricesAfterOverride = await page.evaluate(() =>
+      JSON.parse(localStorage.getItem("razdwa_prices") ?? "{}")
+    );
+    expect(pricesAfterOverride["banner-powlekany-1-25"]).toBe(999);
+
+    // Nowy materiał, relatywnie +20% od "Banner powlekany".
+    await page.fill("#new-material-name", "ZZZ-E2E Relatywny Od Nadpisanej Bazy");
+    await page.click("#new-material-category-summary");
+    await page.check('.new-material-category[value="banner"]');
+    await page.selectOption("#new-material-price-mode", "relative");
+    await page.selectOption("#new-material-base", { label: "Banner powlekany" });
+    await page.selectOption("#new-material-relative-op", "percent");
+    await page.fill("#new-material-relative-value", "20");
+    await page.click("#btn-add-material");
+    await expect(page.locator("#save-msg")).toContainText("Dodano materiał");
+    await savePrices(page);
+
+    await page.goto("/#/banner");
+    await expect(page.locator("#b-material")).toContainText("ZZZ-E2E Relatywny Od Nadpisanej Bazy");
+    await page.selectOption("#b-material", { label: "ZZZ-E2E Relatywny Od Nadpisanej Bazy" });
+    // Banner liczy wymiary w cm — 100x100cm = 1 m², w progu 1-25 m² (ten
+    // sam próg, który został nadpisany na 999 zł powyżej).
+    await page.fill("#b-width", "100");
+    await page.fill("#b-height", "100");
+    await page.locator("#b-height").dispatchEvent("input");
+
+    // 999 * 1.2 = 1198,80 zł — bez fixu liczyłoby się od surowej ceny z
+    // prices.json (53 zł), dając 63,60 zł zamiast tego.
+    await expect(page.locator("#b-total-price")).toContainText("1198,80");
+
+    // Legenda widoku ma osobne, resolver-less wywołanie getCombinedMaterials()
+    // — musi pokazywać TĘ SAMĄ cenę co checkout, nie zmirrorowaną od surowej
+    // bazy. Rozjazd legenda-vs-cena-koszykowa byłby widoczny dla klienta.
+    const legendBlock = page.locator("#b-dynamic-legend").filter({
+      hasText: "ZZZ-E2E Relatywny Od Nadpisanej Bazy",
+    });
+    await expect(legendBlock).toContainText("1198,80");
+  });
+});

@@ -1,6 +1,9 @@
 import { View, ViewContext } from "../types";
 import { autoCalc } from "../autoCalc";
-import { calculateSolwentPlakaty } from "../../categories/solwent-plakaty";
+import {
+  calculateSolwentPlakaty,
+  resolveStaticSolwentTiers,
+} from "../../categories/solwent-plakaty";
 import { formatPLN } from "../../core/money";
 import { resolveStoredPrice } from "../../core/compat";
 import { getCombinedMaterials } from "../../core/dynamicMaterials";
@@ -65,7 +68,11 @@ export const SolwentPlakatyView: View = {
         resultDisplay.insertAdjacentElement("afterend", legend);
       }
 
-      const materials = getCombinedMaterials("solwentPlakaty");
+      const materials = getCombinedMaterials(
+        "solwentPlakaty",
+        undefined,
+        resolveStaticSolwentTiers
+      );
       const selectedMaterial = materialSelect.value;
 
       legend.innerHTML = `

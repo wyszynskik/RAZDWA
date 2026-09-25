@@ -3,6 +3,7 @@ import { autoCalc } from "../autoCalc";
 import {
   calculateWycinanieFolii,
   resolveVariantRates,
+  resolveStaticFoilTiers,
   WycinanieFoliiOptions,
 } from "../../categories/wycinanie-folii";
 import { formatPLN } from "../../core/money";
@@ -57,7 +58,7 @@ export const WycinanieFoliiView: View = {
       foilListEl?.querySelector<HTMLInputElement>(".wf-foil-type:checked")?.value;
 
     const renderFoilTypeList = () => {
-      materials = getCombinedMaterials("wycinanieFolii");
+      materials = getCombinedMaterials("wycinanieFolii", undefined, resolveStaticFoilTiers);
       if (!foilListEl) return;
       const previouslySelected = getSelectedMaterialId();
 

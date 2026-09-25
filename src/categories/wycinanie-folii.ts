@@ -1,6 +1,10 @@
 import { calculatePrice } from "../core/pricing";
 import { CalculationResult, PriceTable } from "../core/types";
-import { getCombinedMaterials, type MaterialDefinition } from "../core/dynamicMaterials";
+import {
+  getCombinedMaterials,
+  type MaterialDefinition,
+  type MaterialTier,
+} from "../core/dynamicMaterials";
 import { resolveStoredPrice } from "../core/compat";
 
 export interface WycinanieFoliiOptions {
@@ -42,13 +46,34 @@ export function resolveVariantRates(material: MaterialDefinition): {
   };
 }
 
+/**
+ * Tier-shaped odpowiednik resolveVariantRates(), do wpięcia w
+ * getCombinedMaterials() jako resolveStaticOverride — żeby materiał
+ * relatywny do "kolorowa"/"zloto-srebro" mirrorował żywą (nadpisaną) cenę
+ * bazy, nie surową z prices.json. Pierwszy próg (po sortowaniu) = "poniżej",
+ * ostatni = "od 1 m² wzwyż" — ta sama konwencja co resolveVariantRates.
+ */
+export function resolveStaticFoilTiers(material: MaterialDefinition): MaterialTier[] {
+  const sorted = [...material.tiers].sort((a, b) => a.min - b.min);
+  const legacy = LEGACY_RATE_KEYS[material.id];
+  if (!legacy || sorted.length === 0) return sorted;
+  const lastIndex = sorted.length - 1;
+  return sorted.map((tier, i) => {
+    if (i === 0) return { ...tier, price: resolveStoredPrice(legacy.below, tier.price) };
+    if (i === lastIndex) return { ...tier, price: resolveStoredPrice(legacy.above, tier.price) };
+    return tier;
+  });
+}
+
 export function calculateWycinanieFolii(options: WycinanieFoliiOptions): CalculationResult {
   const areaM2 = (options.widthMm * options.heightMm) / 1_000_000;
   if (!isFinite(areaM2) || areaM2 <= 0) {
     throw new Error("Nieprawidłowa powierzchnia");
   }
 
-  const material = getCombinedMaterials("wycinanieFolii").find((m) => m.id === options.variantId);
+  const material = getCombinedMaterials("wycinanieFolii", undefined, resolveStaticFoilTiers).find(
+    (m) => m.id === options.variantId
+  );
   if (!material) {
     throw new Error("Nieznany rodzaj folii");
   }

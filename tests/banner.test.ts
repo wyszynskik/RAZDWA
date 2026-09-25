@@ -2,7 +2,12 @@ import { describe, it, expect, afterEach, vi } from "vitest";
 import { calculateBanner } from "../src/categories/banner";
 import { buildMaterialAssignmentKey, materialTierKeyPrefix } from "../src/core/dynamicMaterials";
 import { MATERIAL_ASSIGNMENT_PREFIX } from "../src/core/variantKeys";
-import { setVariantDefinitions, setPrice, resetPrices } from "../src/services/priceService";
+import {
+  setVariantDefinitions,
+  setPrice,
+  resetPrices,
+  PRICES_STORAGE_KEY,
+} from "../src/services/priceService";
 
 describe("Banner pricing", () => {
   it("should calculate Powlekany 10m2 correctly (53 PLN/m2)", () => {
@@ -114,5 +119,42 @@ describe("Banner pricing — materiał dodany dynamicznie (dynamicMaterials.ts)"
 
     expect(result.tierPrice).toBe(30);
     expect(result.totalPrice).toBe(150);
+  });
+
+  it("materiał relatywny do 'powlekany' mirroruje cenę NADPISANĄ przez panel ustawień, nie surową z prices.json", () => {
+    storage = {};
+    vi.stubGlobal("localStorage", {
+      getItem: (k: string) => storage[k] ?? null,
+      setItem: (k: string, v: string) => {
+        storage[k] = String(v);
+      },
+      removeItem: (k: string) => {
+        delete storage[k];
+      },
+    });
+    // Admin wcześniej nadpisał 1. próg "powlekany" (1-25) przez zwykłą edycję cennika.
+    storage[PRICES_STORAGE_KEY] = JSON.stringify({ "banner-powlekany-1-25": 999 });
+
+    const derivedId = "pochodny-od-powlekany";
+    setVariantDefinitions([
+      {
+        key: buildMaterialAssignmentKey("banner", derivedId),
+        categoryId: "banner",
+        subcategoryPrefix: MATERIAL_ASSIGNMENT_PREFIX,
+        subgroupLabel: "",
+        label: "Pochodny",
+        legend: "",
+        visibleInSettings: true,
+        visibleInCalculator: true,
+        sortOrder: 0,
+        createdAt: "2026-01-01T00:00:00.000Z",
+        updatedAt: "2026-01-01T00:00:00.000Z",
+        materialPriceFormula: { baseMaterialId: "powlekany", op: "percent", value: 10 },
+      },
+    ]);
+
+    const result = calculateBanner({ material: derivedId, areaM2: 1, oczkowanie: false });
+
+    expect(result.tierPrice).toBe(Math.round(999 * 1.1 * 100) / 100);
   });
 });

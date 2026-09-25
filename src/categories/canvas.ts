@@ -31,7 +31,9 @@ export function getCanvasMaterials(modeId: CanvasFormatModeId, mode: any): Mater
     }));
 
   const dynamicCategoryId = modeId === "framed" ? "canvasFramed" : "canvasUnframed";
-  return getCombinedMaterials(dynamicCategoryId, staticFormats);
+  return getCombinedMaterials(dynamicCategoryId, staticFormats, (m) => [
+    { min: 1, max: null, price: resolveCanvasUnitPrice(modeId, mode, m) },
+  ]);
 }
 
 /**

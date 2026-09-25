@@ -2,7 +2,12 @@ import { describe, it, expect, afterEach, vi } from "vitest";
 import { calculateSolwentPlakaty } from "../src/categories/solwent-plakaty";
 import { buildMaterialAssignmentKey, materialTierKeyPrefix } from "../src/core/dynamicMaterials";
 import { MATERIAL_ASSIGNMENT_PREFIX } from "../src/core/variantKeys";
-import { setVariantDefinitions, setPrice, resetPrices } from "../src/services/priceService";
+import {
+  setVariantDefinitions,
+  setPrice,
+  resetPrices,
+  PRICES_STORAGE_KEY,
+} from "../src/services/priceService";
 
 describe("Solwent Plakaty Category E2E", () => {
   const material = "Papier 150g półmat";
@@ -85,5 +90,41 @@ describe("Solwent Plakaty — materiał dodany dynamicznie (dynamicMaterials.ts)
 
     expect(result.tierPrice).toBe(40);
     expect(result.totalPrice).toBe(80);
+  });
+
+  it("materiał relatywny do '150g' mirroruje cenę NADPISANĄ przez panel ustawień, nie surową z prices.json", () => {
+    storage = {};
+    vi.stubGlobal("localStorage", {
+      getItem: (k: string) => storage[k] ?? null,
+      setItem: (k: string, v: string) => {
+        storage[k] = String(v);
+      },
+      removeItem: (k: string) => {
+        delete storage[k];
+      },
+    });
+    storage[PRICES_STORAGE_KEY] = JSON.stringify({ "solwent-150g-1-3": 999 });
+
+    const derivedId = "pochodny-od-150g";
+    setVariantDefinitions([
+      {
+        key: buildMaterialAssignmentKey("solwentPlakaty", derivedId),
+        categoryId: "solwentPlakaty",
+        subcategoryPrefix: MATERIAL_ASSIGNMENT_PREFIX,
+        subgroupLabel: "",
+        label: "Pochodny",
+        legend: "",
+        visibleInSettings: true,
+        visibleInCalculator: true,
+        sortOrder: 0,
+        createdAt: "2026-01-01T00:00:00.000Z",
+        updatedAt: "2026-01-01T00:00:00.000Z",
+        materialPriceFormula: { baseMaterialId: "150g", op: "percent", value: 10 },
+      },
+    ]);
+
+    const result = calculateSolwentPlakaty({ areaM2: 1, material: derivedId });
+
+    expect(result.tierPrice).toBe(Math.round(999 * 1.1 * 100) / 100);
   });
 });

@@ -186,15 +186,30 @@ function resolveRelativeMaterialTiers(
  * instead of `getPrice(categoryId)?.materials` — needed when the static list
  * isn't a top-level prices.json array (e.g. canvas's per-mode `formats[]`,
  * mapped to MaterialDefinition by the caller before this is invoked).
+ *
+ * `resolveStaticOverride`, when given, maps each STATIC material's tiers
+ * through the category's own admin-price-override lookup (e.g.
+ * `overrideTiersWithStoredPrices`) before that material enters either the
+ * returned list or the base pool a relative (materialPriceFormula) material
+ * mirrors. Without it, a relative material mirrors the raw prices.json
+ * default even if the admin has since overridden the base's price via the
+ * normal price table — this closes that gap. Never applied to
+ * dynamic/manual materials: those already read live `defaultPrices`
+ * directly, with no separate "default vs override" layer to reconcile.
  */
 export function getCombinedMaterials(
   categoryId: DynamicMaterialCategoryId,
-  staticMaterialsOverride?: MaterialDefinition[]
+  staticMaterialsOverride?: MaterialDefinition[],
+  resolveStaticOverride?: (material: MaterialDefinition) => MaterialTier[]
 ): MaterialDefinition[] {
-  const staticMaterials =
+  let staticMaterials =
     staticMaterialsOverride ??
     (((getPrice(categoryId) as { materials?: MaterialDefinition[] })?.materials ??
       []) as MaterialDefinition[]);
+
+  if (resolveStaticOverride) {
+    staticMaterials = staticMaterials.map((m) => ({ ...m, tiers: resolveStaticOverride(m) }));
+  }
 
   const dynamicRows: VariantDefinition[] = getVariantDefinitions().filter(
     (v) => v.categoryId === categoryId && v.subcategoryPrefix === MATERIAL_ASSIGNMENT_PREFIX

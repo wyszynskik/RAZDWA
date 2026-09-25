@@ -40,7 +40,7 @@ export function getWlepkiM2Groups(): MaterialDefinition[] {
     name: String(g.title ?? g.id),
     tiers: g.tiers ?? [],
   }));
-  return getCombinedMaterials("wlepkiM2", staticGroups);
+  return getCombinedMaterials("wlepkiM2", staticGroups, resolveWlepkiGroupTiers);
 }
 
 /**
@@ -107,7 +107,9 @@ export function getWlepkiSztTables(): MaterialDefinition[] {
       price: tier.price,
     })),
   }));
-  return getCombinedMaterials("wlepkiSzt", staticTables);
+  return getCombinedMaterials("wlepkiSzt", staticTables, (m) =>
+    resolveWlepkiSztTiers(m).map((t) => ({ min: t.qty, max: t.qty, price: t.price }))
+  );
 }
 
 /**

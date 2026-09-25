@@ -38,7 +38,7 @@ export function getLaminowanieFormats(): MaterialDefinition[] {
       tiers: tiers as MaterialTier[],
     })
   );
-  return getCombinedMaterials("laminowanieFormat", staticFormats);
+  return getCombinedMaterials("laminowanieFormat", staticFormats, getLaminowanieFormatTiers);
 }
 
 /**
@@ -95,7 +95,9 @@ export function getIntroligatorniaServices(): MaterialDefinition[] {
       tiers: [{ min: 1, max: null, price: Number(item.price) || 0 }],
     })
   );
-  return getCombinedMaterials("laminowanieIntro", staticItems);
+  return getCombinedMaterials("laminowanieIntro", staticItems, (m) => [
+    { min: 1, max: null, price: resolveIntroligatorniaUnitPrice(m) },
+  ]);
 }
 
 /**

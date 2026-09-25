@@ -29,7 +29,9 @@ export function getRollUpFormats(): MaterialDefinition[] {
       tiers: (fmt.tiers ?? []) as MaterialTier[],
     })
   );
-  return getCombinedMaterials("rollup", staticFormats);
+  return getCombinedMaterials("rollup", staticFormats, (m) =>
+    overrideTiersWithStoredPrices(`rollup-${m.id}`, m.tiers)
+  );
 }
 
 /**

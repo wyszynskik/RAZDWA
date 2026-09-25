@@ -1,6 +1,13 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, afterEach, vi } from "vitest";
 import { calculateCanvas } from "../src/categories/canvas";
-import { resetPrices, setPrice } from "../src/services/priceService";
+import { buildMaterialAssignmentKey } from "../src/core/dynamicMaterials";
+import { MATERIAL_ASSIGNMENT_PREFIX } from "../src/core/variantKeys";
+import {
+  resetPrices,
+  setPrice,
+  setVariantDefinitions,
+  PRICES_STORAGE_KEY,
+} from "../src/services/priceService";
 
 describe("Canvas / Płótno", () => {
   it("should calculate framed format by qty", () => {
@@ -89,5 +96,54 @@ describe("Canvas / Płótno", () => {
       }
       resetPrices();
     }
+  });
+});
+
+describe("Canvas — materiał relatywny do formatu STATYCZNEGO z nadpisaną ceną", () => {
+  afterEach(() => {
+    resetPrices();
+    setVariantDefinitions([]);
+    vi.unstubAllGlobals();
+  });
+
+  it("mirroruje cenę NADPISANĄ przez panel ustawień (format 70x50, framed), nie surową z prices.json", () => {
+    const stored: Record<string, string> = {};
+    vi.stubGlobal("localStorage", {
+      getItem: (k: string) => stored[k] ?? null,
+      setItem: (k: string, v: string) => {
+        stored[k] = String(v);
+      },
+      removeItem: (k: string) => {
+        delete stored[k];
+      },
+    });
+    stored[PRICES_STORAGE_KEY] = JSON.stringify({ "canvas-framed-70x50": 999 });
+
+    const derivedId = "pochodny-od-70x50";
+    setVariantDefinitions([
+      {
+        key: buildMaterialAssignmentKey("canvasFramed", derivedId),
+        categoryId: "canvasFramed",
+        subcategoryPrefix: MATERIAL_ASSIGNMENT_PREFIX,
+        subgroupLabel: "",
+        label: "Pochodny",
+        legend: "",
+        visibleInSettings: true,
+        visibleInCalculator: true,
+        sortOrder: 0,
+        createdAt: "2026-01-01T00:00:00.000Z",
+        updatedAt: "2026-01-01T00:00:00.000Z",
+        materialPriceFormula: { baseMaterialId: "70x50", op: "percent", value: 10 },
+      },
+    ]);
+
+    const result = calculateCanvas({
+      modeId: "framed",
+      formatId: derivedId,
+      quantity: 1,
+      express: false,
+    });
+
+    expect(result.totalPrice).toBe(Math.round(999 * 1.1 * 100) / 100);
   });
 });
