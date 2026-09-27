@@ -1,5 +1,6 @@
 ﻿import { View, ViewContext } from "../types";
 import { escapeHtml } from "../../core/validation";
+import { variantSchema } from "../../core/variantSchema";
 import { formatMaterialSizeOption } from "../dynamicSubgroups";
 import {
   type PriceCategory,
@@ -4802,6 +4803,16 @@ export const UstawieniaView: View = {
           : existingDef?.materialSizeOptions,
         priceFormula: effectivePriceFormula,
       };
+
+      const _variantValidation = variantSchema.safeParse(_variantDef);
+      if (!_variantValidation.success) {
+        showStatus(
+          `⚠️ Nieprawidłowe dane wariantu: ${_variantValidation.error.issues[0]?.message ?? "nieznany błąd"}`,
+          "error"
+        );
+        return;
+      }
+
       _draftVariantDefs = _draftVariantDefs
         .filter((d) => d.key !== _variantDef.key)
         .concat(_variantDef);
@@ -5199,6 +5210,16 @@ export const UstawieniaView: View = {
           updatedAt: now,
           materialPriceFormula,
         };
+
+        const materialValidation = variantSchema.safeParse(variantDef);
+        if (!materialValidation.success) {
+          showStatus(
+            `⚠️ Nieprawidłowe dane materiału: ${materialValidation.error.issues[0]?.message ?? "nieznany błąd"}`,
+            "error"
+          );
+          return;
+        }
+
         _draftVariantDefs = _draftVariantDefs.filter((d) => d.key !== key).concat(variantDef);
 
         if (!isRelativeMode) {
@@ -5292,6 +5313,16 @@ export const UstawieniaView: View = {
       }
 
       const variantDef = buildCadFormatVariant(formatId, name);
+
+      const cadFormatValidation = variantSchema.safeParse(variantDef);
+      if (!cadFormatValidation.success) {
+        showStatus(
+          `⚠️ Nieprawidłowe dane formatu CAD: ${cadFormatValidation.error.issues[0]?.message ?? "nieznany błąd"}`,
+          "error"
+        );
+        return;
+      }
+
       _draftVariantDefs = _draftVariantDefs
         .filter((d) => d.key !== variantDef.key)
         .concat(variantDef);
@@ -5510,6 +5541,16 @@ export const UstawieniaView: View = {
             calcScheme: "interpolated",
             subgroupSortOrder,
           };
+
+          const bulkPaperValidation = variantSchema.safeParse(variantDef);
+          if (!bulkPaperValidation.success) {
+            showStatus(
+              `⚠️ Nieprawidłowe dane papieru: ${bulkPaperValidation.error.issues[0]?.message ?? "nieznany błąd"}`,
+              "error"
+            );
+            return;
+          }
+
           _draftVariantDefs = _draftVariantDefs.filter((d) => d.key !== key).concat(variantDef);
         }
       }
