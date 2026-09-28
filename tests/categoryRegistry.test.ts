@@ -70,8 +70,25 @@ describe("CATEGORY_REGISTRY — kompletność względem 4 rejestrów", () => {
     }
   });
 
-  it("buildRouteToBaseIdMap() odtwarza ROUTE_TO_PRICE_CATEGORY_ID bit-w-bit", () => {
-    expect(buildRouteToBaseIdMap()).toEqual(ROUTE_TO_PRICE_CATEGORY_ID);
+  it("buildRouteToBaseIdMap() odtwarza znaną, zamrożoną mapę route→baseId", () => {
+    // Zamrożona tu, NIE odczytana z ROUTE_TO_PRICE_CATEGORY_ID: od migracji
+    // router.ts na `ROUTE_TO_PRICE_CATEGORY_ID = buildRouteToBaseIdMap()` obie
+    // strony porównania z importu byłyby tym samym wywołaniem tej samej
+    // funkcji nad tą samą tablicą (x === x) — test przechodziłby zawsze,
+    // niezależnie od tego, czy rejestr jest poprawny. Ten literał to jedyna
+    // rzecz, która faktycznie wykryje błędne routeIds w CATEGORY_REGISTRY.
+    const EXPECTED_ROUTE_TO_BASE_ID: Record<string, string> = {
+      "wizytowki-druk-cyfrowy": "wizytowki",
+      "zaproszenia-kreda": "zaproszenia",
+      "ulotki-cyfrowe": "ulotki",
+      "folia-szroniona": "folia",
+      "roll-up": "rollup",
+      "solwent-plakaty": "solwent",
+      "wlepki-naklejki": "wlepki",
+      plakaty: "solwent",
+      "artykuly-biurowe": "artykuly",
+    };
+    expect(buildRouteToBaseIdMap()).toEqual(EXPECTED_ROUTE_TO_BASE_ID);
   });
 
   it("każda wartość w ROUTE_TO_PRICE_CATEGORY_ID jest realnym BASE_PRICE_CATEGORIES id — dokładnie ta klasa buga, co spowodowała incydent z 'zaproszenia'", () => {
