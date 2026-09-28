@@ -50,8 +50,13 @@ export type DynamicMaterialCategoryId =
   | "wlepkiM2"
   | "wlepkiSzt";
 
-/** getPrice() root key -> text prefix used inside defaultPrices tier keys. */
-const PRICE_KEY_PREFIX: Record<DynamicMaterialCategoryId, string> = {
+/**
+ * getPrice() root key -> text prefix used inside defaultPrices tier keys.
+ * Exported so categoryRegistry.ts's completeness test can enumerate every
+ * DynamicMaterialCategoryId at runtime (Object.keys) without a second,
+ * hand-maintained literal list that could drift from this one.
+ */
+export const PRICE_KEY_PREFIX: Record<DynamicMaterialCategoryId, string> = {
   banner: "banner",
   solwentPlakaty: "solwent",
   foliaSzroniona: "folia-szroniona",
