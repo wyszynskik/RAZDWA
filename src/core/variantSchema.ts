@@ -9,6 +9,7 @@
  * import it without pulling in unrelated dependencies.
  */
 import { z } from "zod";
+import type { VariantDefinition } from "../services/priceService";
 
 /** Same list as priceService.ts's FORBIDDEN_PATH_KEYS — kept local since the
  * two guard different things (defaultPrices path segments vs. variant keys)
@@ -64,3 +65,18 @@ export const variantSchema = z.object({
 });
 
 export type VariantSchemaShape = z.infer<typeof variantSchema>;
+
+/**
+ * Compile-time tripwire: fails `tsc --noEmit` the moment VariantSchemaShape
+ * and the real VariantDefinition (priceService.ts) drift apart — e.g. a new
+ * field added to one and not the other. Without this, a new optional field on
+ * VariantDefinition would be silently stripped by zod's .strip() default at
+ * every safeParse() call site (the exact class of bug this schema was written
+ * to fix for materialPriceFormula — see audyt rozszerzalności, Fakt 5), and
+ * nobody would notice until a manual repro.
+ */
+type AssertExact<T, U> =
+  (<G>() => G extends T ? 1 : 2) extends <G>() => G extends U ? 1 : 2 ? true : false;
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+const _variantSchemaMatchesVariantDefinition: AssertExact<VariantSchemaShape, VariantDefinition> =
+  true;

@@ -4746,13 +4746,6 @@ export const UstawieniaView: View = {
           ? buildUniqueQuantityKey(chosenCategoryId, chosenPrefix, qtyValue, prices)
           : buildUniquePriceKey(chosenPrefix, productLabel, prices);
 
-      prices[newKey] = newVariantPrice;
-      _lastAddedKey = newKey;
-
-      if (legendText || productLabel) {
-        customPriceLabels[newKey] = legendText || productLabel;
-      }
-
       // Draft: tylko aktualizacja in-memory; localStorage nie jest dotykany do momentu "Zapisz cennik"
       const existingDef = isUpdate
         ? (getVariantDefinitions().find((v) => v.key === newKey) ??
@@ -4811,6 +4804,16 @@ export const UstawieniaView: View = {
           "error"
         );
         return;
+      }
+
+      // prices/customPriceLabels dopisywane dopiero PO udanej walidacji, żeby
+      // odrzucony wariant nie zostawiał osieroconego klucza w prices bez
+      // odpowiadającego VariantDefinition (audyt: ten sam bug, który łapie
+      // orphanedPriceKeys.ts).
+      prices[newKey] = newVariantPrice;
+      _lastAddedKey = newKey;
+      if (legendText || productLabel) {
+        customPriceLabels[newKey] = legendText || productLabel;
       }
 
       _draftVariantDefs = _draftVariantDefs
@@ -5522,7 +5525,6 @@ export const UstawieniaView: View = {
 
         for (const tier of tiers) {
           const key = buildUniqueQuantityKey(categoryId, chosenPrefix, tier.qty, prices);
-          prices[key] = tier.price;
           const variantDef: VariantDefinition = {
             key,
             categoryId,
@@ -5551,6 +5553,8 @@ export const UstawieniaView: View = {
             return;
           }
 
+          // Dopiero po udanej walidacji — patrz komentarz przy #btn-add-row.
+          prices[key] = tier.price;
           _draftVariantDefs = _draftVariantDefs.filter((d) => d.key !== key).concat(variantDef);
         }
       }
