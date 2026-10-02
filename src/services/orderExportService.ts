@@ -366,6 +366,16 @@ function fnv1aHex(input: string): string {
  * w handleOrderSave (Code.gs) — bez żadnej komunikacji między zakładkami.
  * Dlatego pomijamy pola różniące się między zakładkami mimo tej samej
  * treści (createdAt, requestId) i kubełkujemy czas zamiast go liczyć dokładnie.
+ *
+ * Świadomy kompromis: to samo w 100% zamówienie (ten sam klient, koszyk,
+ * suma) wysłane dwa razy w tym samym 90-sekundowym oknie zawsze dostanie
+ * ten sam requestId i zostanie zdedupowane do jednego wiersza — nawet
+ * jeśli klient naprawdę chciał złożyć dwa odrębne zamówienia. Nie dodawać
+ * do fingerprintu żadnego licznika/nonce w celu odróżnienia tego przypadku:
+ * zepsułoby to dedup między kartami, który jest tu głównym celem. Ryzyko
+ * uznane za akceptowalne — dane klienta czyszczą się po udanym zapisie
+ * (main.ts), więc kolizja wymaga ręcznego powtórzenia identycznych danych
+ * w 90s.
  */
 export function computeOrderRequestId(
   payload: OrderExportPayload,
@@ -628,183 +638,6 @@ export async function sendOrderToAppsScript(
       verified: false,
       errorType: isTimeout ? "timeout" : "unknown",
     };
-  } finally {
-    clearTimeout(timeout);
-  }
-}
-
-export async function savePricesToAppsScript(
-  prices: Record<string, number | null>,
-  config: OrderExportConfig = getOrderExportConfig()
-): Promise<OrderExportResult> {
-  if (!config.enabled) {
-    return { ok: false, message: "Wysyłka do Apps Script jest wyłączona." };
-  }
-
-  if (!config.appsScriptUrl) {
-    return { ok: false, message: "Brak URL Apps Script Web App." };
-  }
-
-  if (config.dryRun) {
-    return { ok: true, verified: true, message: "dry-run: cennik nie został wysłany." };
-  }
-
-  const token = getAdminToken();
-  if (!token) {
-    return {
-      ok: false,
-      noToken: true,
-      message: "Brak tokenu sesji. Zaloguj się ponownie do panelu ustawień.",
-    };
-  }
-  const body = JSON.stringify({
-    type: "prices_update",
-    token,
-    prices,
-  });
-
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), config.timeoutMs);
-
-  try {
-    const response = await fetchWithRetry(config.appsScriptUrl, {
-      method: "POST",
-      mode: "cors",
-      headers: { "Content-Type": "text/plain" },
-      body,
-      signal: controller.signal,
-    });
-
-    const responseBody = await readAppsScriptBody(response);
-    return evaluateGasResult(
-      responseBody,
-      response.status,
-      response.ok,
-      "Cennik wysłany do Apps Script."
-    );
-  } catch (err) {
-    const errorName = err instanceof Error ? err.name : "";
-    const errorMessage = err instanceof Error ? err.message : "";
-    const isCorsOrNetworkFailure =
-      errorName !== "AbortError" &&
-      (`${errorName} ${errorMessage}`.toLowerCase().includes("failed to fetch") ||
-        `${errorName} ${errorMessage}`.toLowerCase().includes("networkerror") ||
-        `${errorName} ${errorMessage}`.toLowerCase().includes("load failed"));
-
-    if (isCorsOrNetworkFailure) {
-      try {
-        await fetch(config.appsScriptUrl, {
-          method: "POST",
-          mode: "no-cors",
-          headers: { "Content-Type": "text/plain" },
-          body,
-          signal: controller.signal,
-        });
-        return {
-          ok: false,
-          status: 0,
-          verified: false,
-          unverified: true,
-          message:
-            "Cennik wysłany bez potwierdzenia (CORS/sieć). Sprawdź arkusz Sheets — jeśli zmiany nie ma, wyślij ponownie.",
-        };
-      } catch {
-        // continue to final error
-      }
-    }
-
-    const msg =
-      errorName === "AbortError"
-        ? "Przekroczono limit czasu wysyłki cennika."
-        : `Nie udało się wysłać cennika: ${(err as Error)?.message ?? "nieznany błąd"}.`;
-
-    return { ok: false, message: msg, verified: false };
-  } finally {
-    clearTimeout(timeout);
-  }
-}
-
-export async function saveVariantsToAppsScript(
-  variants: VariantDefinition[],
-  config: OrderExportConfig = getOrderExportConfig()
-): Promise<OrderExportResult> {
-  if (!config.enabled) {
-    return { ok: false, message: "Wysyłka do Apps Script jest wyłączona." };
-  }
-  if (!config.appsScriptUrl) {
-    return { ok: false, message: "Brak URL Apps Script Web App." };
-  }
-
-  if (config.dryRun) {
-    return { ok: true, verified: true, message: "dry-run: warianty nie zostały wysłane." };
-  }
-
-  const token = getAdminToken();
-  if (!token) {
-    return {
-      ok: false,
-      noToken: true,
-      message: "Brak tokenu sesji. Zaloguj się ponownie do panelu ustawień.",
-    };
-  }
-  const body = JSON.stringify({ type: "variants_update", token, variants });
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), config.timeoutMs);
-
-  try {
-    const response = await fetchWithRetry(config.appsScriptUrl, {
-      method: "POST",
-      mode: "cors",
-      headers: { "Content-Type": "text/plain" },
-      body,
-      signal: controller.signal,
-    });
-
-    const responseBody = await readAppsScriptBody(response);
-    return evaluateGasResult(
-      responseBody,
-      response.status,
-      response.ok,
-      "Warianty wysłane do Apps Script."
-    );
-  } catch (err) {
-    const errorName = err instanceof Error ? err.name : "";
-    const errorMessage = err instanceof Error ? err.message : "";
-    const isCorsOrNetworkFailure =
-      errorName !== "AbortError" &&
-      (`${errorName} ${errorMessage}`.toLowerCase().includes("failed to fetch") ||
-        `${errorName} ${errorMessage}`.toLowerCase().includes("networkerror") ||
-        `${errorName} ${errorMessage}`.toLowerCase().includes("load failed"));
-
-    if (isCorsOrNetworkFailure) {
-      try {
-        await fetch(config.appsScriptUrl, {
-          method: "POST",
-          mode: "no-cors",
-          headers: { "Content-Type": "text/plain" },
-          body,
-          signal: controller.signal,
-        });
-        return {
-          ok: false,
-          status: 0,
-          verified: false,
-          unverified: true,
-          errorType: "no_cors_sent",
-          message:
-            "Wysłano bez potwierdzenia odpowiedzi (fallback no-cors). Sprawdź arkusz Sheets — jeśli wariantów nie ma, wyślij ponownie.",
-        };
-      } catch {
-        // continue
-      }
-    }
-
-    const msg =
-      errorName === "AbortError"
-        ? "Przekroczono limit czasu wysyłki wariantów."
-        : `Nie udało się wysłać wariantów: ${(err as Error)?.message ?? "nieznany błąd"}.`;
-
-    return { ok: false, message: msg, verified: false };
   } finally {
     clearTimeout(timeout);
   }
