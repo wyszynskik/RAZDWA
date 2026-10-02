@@ -2024,6 +2024,25 @@ document.addEventListener("DOMContentLoaded", () => {
 
       dismissOrderStatusPanel();
       const payload = buildOrderExportPayload(items, customer);
+
+      // Rabat/narzut i notatka muszą trafić do payloadu PRZED policzeniem
+      // requestId — inaczej fingerprint (computeOrderRequestId) łapie surową
+      // sumę z buildOrderExportPayload, nie finalną po rabacie. Dwa zamówienia
+      // różniące się TYLKO rabatem dostawały identyczny requestId i gubiły
+      // się w 90-sekundowym dedupie (audyt: S2). Patrz też komentarz przy
+      // computeOrderRequestId (orderExportService.ts) o świadomym kompromisie
+      // dedupu między kartami — ten fix go nie dotyka, tylko naprawia WEJŚCIE.
+      const _dPct = Math.round(getSummaryPercentValue("summaryDiscountPercent") * 100);
+      const _sPct = Math.round(getSummaryPercentValue("summarySurchargePercent") * 100);
+      payload.summary.total = applySummaryPercentAdjustments(cart.getGrandTotal());
+      if (_dPct || _sPct) {
+        payload.summary.adjustmentPercent = _sPct - _dPct;
+        const _note = [_dPct && `Rabat: ${_dPct}%`, _sPct && `Narzut: ${_sPct}%`]
+          .filter(Boolean)
+          .join(", ");
+        payload.customer.notes = [payload.customer.notes, _note].filter(Boolean).join(" | ");
+      }
+
       if (lastSendRequestId !== null) {
         payload.requestId = lastSendRequestId;
       } else {
@@ -2031,7 +2050,7 @@ document.addEventListener("DOMContentLoaded", () => {
         lastSendRequestId = payload.requestId;
       }
 
-      const provisionalTotal = applySummaryPercentAdjustments(cart.getGrandTotal());
+      const provisionalTotal = payload.summary.total;
       if (provisionalTotal <= 0) {
         releaseGuard();
         showToast("Suma wyszła na zero — sprawdź rabat albo dodaj coś do koszyka.", "error");
@@ -2050,16 +2069,6 @@ document.addEventListener("DOMContentLoaded", () => {
 
       applySendPhase("sending");
       try {
-        const _dPct = Math.round(getSummaryPercentValue("summaryDiscountPercent") * 100);
-        const _sPct = Math.round(getSummaryPercentValue("summarySurchargePercent") * 100);
-        payload.summary.total = applySummaryPercentAdjustments(cart.getGrandTotal());
-        if (_dPct || _sPct) {
-          payload.summary.adjustmentPercent = _sPct - _dPct;
-          const _note = [_dPct && `Rabat: ${_dPct}%`, _sPct && `Narzut: ${_sPct}%`]
-            .filter(Boolean)
-            .join(", ");
-          payload.customer.notes = [payload.customer.notes, _note].filter(Boolean).join(" | ");
-        }
         const result = await sendOrderToAppsScript(payload, exportConfig);
 
         if (result.ok === true && result.verified === true) {
