@@ -60,7 +60,12 @@ export interface ApplyResult {
   ok: boolean;
   revision?: number;
   message?: string;
+  /** true = GAS odpowiedział "locked" (ktoś inny właśnie zapisuje) — stan przejściowy. */
+  locked?: boolean;
 }
+
+const LOCKED_MESSAGE =
+  "Ktoś właśnie zapisuje cennik na innym stanowisku. Odczekaj chwilę i spróbuj ponownie.";
 
 type SnoozeRecord = { revision: number | null; until: number };
 
@@ -227,15 +232,18 @@ export async function ensureAppliedRevision(): Promise<EnsureRevisionResult> {
     };
   }
 
-  const remote = await fetchStateFromAppsScript();
-  if (!remote) {
+  const fetched = await fetchStateFromAppsScript();
+  if (!fetched.ok) {
     return {
       ok: false,
       revision: null,
       applied: false,
-      message: "Nie udało się połączyć z arkuszem, żeby ustalić wersję cennika.",
+      message: fetched.locked
+        ? LOCKED_MESSAGE
+        : "Nie udało się połączyć z arkuszem, żeby ustalić wersję cennika.",
     };
   }
+  const remote = fetched.state;
 
   if (remote.catalogRevision === null) {
     return {
@@ -277,12 +285,14 @@ export async function applyRemoteCatalog(force = false): Promise<ApplyResult> {
     };
   }
 
-  const remote = await fetchStateFromAppsScript();
-  if (!remote) {
-    return { ok: false, message: "Brak połączenia z arkuszem — spróbuj ponownie." };
+  const fetched = await fetchStateFromAppsScript();
+  if (!fetched.ok) {
+    return fetched.locked
+      ? { ok: false, locked: true, message: LOCKED_MESSAGE }
+      : { ok: false, message: "Brak połączenia z arkuszem — spróbuj ponownie." };
   }
 
-  const result = await applyCatalogState(remote);
+  const result = await applyCatalogState(fetched.state);
   if (result.ok) broadcastCatalog({ type: "catalog-applied", revision: result.revision ?? null });
   return result;
 }

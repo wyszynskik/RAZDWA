@@ -801,8 +801,10 @@ describe("fetchStateFromAppsScript — walidacja ingest", () => {
 
     const result = await fetchStateFromAppsScript(GAS_CONFIG);
 
-    expect(result?.prices).toEqual({ "cat-a-1": 10, "cat-a-2": null });
-    expect(result?.variants).toEqual([makeVariant()]);
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error("expected ok");
+    expect(result.state.prices).toEqual({ "cat-a-1": 10, "cat-a-2": null });
+    expect(result.state.variants).toEqual([makeVariant()]);
   });
 
   it("wariant bez wymaganego pola (categoryId) jest odrzucany, reszta zostaje", async () => {
@@ -818,7 +820,8 @@ describe("fetchStateFromAppsScript — walidacja ingest", () => {
 
     const result = await fetchStateFromAppsScript(GAS_CONFIG);
 
-    expect(result?.variants).toEqual([makeVariant()]);
+    if (!result.ok) throw new Error("expected ok");
+    expect(result.state.variants).toEqual([makeVariant()]);
     expect(warnSpy).toHaveBeenCalled();
   });
 
@@ -834,7 +837,8 @@ describe("fetchStateFromAppsScript — walidacja ingest", () => {
 
     const result = await fetchStateFromAppsScript(GAS_CONFIG);
 
-    expect(result?.prices).toEqual({ "cat-a-1": 10 });
+    if (!result.ok) throw new Error("expected ok");
+    expect(result.state.prices).toEqual({ "cat-a-1": 10 });
     expect(warnSpy).toHaveBeenCalled();
   });
 
@@ -850,8 +854,9 @@ describe("fetchStateFromAppsScript — walidacja ingest", () => {
 
     const result = await fetchStateFromAppsScript(GAS_CONFIG);
 
-    expect(result?.prices).toEqual({ "cat-a-1": 10 });
-    expect(Object.prototype.hasOwnProperty.call(result?.prices ?? {}, "__proto__")).toBe(false);
+    if (!result.ok) throw new Error("expected ok");
+    expect(result.state.prices).toEqual({ "cat-a-1": 10 });
+    expect(Object.prototype.hasOwnProperty.call(result.state.prices, "__proto__")).toBe(false);
     expect(warnSpy).toHaveBeenCalled();
   });
 
@@ -866,6 +871,56 @@ describe("fetchStateFromAppsScript — walidacja ingest", () => {
 
     const result = await fetchStateFromAppsScript(GAS_CONFIG);
 
-    expect(result?.variants).toEqual([]);
+    if (!result.ok) throw new Error("expected ok");
+    expect(result.state.variants).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// S3 (audyt): getState czyta katalog pod tym samym lockiem co zapis — trafiony
+// w środku zapisu kogoś innego odpowiada {ok:false, error:"locked"}. Wcześniej
+// to nie różniło się od awarii sieci (oba → null), więc UI pokazywał "brak
+// połączenia" przy czymś, co jest chwilową zajętością. locked:true/false
+// pozwala wołającemu dać poprawny komunikat bez auto-retry (patrz komentarz
+// przy FetchStateResult — retry tylko dla sieci/timeoutu, nigdy dla
+// odpowiedzi serwera, ten sam precedens co fetchCatalogRevision).
+// ---------------------------------------------------------------------------
+
+describe("fetchStateFromAppsScript — rozróżnienie locked vs awaria", () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    clearFetchStub();
+  });
+
+  it('{ok:false, error:"locked"} → locked:true', async () => {
+    stubFetch(makeMockFetch(200, { ok: false, error: "locked" }));
+
+    const result = await fetchStateFromAppsScript(GAS_CONFIG);
+
+    expect(result).toEqual({ ok: false, locked: true });
+  });
+
+  it('{ok:false} bez error:"locked" → locked:false', async () => {
+    stubFetch(makeMockFetch(200, { ok: false, error: "unauthorized" }));
+
+    const result = await fetchStateFromAppsScript(GAS_CONFIG);
+
+    expect(result).toEqual({ ok: false, locked: false });
+  });
+
+  it("HTTP 500 → locked:false (nie wiemy czy to lock, nie zgadujemy)", async () => {
+    stubFetch(makeMockFetch(500, {}));
+
+    const result = await fetchStateFromAppsScript(GAS_CONFIG);
+
+    expect(result).toEqual({ ok: false, locked: false });
+  });
+
+  it("awaria sieci → locked:false", async () => {
+    stubFetch(vi.fn().mockRejectedValue(new TypeError("network error")));
+
+    const result = await fetchStateFromAppsScript(GAS_CONFIG);
+
+    expect(result).toEqual({ ok: false, locked: false });
   });
 });

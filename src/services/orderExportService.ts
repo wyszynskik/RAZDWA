@@ -706,10 +706,24 @@ function sanitizeRemoteVariants(raw: unknown): VariantDefinition[] {
   return result;
 }
 
+/**
+ * `locked: true` = GAS odpowiedział ({ok:false, error:"locked"}), bo getState
+ * czyta katalog pod tym samym lockiem co zapis i trafił w środku zapisu
+ * kogoś innego — stan przejściowy (sekundy), nie awaria. `locked: false` =
+ * sieć/timeout/HTTP error/nieprawidłowa odpowiedź — nieodróżnialne od siebie,
+ * bo fetchWithRetry już wyczerpał swoje próby dla sieci/timeoutu (audyt S3:
+ * ta sama zasada co fetchCatalogRevision — retry TYLKO dla sieci/timeoutu,
+ * nigdy dla odpowiedzi serwera; "locked" jest odpowiedzią serwera, więc nie
+ * dostaje automatycznego retry tutaj, tylko lepszy komunikat dla wołającego).
+ */
+export type FetchStateResult =
+  | { ok: true; state: RemoteCatalogState }
+  | { ok: false; locked: boolean };
+
 export async function fetchStateFromAppsScript(
   config: OrderExportConfig = getOrderExportConfig()
-): Promise<RemoteCatalogState | null> {
-  if (!config.enabled || !config.appsScriptUrl) return null;
+): Promise<FetchStateResult> {
+  if (!config.enabled || !config.appsScriptUrl) return { ok: false, locked: false };
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), config.timeoutMs);
@@ -722,29 +736,30 @@ export async function fetchStateFromAppsScript(
       signal: controller.signal,
     });
 
-    if (!response.ok) return null;
+    if (!response.ok) return { ok: false, locked: false };
 
     const data = (await response.json()) as {
       ok?: unknown;
+      error?: unknown;
       prices?: unknown;
       variants?: unknown;
       catalogRevision?: unknown;
       catalogUpdatedAt?: unknown;
     };
 
-    // getState czyta katalog pod tym samym lockiem co zapis, więc trafiony
-    // w środku zapisu odpowiada { ok: false, error: "locked" } zamiast danych.
-    // Traktujemy to jak brak odpowiedzi — wołający ponowi próbę.
-    if (data.ok === false) return null;
+    if (data.ok === false) return { ok: false, locked: data.error === "locked" };
 
     return {
-      prices: sanitizeRemotePrices(data.prices),
-      variants: sanitizeRemoteVariants(data.variants),
-      catalogRevision: parseRevision(data.catalogRevision),
-      catalogUpdatedAt: typeof data.catalogUpdatedAt === "string" ? data.catalogUpdatedAt : null,
+      ok: true,
+      state: {
+        prices: sanitizeRemotePrices(data.prices),
+        variants: sanitizeRemoteVariants(data.variants),
+        catalogRevision: parseRevision(data.catalogRevision),
+        catalogUpdatedAt: typeof data.catalogUpdatedAt === "string" ? data.catalogUpdatedAt : null,
+      },
     };
   } catch {
-    return null;
+    return { ok: false, locked: false };
   } finally {
     clearTimeout(timeout);
   }

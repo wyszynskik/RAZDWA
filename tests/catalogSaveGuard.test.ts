@@ -69,7 +69,7 @@ describe("ensureAppliedRevision — zapis bez znanej rewizji", () => {
   });
 
   it("bez rewizji i bez lokalnych zmian: pobiera katalog, zapamiętuje wersję, ale blokuje TEN zapis", async () => {
-    fetchStateFromAppsScript.mockResolvedValue(REMOTE_STATE);
+    fetchStateFromAppsScript.mockResolvedValue({ ok: true, state: REMOTE_STATE });
 
     const result = await ensureAppliedRevision();
 
@@ -112,7 +112,7 @@ describe("ensureAppliedRevision — zapis bez znanej rewizji", () => {
   });
 
   it("bez rewizji i bez łączności: blokuje zapis i niczego nie zapamiętuje", async () => {
-    fetchStateFromAppsScript.mockResolvedValue(null);
+    fetchStateFromAppsScript.mockResolvedValue({ ok: false, locked: false });
 
     const result = await ensureAppliedRevision();
 
@@ -122,8 +122,22 @@ describe("ensureAppliedRevision — zapis bez znanej rewizji", () => {
     expect(readAppliedRevision()).toBeNull();
   });
 
+  it("bez rewizji, arkusz zajęty (locked): blokuje zapis z komunikatem o zajętości, nie o awarii", async () => {
+    fetchStateFromAppsScript.mockResolvedValue({ ok: false, locked: true });
+
+    const result = await ensureAppliedRevision();
+
+    expect(result.ok).toBe(false);
+    expect(result.applied).toBe(false);
+    expect(result.revision).toBeNull();
+    expect(result.message).toMatch(/zapisuje|zajęty/i);
+  });
+
   it("stary Apps Script bez rewizji: blokuje zapis zamiast wysyłać niekontrolowany cennik", async () => {
-    fetchStateFromAppsScript.mockResolvedValue({ ...REMOTE_STATE, catalogRevision: null });
+    fetchStateFromAppsScript.mockResolvedValue({
+      ok: true,
+      state: { ...REMOTE_STATE, catalogRevision: null },
+    });
 
     const result = await ensureAppliedRevision();
 

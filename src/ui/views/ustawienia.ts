@@ -2706,6 +2706,9 @@ export const UstawieniaView: View = {
     // Blokada podwójnego kliknięcia "Zapisz cennik" — świeża przy każdym
     // mount(), żeby po powrocie do widoku nikt nie zastał go "zablokowanego".
     const saveGuard = createSingleFlightGuard();
+    // Odliczanie 60s po "locked" na #btn-fetch-remote (audyt S3) — czyszczone
+    // w _cleanup, żeby nawigacja w trakcie odliczania nie zostawiła interwału.
+    let fetchRemoteCooldownTimer: ReturnType<typeof setInterval> | null = null;
 
     const _badPrices = [...new Set([...getZeroPriceLabels(), ...getZeroPriceDefaults()])];
     if (_badPrices.length > 0) {
@@ -4273,8 +4276,9 @@ export const UstawieniaView: View = {
 
     // Asynchronicznie pobierz świeży stan z GAS (nie blokuje UI)
     fetchStateFromAppsScript()
-      .then((remote) => {
-        if (!remote) return;
+      .then((fetched) => {
+        if (!fetched.ok) return;
+        const remote = fetched.state;
 
         let changed = false;
 
@@ -5929,6 +5933,28 @@ export const UstawieniaView: View = {
 
       const result = await applyRemoteCatalog(true);
 
+      if (!result.ok && result.locked) {
+        let secondsLeft = 60;
+        const tick = () => {
+          if (btn) btn.textContent = `Ktoś właśnie zapisuje — odczekaj (${secondsLeft}s)`;
+          secondsLeft--;
+        };
+        tick();
+        fetchRemoteCooldownTimer = setInterval(() => {
+          if (secondsLeft < 0) {
+            if (fetchRemoteCooldownTimer !== null) clearInterval(fetchRemoteCooldownTimer);
+            fetchRemoteCooldownTimer = null;
+            if (btn) {
+              btn.disabled = false;
+              btn.textContent = "📥 Pobierz ceny z arkusza";
+            }
+            return;
+          }
+          tick();
+        }, 1000);
+        return;
+      }
+
       if (result.ok) {
         prices = loadPrices();
         customPriceLabels = {
@@ -6197,6 +6223,10 @@ export const UstawieniaView: View = {
     _cleanup = () => {
       window.removeEventListener("storage", onStorage);
       scrollTopButton.remove();
+      if (fetchRemoteCooldownTimer !== null) {
+        clearInterval(fetchRemoteCooldownTimer);
+        fetchRemoteCooldownTimer = null;
+      }
     };
   },
 

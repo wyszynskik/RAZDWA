@@ -485,7 +485,13 @@ class SimpleEventEmitter {
 
 const CATALOG_BANNER_ID = "catalogUpdateBanner";
 
+let catalogBannerCooldownTimer: ReturnType<typeof setInterval> | null = null;
+
 function hideCatalogBanner(): void {
+  if (catalogBannerCooldownTimer !== null) {
+    clearInterval(catalogBannerCooldownTimer);
+    catalogBannerCooldownTimer = null;
+  }
   document.getElementById(CATALOG_BANNER_ID)?.remove();
   renderCatalogSyncNote();
 }
@@ -572,6 +578,37 @@ function showCatalogBanner(status: CatalogStatus): void {
       // niżej przekłada się na ctx "prices-updated" (patrz komentarz przy
       // eventBus.on("price-changed", ...)).
       showToast("Ceny zaktualizowane z arkusza", "success");
+      return;
+    }
+
+    // "locked" = ktoś inny właśnie zapisuje cennik — stan przejściowy, nie
+    // awaria. Zamiast od razu odblokować przycisk (user wbiłby się w ten sam
+    // lock drugim kliknięciem), 60s odliczanie — ŻADNEGO automatycznego
+    // ponowienia (audyt S3: retry tylko dla sieci/timeoutu, nigdy dla
+    // odpowiedzi serwera), tylko blokada na czas typowej kolizji zapisu.
+    if (result.locked) {
+      // banner ma role="status"+aria-live="polite" (atomic live region) — co
+      // sekundę zmieniany tekst przycisku ogłosiłby się czytnikowi ekranu 60x.
+      // "off" na czas odliczania, "polite" wraca przy finalnym "Spróbuj
+      // ponownie" (ta jedna zmiana ma sens ogłosić).
+      banner.setAttribute("aria-live", "off");
+      let secondsLeft = 60;
+      const tick = () => {
+        applyBtn.textContent = `Ktoś właśnie zapisuje — odczekaj (${secondsLeft}s)`;
+        secondsLeft--;
+      };
+      tick();
+      catalogBannerCooldownTimer = setInterval(() => {
+        if (secondsLeft < 0) {
+          if (catalogBannerCooldownTimer !== null) clearInterval(catalogBannerCooldownTimer);
+          catalogBannerCooldownTimer = null;
+          banner.setAttribute("aria-live", "polite");
+          applyBtn.disabled = false;
+          applyBtn.textContent = "Spróbuj ponownie";
+          return;
+        }
+        tick();
+      }, 1000);
       return;
     }
 
@@ -2554,8 +2591,9 @@ document.addEventListener("DOMContentLoaded", () => {
     if (Date.now() - lastSyncTs < STARTUP_SYNC_TTL_MS) return;
 
     try {
-      const remote = await fetchStateFromAppsScript();
-      if (!remote) return;
+      const fetched = await fetchStateFromAppsScript();
+      if (!fetched.ok) return;
+      const remote = fetched.state;
 
       let pricesFromRemoteApplied = false;
 

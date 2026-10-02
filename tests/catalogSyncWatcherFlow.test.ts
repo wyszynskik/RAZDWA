@@ -85,7 +85,7 @@ describe("startCatalogWatcher + applyRemoteCatalog — pełny łańcuch popupu",
     expect(onCurrent).not.toHaveBeenCalled();
 
     // "klik Odśwież ceny"
-    fetchStateFromAppsScript.mockResolvedValue(REMOTE_STATE_REV5);
+    fetchStateFromAppsScript.mockResolvedValue({ ok: true, state: REMOTE_STATE_REV5 });
     const applyResult = await applyRemoteCatalog(false);
 
     expect(applyResult.ok).toBe(true);
@@ -121,7 +121,7 @@ describe("startCatalogWatcher + applyRemoteCatalog — pełny łańcuch popupu",
     stop = startCatalogWatcher({ onBehind, onCurrent });
     await vi.advanceTimersByTimeAsync(0);
 
-    fetchStateFromAppsScript.mockResolvedValue(REMOTE_STATE_REV5);
+    fetchStateFromAppsScript.mockResolvedValue({ ok: true, state: REMOTE_STATE_REV5 });
     await applyRemoteCatalog(false);
 
     // ktoś inny zapisał kolejną zmianę: rewizja 6
