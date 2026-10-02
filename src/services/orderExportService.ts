@@ -1,9 +1,11 @@
+import { z } from "zod";
 import { CartItem, CustomerData } from "../core/types";
 import type { VariantDefinition } from "./priceService";
 import { normalizePhoneDigits } from "../core/customerValidation";
 import { GAS_URL, APP_ENV } from "../core/env";
 import { getAdminToken } from "../core/adminSession";
 import { parseRevision } from "./catalogRevision";
+import { safeKeySchema, variantSchema } from "../core/variantSchema";
 
 export const ORDER_EXPORT_CONFIG_KEY = "razdwa_order_export_config";
 
@@ -652,6 +654,58 @@ export interface RemoteCatalogState {
   catalogUpdatedAt: string | null;
 }
 
+const priceEntrySchema = z.number().nullable();
+
+/**
+ * Arkusz Google Sheets to zewnętrzne wejście — literówka, pusta komórka albo
+ * ręczna edycja może wysłać do klienta dane niezgodne z kształtem, który
+ * oczekuje reszta aplikacji. Filtrujemy PER WPIS (nie całość na raz), żeby
+ * jeden zepsuty rekord nie zablokował odświeżenia dobrych cen/wariantów.
+ * safeKeySchema odrzuca przy okazji __proto__/prototype/constructor jako klucz.
+ */
+function sanitizeRemotePrices(raw: unknown): Record<string, number | null> {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
+
+  const result: Record<string, number | null> = {};
+  for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
+    const keyCheck = safeKeySchema.safeParse(key);
+    if (!keyCheck.success) {
+      console.warn(
+        `[fetchStateFromAppsScript] odrzucono cenę "${key}": ${keyCheck.error.issues[0]?.message ?? "nieznany błąd"}`
+      );
+      continue;
+    }
+    const valueCheck = priceEntrySchema.safeParse(value);
+    if (!valueCheck.success) {
+      console.warn(
+        `[fetchStateFromAppsScript] odrzucono cenę "${key}": ${valueCheck.error.issues[0]?.message ?? "nieznany błąd"}`
+      );
+      continue;
+    }
+    result[key] = valueCheck.data;
+  }
+  return result;
+}
+
+function sanitizeRemoteVariants(raw: unknown): VariantDefinition[] {
+  if (!Array.isArray(raw)) return [];
+
+  const result: VariantDefinition[] = [];
+  for (const entry of raw) {
+    const check = variantSchema.safeParse(entry);
+    if (!check.success) {
+      const key =
+        entry && typeof entry === "object" && "key" in entry ? String((entry as { key: unknown }).key) : "?";
+      console.warn(
+        `[fetchStateFromAppsScript] odrzucono wariant "${key}": ${check.error.issues[0]?.message ?? "nieznany błąd"}`
+      );
+      continue;
+    }
+    result.push(check.data as VariantDefinition);
+  }
+  return result;
+}
+
 export async function fetchStateFromAppsScript(
   config: OrderExportConfig = getOrderExportConfig()
 ): Promise<RemoteCatalogState | null> {
@@ -683,21 +737,9 @@ export async function fetchStateFromAppsScript(
     // Traktujemy to jak brak odpowiedzi — wołający ponowi próbę.
     if (data.ok === false) return null;
 
-    const prices: Record<string, number | null> =
-      data.prices && typeof data.prices === "object" && !Array.isArray(data.prices)
-        ? (data.prices as Record<string, number | null>)
-        : {};
-
-    const variants: VariantDefinition[] = Array.isArray(data.variants)
-      ? (data.variants as unknown[]).filter(
-          (v): v is VariantDefinition =>
-            !!v && typeof v === "object" && typeof (v as VariantDefinition).key === "string"
-        )
-      : [];
-
     return {
-      prices,
-      variants,
+      prices: sanitizeRemotePrices(data.prices),
+      variants: sanitizeRemoteVariants(data.variants),
       catalogRevision: parseRevision(data.catalogRevision),
       catalogUpdatedAt: typeof data.catalogUpdatedAt === "string" ? data.catalogUpdatedAt : null,
     };

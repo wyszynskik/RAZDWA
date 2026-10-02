@@ -3,6 +3,7 @@ import {
   buildOrderExportPayload,
   computeOrderRequestId,
   fetchCatalogRevision,
+  fetchStateFromAppsScript,
   getOrderExportConfig,
   ORDER_EXPORT_CONFIG_KEY,
   saveCatalogToAppsScript,
@@ -11,6 +12,24 @@ import {
   verifyPinOnServer,
 } from "../src/services/orderExportService";
 import { CartItem, CustomerData } from "../src/core/types";
+import type { VariantDefinition } from "../src/services/priceService";
+
+function makeVariant(overrides: Partial<VariantDefinition> = {}): VariantDefinition {
+  return {
+    key: "cat-a-1",
+    categoryId: "cat",
+    subcategoryPrefix: "a-",
+    subgroupLabel: "Alfa",
+    label: "Wariant",
+    legend: "",
+    visibleInSettings: true,
+    visibleInCalculator: true,
+    sortOrder: 0,
+    createdAt: "2024-01-01T00:00:00.000Z",
+    updatedAt: "2024-01-01T00:00:00.000Z",
+    ...overrides,
+  };
+}
 
 const sampleItems: CartItem[] = [
   {
@@ -753,5 +772,100 @@ describe("saveCatalogToAppsScript — komunikat przy wygasłej/brakującej sesji
 
     expect(result.noToken).toBe(true);
     expect(result.message).toBe("Sesja wygasła — zaloguj się ponownie.");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// K5 (audyt): fetchStateFromAppsScript filtrowała warianty tylko po
+// `typeof key === "string"` i przepuszczała prices bez żadnej walidacji
+// wartości/kluczy. Zepsuty rekord w arkuszu (literówka, ręczna edycja)
+// trafiał prosto do UI. Teraz każdy wpis idzie przez schemat (per-wpis,
+// nie all-or-nothing — jeden zepsuty rekord nie blokuje reszty odświeżenia).
+// ---------------------------------------------------------------------------
+
+describe("fetchStateFromAppsScript — walidacja ingest", () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    clearFetchStub();
+  });
+
+  it("poprawne prices i warianty przechodzą bez zmian", async () => {
+    stubFetch(
+      makeMockFetch(200, {
+        ok: true,
+        prices: { "cat-a-1": 10, "cat-a-2": null },
+        variants: [makeVariant()],
+        catalogRevision: 5,
+      })
+    );
+
+    const result = await fetchStateFromAppsScript(GAS_CONFIG);
+
+    expect(result?.prices).toEqual({ "cat-a-1": 10, "cat-a-2": null });
+    expect(result?.variants).toEqual([makeVariant()]);
+  });
+
+  it("wariant bez wymaganego pola (categoryId) jest odrzucany, reszta zostaje", async () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const broken = { ...makeVariant({ key: "cat-b-1" }), categoryId: "" };
+    stubFetch(
+      makeMockFetch(200, {
+        ok: true,
+        prices: {},
+        variants: [makeVariant(), broken],
+      })
+    );
+
+    const result = await fetchStateFromAppsScript(GAS_CONFIG);
+
+    expect(result?.variants).toEqual([makeVariant()]);
+    expect(warnSpy).toHaveBeenCalled();
+  });
+
+  it("cena z nieprawidłową wartością (string) jest odrzucana, reszta prices zostaje", async () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    stubFetch(
+      makeMockFetch(200, {
+        ok: true,
+        prices: { "cat-a-1": 10, "cat-a-2": "zepsute" },
+        variants: [],
+      })
+    );
+
+    const result = await fetchStateFromAppsScript(GAS_CONFIG);
+
+    expect(result?.prices).toEqual({ "cat-a-1": 10 });
+    expect(warnSpy).toHaveBeenCalled();
+  });
+
+  it("klucz __proto__ w prices jest odrzucany", async () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    stubFetch(
+      makeMockFetch(200, {
+        ok: true,
+        prices: JSON.parse('{"__proto__": 1, "cat-a-1": 10}'),
+        variants: [],
+      })
+    );
+
+    const result = await fetchStateFromAppsScript(GAS_CONFIG);
+
+    expect(result?.prices).toEqual({ "cat-a-1": 10 });
+    expect(Object.prototype.hasOwnProperty.call(result?.prices ?? {}, "__proto__")).toBe(false);
+    expect(warnSpy).toHaveBeenCalled();
+  });
+
+  it("variants nie jest tablicą → traktowane jako brak wariantów, bez crasha", async () => {
+    stubFetch(
+      makeMockFetch(200, {
+        ok: true,
+        prices: {},
+        variants: "not-an-array",
+      })
+    );
+
+    const result = await fetchStateFromAppsScript(GAS_CONFIG);
+
+    expect(result?.variants).toEqual([]);
   });
 });
