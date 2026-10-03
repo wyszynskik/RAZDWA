@@ -3,16 +3,33 @@ import {
   buildOrderExportPayload,
   computeOrderRequestId,
   fetchCatalogRevision,
+  fetchStateFromAppsScript,
   getOrderExportConfig,
   ORDER_EXPORT_CONFIG_KEY,
   saveCatalogToAppsScript,
-  savePricesToAppsScript,
-  saveVariantsToAppsScript,
   sendOrderToAppsScript,
   setOrderExportConfig,
   verifyPinOnServer,
 } from "../src/services/orderExportService";
 import { CartItem, CustomerData } from "../src/core/types";
+import type { VariantDefinition } from "../src/services/priceService";
+
+function makeVariant(overrides: Partial<VariantDefinition> = {}): VariantDefinition {
+  return {
+    key: "cat-a-1",
+    categoryId: "cat",
+    subcategoryPrefix: "a-",
+    subgroupLabel: "Alfa",
+    label: "Wariant",
+    legend: "",
+    visibleInSettings: true,
+    visibleInCalculator: true,
+    sortOrder: 0,
+    createdAt: "2024-01-01T00:00:00.000Z",
+    updatedAt: "2024-01-01T00:00:00.000Z",
+    ...overrides,
+  };
+}
 
 const sampleItems: CartItem[] = [
   {
@@ -537,147 +554,6 @@ function makeMockFetch(status: number, body: unknown) {
   }));
 }
 
-describe("savePricesToAppsScript — body validation", () => {
-  beforeEach(() => {
-    vi.restoreAllMocks();
-    delete (globalThis as any).fetch;
-    delete (globalThis as any).sessionStorage;
-    (globalThis as any).sessionStorage = {
-      getItem: (k: string) => (k === "adminSessionToken" ? "test-session-token" : null),
-    };
-  });
-
-  it("body {ok:true} → result.ok=true, result.verified=true", async () => {
-    (globalThis as any).fetch = makeMockFetch(200, { ok: true, message: "Zapisano cennik" });
-
-    const result = await savePricesToAppsScript({}, GAS_CONFIG);
-
-    expect(result.ok).toBe(true);
-    expect(result.verified).toBe(true);
-  });
-
-  it("body {ok:false, message} → result.ok=false, result.verified=true, message zachowany", async () => {
-    (globalThis as any).fetch = makeMockFetch(200, { ok: false, message: "Arkusz chroniony" });
-
-    const result = await savePricesToAppsScript({}, GAS_CONFIG);
-
-    expect(result.ok).toBe(false);
-    expect(result.verified).toBe(true);
-    expect(result.message).toBe("Arkusz chroniony");
-  });
-
-  it("HTTP 200 bez pola ok → result.ok=false, result.verified=false (unverified, not a success)", async () => {
-    (globalThis as any).fetch = makeMockFetch(200, { message: "Bez pola ok" });
-
-    const result = await savePricesToAppsScript({}, GAS_CONFIG);
-
-    expect(result.ok).toBe(false);
-    expect(result.verified).toBe(false);
-    expect(result.unverified).toBe(true);
-  });
-
-  it("HTTP 500 → result.ok=false niezależnie od body", async () => {
-    (globalThis as any).fetch = makeMockFetch(500, { ok: true, message: "Internal Error" });
-
-    const result = await savePricesToAppsScript({}, GAS_CONFIG);
-
-    expect(result.ok).toBe(false);
-    expect(result.status).toBe(500);
-  });
-
-  it("brak adminSessionToken → fail-fast, fetch nie wywołany", async () => {
-    delete (globalThis as any).sessionStorage;
-    const fetchSpy = vi.fn();
-    (globalThis as any).fetch = fetchSpy;
-
-    const result = await savePricesToAppsScript({}, GAS_CONFIG);
-
-    expect(result.ok).toBe(false);
-    expect(result.message).toMatch(/token/i);
-    expect(fetchSpy).not.toHaveBeenCalled();
-  });
-});
-
-describe("savePricesToAppsScript — dry-run", () => {
-  beforeEach(() => {
-    vi.restoreAllMocks();
-    delete (globalThis as any).fetch;
-    delete (globalThis as any).sessionStorage;
-    (globalThis as any).sessionStorage = {
-      getItem: (k: string) => (k === "adminSessionToken" ? "test-session-token" : null),
-    };
-  });
-
-  it("dryRun:true → fetch nie jest wywoływany", async () => {
-    const fetchSpy = vi.fn();
-    (globalThis as any).fetch = fetchSpy;
-
-    await savePricesToAppsScript({}, { ...GAS_CONFIG, dryRun: true });
-
-    expect(fetchSpy).not.toHaveBeenCalled();
-  });
-
-  it("dryRun:true → result.ok=true i message zawiera dry-run", async () => {
-    (globalThis as any).fetch = vi.fn();
-
-    const result = await savePricesToAppsScript({}, { ...GAS_CONFIG, dryRun: true });
-
-    expect(result.ok).toBe(true);
-    expect(result.message).toMatch(/dry-run/i);
-  });
-
-  it("dryRun:false → fetch wywołany normalnie", async () => {
-    const fetchSpy = makeMockFetch(200, { ok: true });
-    (globalThis as any).fetch = fetchSpy;
-
-    await savePricesToAppsScript({}, { ...GAS_CONFIG, dryRun: false });
-
-    expect(fetchSpy).toHaveBeenCalledOnce();
-  });
-});
-
-describe("saveVariantsToAppsScript — body validation", () => {
-  beforeEach(() => {
-    vi.restoreAllMocks();
-    delete (globalThis as any).fetch;
-    delete (globalThis as any).sessionStorage;
-    (globalThis as any).sessionStorage = {
-      getItem: (k: string) => (k === "adminSessionToken" ? "test-session-token" : null),
-    };
-  });
-
-  it("body {ok:true} → result.ok=true, result.verified=true", async () => {
-    (globalThis as any).fetch = makeMockFetch(200, { ok: true, message: "Zapisano warianty" });
-
-    const result = await saveVariantsToAppsScript([], GAS_CONFIG);
-
-    expect(result.ok).toBe(true);
-    expect(result.verified).toBe(true);
-  });
-
-  it("body {ok:false, message} → result.ok=false, result.verified=true, message zachowany", async () => {
-    (globalThis as any).fetch = makeMockFetch(200, { ok: false, message: "Arkusz chroniony" });
-
-    const result = await saveVariantsToAppsScript([], GAS_CONFIG);
-
-    expect(result.ok).toBe(false);
-    expect(result.verified).toBe(true);
-    expect(result.message).toBe("Arkusz chroniony");
-  });
-
-  it("brak adminSessionToken → noToken=true, fetch nie wywołany", async () => {
-    delete (globalThis as any).sessionStorage;
-    const fetchSpy = vi.fn();
-    (globalThis as any).fetch = fetchSpy;
-
-    const result = await saveVariantsToAppsScript([], GAS_CONFIG);
-
-    expect(result.ok).toBe(false);
-    expect(result.noToken).toBe(true);
-    expect(fetchSpy).not.toHaveBeenCalled();
-  });
-});
-
 // ---------------------------------------------------------------------------
 // Hotfix: stabilniejszy getRevision/verifyPin (retry TYLKO dla sieci/timeoutu)
 // ---------------------------------------------------------------------------
@@ -896,5 +772,155 @@ describe("saveCatalogToAppsScript — komunikat przy wygasłej/brakującej sesji
 
     expect(result.noToken).toBe(true);
     expect(result.message).toBe("Sesja wygasła — zaloguj się ponownie.");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// K5 (audyt): fetchStateFromAppsScript filtrowała warianty tylko po
+// `typeof key === "string"` i przepuszczała prices bez żadnej walidacji
+// wartości/kluczy. Zepsuty rekord w arkuszu (literówka, ręczna edycja)
+// trafiał prosto do UI. Teraz każdy wpis idzie przez schemat (per-wpis,
+// nie all-or-nothing — jeden zepsuty rekord nie blokuje reszty odświeżenia).
+// ---------------------------------------------------------------------------
+
+describe("fetchStateFromAppsScript — walidacja ingest", () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    clearFetchStub();
+  });
+
+  it("poprawne prices i warianty przechodzą bez zmian", async () => {
+    stubFetch(
+      makeMockFetch(200, {
+        ok: true,
+        prices: { "cat-a-1": 10, "cat-a-2": null },
+        variants: [makeVariant()],
+        catalogRevision: 5,
+      })
+    );
+
+    const result = await fetchStateFromAppsScript(GAS_CONFIG);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error("expected ok");
+    expect(result.state.prices).toEqual({ "cat-a-1": 10, "cat-a-2": null });
+    expect(result.state.variants).toEqual([makeVariant()]);
+  });
+
+  it("wariant bez wymaganego pola (categoryId) jest odrzucany, reszta zostaje", async () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const broken = { ...makeVariant({ key: "cat-b-1" }), categoryId: "" };
+    stubFetch(
+      makeMockFetch(200, {
+        ok: true,
+        prices: {},
+        variants: [makeVariant(), broken],
+      })
+    );
+
+    const result = await fetchStateFromAppsScript(GAS_CONFIG);
+
+    if (!result.ok) throw new Error("expected ok");
+    expect(result.state.variants).toEqual([makeVariant()]);
+    expect(warnSpy).toHaveBeenCalled();
+  });
+
+  it("cena z nieprawidłową wartością (string) jest odrzucana, reszta prices zostaje", async () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    stubFetch(
+      makeMockFetch(200, {
+        ok: true,
+        prices: { "cat-a-1": 10, "cat-a-2": "zepsute" },
+        variants: [],
+      })
+    );
+
+    const result = await fetchStateFromAppsScript(GAS_CONFIG);
+
+    if (!result.ok) throw new Error("expected ok");
+    expect(result.state.prices).toEqual({ "cat-a-1": 10 });
+    expect(warnSpy).toHaveBeenCalled();
+  });
+
+  it("klucz __proto__ w prices jest odrzucany", async () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    stubFetch(
+      makeMockFetch(200, {
+        ok: true,
+        prices: JSON.parse('{"__proto__": 1, "cat-a-1": 10}'),
+        variants: [],
+      })
+    );
+
+    const result = await fetchStateFromAppsScript(GAS_CONFIG);
+
+    if (!result.ok) throw new Error("expected ok");
+    expect(result.state.prices).toEqual({ "cat-a-1": 10 });
+    expect(Object.prototype.hasOwnProperty.call(result.state.prices, "__proto__")).toBe(false);
+    expect(warnSpy).toHaveBeenCalled();
+  });
+
+  it("variants nie jest tablicą → traktowane jako brak wariantów, bez crasha", async () => {
+    stubFetch(
+      makeMockFetch(200, {
+        ok: true,
+        prices: {},
+        variants: "not-an-array",
+      })
+    );
+
+    const result = await fetchStateFromAppsScript(GAS_CONFIG);
+
+    if (!result.ok) throw new Error("expected ok");
+    expect(result.state.variants).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// S3 (audyt): getState czyta katalog pod tym samym lockiem co zapis — trafiony
+// w środku zapisu kogoś innego odpowiada {ok:false, error:"locked"}. Wcześniej
+// to nie różniło się od awarii sieci (oba → null), więc UI pokazywał "brak
+// połączenia" przy czymś, co jest chwilową zajętością. locked:true/false
+// pozwala wołającemu dać poprawny komunikat bez auto-retry (patrz komentarz
+// przy FetchStateResult — retry tylko dla sieci/timeoutu, nigdy dla
+// odpowiedzi serwera, ten sam precedens co fetchCatalogRevision).
+// ---------------------------------------------------------------------------
+
+describe("fetchStateFromAppsScript — rozróżnienie locked vs awaria", () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    clearFetchStub();
+  });
+
+  it('{ok:false, error:"locked"} → locked:true', async () => {
+    stubFetch(makeMockFetch(200, { ok: false, error: "locked" }));
+
+    const result = await fetchStateFromAppsScript(GAS_CONFIG);
+
+    expect(result).toEqual({ ok: false, locked: true });
+  });
+
+  it('{ok:false} bez error:"locked" → locked:false', async () => {
+    stubFetch(makeMockFetch(200, { ok: false, error: "unauthorized" }));
+
+    const result = await fetchStateFromAppsScript(GAS_CONFIG);
+
+    expect(result).toEqual({ ok: false, locked: false });
+  });
+
+  it("HTTP 500 → locked:false (nie wiemy czy to lock, nie zgadujemy)", async () => {
+    stubFetch(makeMockFetch(500, {}));
+
+    const result = await fetchStateFromAppsScript(GAS_CONFIG);
+
+    expect(result).toEqual({ ok: false, locked: false });
+  });
+
+  it("awaria sieci → locked:false", async () => {
+    stubFetch(vi.fn().mockRejectedValue(new TypeError("network error")));
+
+    const result = await fetchStateFromAppsScript(GAS_CONFIG);
+
+    expect(result).toEqual({ ok: false, locked: false });
   });
 });

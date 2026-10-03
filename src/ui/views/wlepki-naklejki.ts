@@ -3,12 +3,18 @@ import { autoCalc } from "../autoCalc";
 import {
   calculateWlepki,
   calculateWlepkiSzt,
+  getWlepkiM2Groups,
+  getWlepkiSztTables,
+  resolveWlepkiGroupTiers,
+  resolveWlepkiSztTiers,
   WlepkiCalculation,
 } from "../../categories/wlepki-naklejki";
 import { formatPLN } from "../../core/money";
 import { parseNumericInput } from "../../core/numericInput";
 import { getPrice } from "../../services/priceService";
-import { mergeStoredNumericTiers, resolveStoredPrice } from "../../core/compat";
+import { resolveStoredPrice } from "../../core/compat";
+import { escapeHtml } from "../../core/validation";
+import type { MaterialDefinition } from "../../core/dynamicMaterials";
 import {
   setFieldHint,
   flashFieldHints,
@@ -64,13 +70,11 @@ function renderBreakdownRows(target: HTMLElement, rows: BreakdownRow[]): void {
   }
 }
 
-const data: any = getPrice("wlepkiNaklejki");
-
 export const WlepkiView: View = {
   id: "wlepki-naklejki",
   name: "Wlepki / Naklejki",
   async mount(container, ctx) {
-    const tableData = data as any;
+    const getTableData = () => getPrice("wlepkiNaklejki") as any;
 
     try {
       const response = await fetch("categories/wlepki-naklejki.html");
@@ -84,6 +88,41 @@ export const WlepkiView: View = {
     const groupSelect = container.querySelector("#wlepki-group") as HTMLSelectElement;
     const modeSelect = container.querySelector("#wlepki-mode") as HTMLSelectElement;
     const pieceTableSelect = container.querySelector("#wlepki-piece-table") as HTMLSelectElement;
+
+    const populateGroupSelect = () => {
+      const previouslySelected = groupSelect.value;
+      const groups = getWlepkiM2Groups();
+      groupSelect.innerHTML =
+        `<option value="" disabled${previouslySelected ? "" : " selected"}>— wybierz rodzaj —</option>` +
+        groups
+          .map(
+            (g) =>
+              `<option value="${escapeHtml(g.id)}">${escapeHtml(getDisplayTitle(g.id, g.name))}</option>`
+          )
+          .join("");
+      if (previouslySelected && groups.some((g) => g.id === previouslySelected)) {
+        groupSelect.value = previouslySelected;
+      }
+    };
+
+    const populatePieceTableSelect = () => {
+      const previouslySelected = pieceTableSelect.value;
+      const tables = getWlepkiSztTables();
+      pieceTableSelect.innerHTML =
+        `<option value="" disabled${previouslySelected ? "" : " selected"}>— wybierz typ —</option>` +
+        tables
+          .map(
+            (t) =>
+              `<option value="${escapeHtml(t.id)}">${escapeHtml(getDisplayTitle(t.id, t.name))}</option>`
+          )
+          .join("");
+      if (previouslySelected && tables.some((t) => t.id === previouslySelected)) {
+        pieceTableSelect.value = previouslySelected;
+      }
+    };
+
+    populateGroupSelect();
+    populatePieceTableSelect();
     const pieceQtyInput = container.querySelector("#wlepki-piece-qty") as HTMLInputElement;
     const pieceGroup = container.querySelector("#wlepki-piece-group") as HTMLElement;
     const areaGroup = container.querySelector("#wlepki-area-group") as HTMLElement;
@@ -131,7 +170,7 @@ export const WlepkiView: View = {
     m2AreaErrEl.style.display = "none";
     areaInput?.insertAdjacentElement("afterend", m2AreaErrEl);
 
-    const allModifiers = (tableData.modifiers || []).map((m: any) => {
+    const allModifiers = (getTableData().modifiers || []).map((m: any) => {
       const modKey = `wlepki-modifier-${String(m.id).replace(/_/g, "-")}`;
       return { ...m, value: resolveStoredPrice(modKey, m.value) };
     });
@@ -224,19 +263,16 @@ export const WlepkiView: View = {
 
       const mode = modeSelect.value === "szt" ? "szt" : "m2";
       if (mode === "m2") {
-        const m2Blocks = (tableData.groups ?? [])
-          .map((group: any) => {
-            const rows = (group.tiers ?? [])
+        const m2Blocks = getWlepkiM2Groups()
+          .map((group: MaterialDefinition) => {
+            const rows = resolveWlepkiGroupTiers(group)
               .map((tier: any) => {
-                const suffix = tier.max == null ? `${tier.min}+` : `${tier.min}-${tier.max}`;
-                const key = `${String(group.id).replace(/_/g, "-")}-${suffix}`;
-                const value = resolveStoredPrice(key, tier.price);
                 const label = tier.max == null ? `${tier.min}+ m²` : `${tier.min}-${tier.max} m²`;
-                return `<tr><td>${label}</td><td>${formatPLN(value)}</td></tr>`;
+                return `<tr><td>${label}</td><td>${formatPLN(tier.price)}</td></tr>`;
               })
               .join("");
 
-            const groupTitle = getDisplayTitle(group.id, group.title);
+            const groupTitle = getDisplayTitle(group.id, group.name);
             return `<div class="wlepki-cennik-block"><h5>${groupTitle}</h5><table class="wlepki-cennik-table"><thead><tr><th>Zakres</th><th>Cena</th></tr></thead><tbody>${rows}</tbody></table></div>`;
           })
           .join("");
@@ -248,27 +284,15 @@ export const WlepkiView: View = {
         return;
       }
 
-      const selectedTableId = pieceTableSelect.value || "papier-sra3";
-      const blocks = (tableData.pieceTables ?? [])
-        .map((piece: any) => {
+      const selectedTableId = pieceTableSelect.value || getWlepkiSztTables()[0]?.id;
+      const blocks = getWlepkiSztTables()
+        .map((piece: MaterialDefinition) => {
           const visible = piece.id === selectedTableId;
-          const mergedTiers = mergeStoredNumericTiers(
-            `wlepki-szt-${piece.id}-`,
-            (piece.tiers ?? []) as Array<{ qty: number; price: number }>,
-            (key) => {
-              const match = key.match(/^(?:.*-)?(\d+)$/i);
-              return match ? Number.parseInt(match[1], 10) : null;
-            },
-            (tier) => tier.qty,
-            (quantity, price) => ({ qty: quantity, price })
-          );
+          const mergedTiers = resolveWlepkiSztTiers(piece);
           const rows = mergedTiers
-            .map((tier: any) => {
-              const value = resolveStoredPrice(`wlepki-szt-${piece.id}-${tier.qty}`, tier.price);
-              return `<tr><td>${tier.qty}</td><td>${formatPLN(value)}</td></tr>`;
-            })
+            .map((tier) => `<tr><td>${tier.qty}</td><td>${formatPLN(tier.price)}</td></tr>`)
             .join("");
-          const pieceTitle = getDisplayTitle(piece.id, piece.title);
+          const pieceTitle = getDisplayTitle(piece.id, piece.name);
           return `<div class="wlepki-cennik-block" style="display:${visible ? "block" : "none"}"><h5>${pieceTitle}</h5><table class="wlepki-cennik-table"><thead><tr><th>Ilość (szt)</th><th>Cena</th></tr></thead><tbody>${rows}</tbody></table></div>`;
         })
         .join("");
@@ -516,12 +540,14 @@ export const WlepkiView: View = {
             modifierDetails.reduce((sum, row) => sum + row.amount, 0).toFixed(2)
           );
 
-          const groupData = tableData.groups.find((g: any) => g.id === input.groupId);
-          const appliedTier = (groupData?.tiers ?? []).find((tier: any) => {
-            const withinMin = result.effectiveQuantity >= Number(tier.min ?? 0);
-            const withinMax = tier.max == null || result.effectiveQuantity <= Number(tier.max);
-            return withinMin && withinMax;
-          });
+          const groupMaterial = getWlepkiM2Groups().find((g) => g.id === input.groupId);
+          const appliedTier = (groupMaterial ? resolveWlepkiGroupTiers(groupMaterial) : []).find(
+            (tier: any) => {
+              const withinMin = result.effectiveQuantity >= Number(tier.min ?? 0);
+              const withinMax = tier.max == null || result.effectiveQuantity <= Number(tier.max);
+              return withinMin && withinMax;
+            }
+          );
           const tierLabel = appliedTier
             ? appliedTier.max == null
               ? `${appliedTier.min}+ m²`
@@ -595,6 +621,8 @@ export const WlepkiView: View = {
     renderDynamicLegend();
 
     ctx?.on?.("prices-updated", () => {
+      populateGroupSelect();
+      populatePieceTableSelect();
       renderDynamicLegend();
       calculate();
     });
@@ -633,10 +661,10 @@ export const WlepkiView: View = {
         });
       } else {
         const currentInputM2 = currentInput;
-        const group = tableData.groups.find((g: any) => g.id === currentInputM2.groupId);
+        const group = getWlepkiM2Groups().find((g) => g.id === currentInputM2.groupId);
 
         const modsLabel = currentInputM2.modifiers.map((mId) => {
-          const m = tableData.modifiers.find((mod: any) => mod.id === mId);
+          const m = getTableData().modifiers.find((mod: any) => mod.id === mId);
           return m ? m.name : mId;
         });
 
@@ -654,7 +682,7 @@ export const WlepkiView: View = {
         ctx.cart.addItem({
           id: `wlepki-${Date.now()}`,
           category: "Wlepki / Naklejki",
-          name: getDisplayTitle(group?.id, group?.title || "Wlepki"),
+          name: getDisplayTitle(group?.id, group?.name || "Wlepki"),
           quantity: currentInputM2.area,
           unit: "m2",
           unitPrice: currentResult.tierPrice,

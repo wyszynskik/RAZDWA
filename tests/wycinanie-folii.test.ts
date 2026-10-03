@@ -1,5 +1,12 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, afterEach, vi } from "vitest";
 import { calculateWycinanieFolii } from "../src/categories/wycinanie-folii";
+import { buildMaterialAssignmentKey } from "../src/core/dynamicMaterials";
+import { MATERIAL_ASSIGNMENT_PREFIX } from "../src/core/variantKeys";
+import {
+  setVariantDefinitions,
+  resetPrices,
+  PRICES_STORAGE_KEY,
+} from "../src/services/priceService";
 
 describe("Wycinanie z folii", () => {
   it("should use below-1m2 rate for kolorowa when area < 1m2", () => {
@@ -95,5 +102,56 @@ describe("Wycinanie z folii", () => {
 
     expect(small.tierPrice).toBe(200); // poniżej 1m2
     expect(large.tierPrice).toBe(125); // powyżej/równe 1m2
+  });
+});
+
+describe("Wycinanie z folii — materiał relatywny do bazy STATYCZNEJ z nadpisaną ceną", () => {
+  let storage: Record<string, string> = {};
+
+  afterEach(() => {
+    resetPrices();
+    setVariantDefinitions([]);
+    vi.unstubAllGlobals();
+  });
+
+  it("mirroruje cenę NADPISANĄ przez panel ustawień (kolorowa ≥1m²), nie surową z prices.json", () => {
+    storage = {};
+    vi.stubGlobal("localStorage", {
+      getItem: (k: string) => storage[k] ?? null,
+      setItem: (k: string, v: string) => {
+        storage[k] = String(v);
+      },
+      removeItem: (k: string) => {
+        delete storage[k];
+      },
+    });
+    storage[PRICES_STORAGE_KEY] = JSON.stringify({ "wycinanie-folii-kolorowa": 999 });
+
+    const derivedId = "pochodny-od-kolorowa";
+    setVariantDefinitions([
+      {
+        key: buildMaterialAssignmentKey("wycinanieFolii", derivedId),
+        categoryId: "wycinanieFolii",
+        subcategoryPrefix: MATERIAL_ASSIGNMENT_PREFIX,
+        subgroupLabel: "",
+        label: "Pochodny",
+        legend: "",
+        visibleInSettings: true,
+        visibleInCalculator: true,
+        sortOrder: 0,
+        createdAt: "2026-01-01T00:00:00.000Z",
+        updatedAt: "2026-01-01T00:00:00.000Z",
+        materialPriceFormula: { baseMaterialId: "kolorowa", op: "percent", value: 10 },
+      },
+    ]);
+
+    const result = calculateWycinanieFolii({
+      variantId: derivedId,
+      widthMm: 1000,
+      heightMm: 1000,
+      express: false,
+    });
+
+    expect(result.tierPrice).toBe(Math.round(999 * 1.1 * 100) / 100);
   });
 });

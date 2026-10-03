@@ -13,6 +13,7 @@
  */
 import { z } from "zod";
 import type { PriceSubgroupsMap, VariantDefinition } from "./priceService";
+import { sortOrderSchema, safeKeySchema, variantSchema } from "../core/variantSchema";
 
 export const CONFIG_EXPORT_FORMAT = "razdwa-configuration";
 export const CONFIG_EXPORT_VERSION = 1;
@@ -39,45 +40,10 @@ export interface ConfigExportFile {
   data: ConfigExportData;
 }
 
-const sortOrderSchema = z
-  .number()
-  .int("sortOrder musi być liczbą całkowitą")
-  .nonnegative("sortOrder nie może być ujemny");
-
-const safeKeySchema = z
-  .string()
-  .min(1, "Klucz nie może być pusty")
-  .refine((key) => !FORBIDDEN_KEYS.has(key), { message: "Niedozwolony klucz" });
-
 const subgroupInfoSchema = z.object({
   label: z.string().min(1, "Nazwa podgrupy nie może być pusta"),
   sortOrder: sortOrderSchema,
   metadata: z.record(z.string(), z.unknown()).optional(),
-});
-
-const variantSchema = z.object({
-  key: safeKeySchema,
-  categoryId: safeKeySchema,
-  subcategoryPrefix: z.string(),
-  subgroupLabel: z.string(),
-  label: z.string(),
-  legend: z.string(),
-  visibleInSettings: z.boolean(),
-  visibleInCalculator: z.boolean(),
-  sortOrder: sortOrderSchema,
-  createdAt: z.string(),
-  updatedAt: z.string(),
-  materialSizeOptions: z.array(z.object({ material: z.string(), size: z.string() })).optional(),
-  calcScheme: z.enum(["interpolated", "flat-per-unit", "flat-rate"]).optional(),
-  subgroupSortOrder: sortOrderSchema.optional(),
-  priceFormula: z
-    .object({
-      baseCategoryId: z.string(),
-      basePrefix: z.string(),
-      op: z.enum(["percent", "fixed"]),
-      value: z.number(),
-    })
-    .optional(),
 });
 
 const configDataSchema = z.object({

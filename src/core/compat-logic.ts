@@ -1,7 +1,5 @@
 import {
   getPRICE,
-  getCadPrice,
-  getCadBase,
   getFormatToleranceMm,
   getFoldPrice,
   getWfScanPricePerCm,
@@ -11,6 +9,8 @@ import {
   money,
   mergeStoredQuantityTable,
 } from "./compat";
+import { getPrice } from "../services/priceService";
+import { getCombinedCadBase, getCombinedCadPrice } from "./dynamicCadFormats";
 
 /** Returns a storage-range suffix: "1-5" or "5000+" (sentinel to > 50000). */
 function tierRange(from: number, to: number): string {
@@ -111,25 +111,47 @@ export function calculateCad(options: {
   lengthMm: number;
   qty: number;
 }) {
-  const base = getCadBase()[options.format];
+  const base = getCombinedCadBase()[options.format];
   if (!base) throw new Error("Nieznany format CAD.");
 
   const isFormatowe = Math.abs(options.lengthMm - base.l) <= getFormatToleranceMm();
-  const detectedType = isFormatowe ? "formatowe" : "mb";
+  let detectedType: "formatowe" | "mb" = isFormatowe ? "formatowe" : "mb";
 
-  const rate = getCadPrice()[options.mode][detectedType][options.format];
+  const priceMap = getCombinedCadPrice();
+  let rate = priceMap[options.mode][detectedType][options.format];
+  // Formaty mogą mieć zdefiniowaną tylko jedną ze stawek (np. format typu
+  // rolka dodany przez admina ma wyłącznie stawkę mb) — jeśli długość
+  // wskazuje na tryb bez stawki, przełącz na ten, który faktycznie ją ma,
+  // zamiast wywalać klienta z pustym wynikiem bez wyjaśnienia.
+  if (rate == null) {
+    const fallbackType: "formatowe" | "mb" = detectedType === "formatowe" ? "mb" : "formatowe";
+    const fallbackRate = priceMap[options.mode][fallbackType][options.format];
+    if (fallbackRate != null) {
+      detectedType = fallbackType;
+      rate = fallbackRate;
+    }
+  }
   if (rate == null) throw new Error("Brak stawki w cenniku dla CAD.");
 
-  // Map to storage key: druk-cad-{bw|kolor}-{fmt|mb}-{format}
-  const cadModeKey = options.mode === "bw" ? "bw" : "kolor";
-  const cadTypeKey = detectedType === "formatowe" ? "fmt" : "mb";
-  const cadFmtKey = options.format
-    .toLowerCase()
-    .replace("0p", "0plus")
-    .replace("1p", "1plus")
-    .replace("r1067", "mb1067");
-  const cadStorageKey = `druk-cad-${cadModeKey}-${cadTypeKey}-${cadFmtKey}`;
-  const resolvedRate = storedPrice(cadStorageKey, rate);
+  // Formaty statyczne mają swoją stawkę pod starym kluczem
+  // "druk-cad-{bw|kolor}-{fmt|mb}-{format}" (z historyczną normalizacją
+  // "0p"/"1p"/"r1067") — admin mógł już wcześniej nadpisać te stawki przez
+  // panel ustawień. Formaty dynamiczne (dodane przez panel) nie mają takiej
+  // historii: getCombinedCadPrice() już zwróciło ich aktualną, zapisaną
+  // stawkę wprost z defaultPrices.
+  const isStaticFormat = Boolean((getPrice("drukCAD.base") as any)?.[options.format]);
+  let resolvedRate = rate;
+  if (isStaticFormat) {
+    const cadModeKey = options.mode === "bw" ? "bw" : "kolor";
+    const cadTypeKey = detectedType === "formatowe" ? "fmt" : "mb";
+    const cadFmtKey = options.format
+      .toLowerCase()
+      .replace("0p", "0plus")
+      .replace("1p", "1plus")
+      .replace("r1067", "mb1067");
+    const cadStorageKey = `druk-cad-${cadModeKey}-${cadTypeKey}-${cadFmtKey}`;
+    resolvedRate = storedPrice(cadStorageKey, rate);
+  }
 
   let total = 0;
   if (detectedType === "formatowe") {

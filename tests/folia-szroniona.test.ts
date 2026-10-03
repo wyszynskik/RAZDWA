@@ -2,7 +2,12 @@ import { describe, it, expect, afterEach, vi } from "vitest";
 import { calculateFoliaSzroniona } from "../src/categories/folia-szroniona";
 import { buildMaterialAssignmentKey, materialTierKeyPrefix } from "../src/core/dynamicMaterials";
 import { MATERIAL_ASSIGNMENT_PREFIX } from "../src/core/variantKeys";
-import { setVariantDefinitions, setPrice, resetPrices } from "../src/services/priceService";
+import {
+  setVariantDefinitions,
+  setPrice,
+  resetPrices,
+  PRICES_STORAGE_KEY,
+} from "../src/services/priceService";
 
 describe("Folia Szroniona Category", () => {
   it("should calculate material-only for 1m2 (min. rule)", () => {
@@ -190,5 +195,47 @@ describe("Folia Szroniona — usługa/materiał dodana dynamicznie (dynamicMater
     });
 
     expect(result.totalPrice).toBe(20);
+  });
+
+  it("materiał relatywny do 'material-only' mirroruje cenę NADPISANĄ przez panel ustawień, nie surową z prices.json", () => {
+    storage = {};
+    vi.stubGlobal("localStorage", {
+      getItem: (k: string) => storage[k] ?? null,
+      setItem: (k: string, v: string) => {
+        storage[k] = String(v);
+      },
+      removeItem: (k: string) => {
+        delete storage[k];
+      },
+    });
+    // "material-only" ma storageId "wydruk" — klucz nadpisania idzie po storageId, nie po id.
+    storage[PRICES_STORAGE_KEY] = JSON.stringify({ "folia-szroniona-wydruk-1-5": 999 });
+
+    const derivedId = "pochodny-od-material-only";
+    setVariantDefinitions([
+      {
+        key: buildMaterialAssignmentKey("foliaSzroniona", derivedId),
+        categoryId: "foliaSzroniona",
+        subcategoryPrefix: MATERIAL_ASSIGNMENT_PREFIX,
+        subgroupLabel: "",
+        label: "Pochodny",
+        legend: "",
+        visibleInSettings: true,
+        visibleInCalculator: true,
+        sortOrder: 0,
+        createdAt: "2026-01-01T00:00:00.000Z",
+        updatedAt: "2026-01-01T00:00:00.000Z",
+        materialPriceFormula: { baseMaterialId: "material-only", op: "percent", value: 10 },
+      },
+    ]);
+
+    const result = calculateFoliaSzroniona({
+      widthMm: 1000,
+      heightMm: 1000,
+      serviceId: derivedId,
+      express: false,
+    });
+
+    expect(result.totalPrice).toBe(Math.round(999 * 1.1 * 100) / 100);
   });
 });

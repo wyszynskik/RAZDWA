@@ -6,32 +6,22 @@ import { createSingleFlightGuard } from "../core/singleFlight";
 import { mountDynamicSubgroupContainers } from "./dynamicSubgroups";
 import { BASE_PRICE_CATEGORIES } from "../core/productCat";
 import { hasNativeSubgroupRenderer } from "../core/variantKeys";
+import { buildRouteToBaseIdMap } from "../core/categoryRegistry";
 
 /**
  * Route id -> price-category id, for views whose route id doesn't match
  * their BASE_PRICE_CATEGORIES id. Consulted only inside
  * mountDynamicSubgroupsFor() — never affects VariantDefinition.categoryId,
  * GAS, or the route/view ids themselves.
+ *
+ * Generated from CATEGORY_REGISTRY (core/categoryRegistry.ts) — that's the
+ * single source of truth now; this used to be a hand-maintained literal that
+ * could silently drift from the other id registries (audyt rozszerzalności,
+ * Fakt 1 — a missing entry here is exactly what broke "zaproszenia" before).
+ * tests/categoryRegistry.test.ts asserts this stays byte-identical to what
+ * the registry produces.
  */
-export const ROUTE_TO_PRICE_CATEGORY_ID: Record<string, string> = {
-  "wizytowki-druk-cyfrowy": "wizytowki",
-  "zaproszenia-kreda": "zaproszenia",
-  "ulotki-cyfrowe": "ulotki",
-  "folia-szroniona": "folia",
-  "roll-up": "rollup",
-  "solwent-plakaty": "solwent",
-  "wlepki-naklejki": "wlepki",
-  // "plakaty" (wielki format) i "solwent-plakaty" dzielą tę samą kategorię
-  // cenową — BASE_PRICE_CATEGORIES["solwent"].prefixes zawiera zarówno
-  // "solwent-" jak i "plakaty-format-"/"plakaty-blockout200g-" (productCat.ts),
-  // a plakaty-wf.ts faktycznie czyta/pisze klucze "plakaty-format-*".
-  plakaty: "solwent",
-  // Resolves to a category with a native (bespoke) subgroup renderer — see
-  // hasNativeSubgroupRenderer() below. Mapping this explicitly (instead of
-  // relying on the category-not-found fallback) means the native-renderer
-  // check fires directly on "artykuly", the same id ustawienia.ts uses.
-  "artykuly-biurowe": "artykuly",
-};
+export const ROUTE_TO_PRICE_CATEGORY_ID: Record<string, string> = buildRouteToBaseIdMap();
 
 export interface CategoryContext extends ViewContext {
   cart: {

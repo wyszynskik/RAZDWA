@@ -6,6 +6,11 @@ import { formatPLN } from "../../core/money";
 import { getPrice } from "../../services/priceService";
 import { resolveStoredPrice } from "../../core/compat";
 import {
+  getCombinedCadBase,
+  getCombinedCadPrice,
+  getDynamicCadFormats,
+} from "../../core/dynamicCadFormats";
+import {
   setFieldHint,
   flashFieldHints,
   setButtonGuarded,
@@ -43,6 +48,19 @@ export const DrukCADView: View = {
 
     const modeSelect = container.querySelector("#cad-mode") as HTMLSelectElement;
     const formatSelect = container.querySelector("#cad-format") as HTMLSelectElement;
+
+    const populateDynamicCadFormatOptions = () => {
+      const existingIds = new Set(Array.from(formatSelect.options).map((o) => o.value));
+      for (const format of getDynamicCadFormats()) {
+        if (existingIds.has(format.id)) continue;
+        const opt = document.createElement("option");
+        opt.value = format.id;
+        opt.text = `${format.label} (${format.baseLengthMm} mm)`;
+        formatSelect.appendChild(opt);
+      }
+    };
+    populateDynamicCadFormatOptions();
+
     const lengthInput = container.querySelector("#cad-length") as HTMLInputElement;
     const qtySheetsInput = container.querySelector("#qty-sheets") as HTMLInputElement;
     const qtySheetsGroup = container.querySelector("#qty-sheets-group") as HTMLElement;
@@ -127,8 +145,8 @@ export const DrukCADView: View = {
 
       const collectRowsForMode = (mode: "bw" | "color", modeLabel: string) => {
         const modeKey = mode === "bw" ? "bw" : "kolor";
-        const fmtMap = data.price?.[mode]?.formatowe ?? {};
-        const mbMap = data.price?.[mode]?.mb ?? {};
+        const fmtMap = getCombinedCadPrice()[mode]?.formatowe ?? {};
+        const mbMap = getCombinedCadPrice()[mode]?.mb ?? {};
         const allFormats = Array.from(new Set([...Object.keys(fmtMap), ...Object.keys(mbMap)]));
 
         return allFormats
@@ -217,10 +235,12 @@ export const DrukCADView: View = {
       return format;
     };
 
+    const STATIC_CAD_FORMAT_IDS = new Set(["A0p", "A0", "A1p", "A1", "A2", "A3", "R1067"]);
     const displayCadFormat = (format: string): string => {
       if (format === "A0p") return "A0+";
       if (format === "A1p") return "A1+";
-      return format;
+      if (STATIC_CAD_FORMAT_IDS.has(format)) return format;
+      return getCombinedCadBase()[format]?.label ?? format;
     };
 
     const getInlineKlientSkladanieOp = (): CadOpItem | null => {
@@ -486,7 +506,7 @@ export const DrukCADView: View = {
       updateUICount++;
       const format = formatSelect.value;
       const mode = modeSelect.value;
-      const baseLen = data.base[format]?.l;
+      const baseLen = getCombinedCadBase()[format]?.l;
       baseInfo.innerText = `Wymiar bazowy: ${baseLen} mm`;
 
       if (qtySheetsGroup) qtySheetsGroup.style.display = "grid";
@@ -497,7 +517,7 @@ export const DrukCADView: View = {
     // --- Bind listeners only once ---
     if (!listenersBound) {
       formatSelect.onchange = () => {
-        const baseLen = data.base[formatSelect.value]?.l;
+        const baseLen = getCombinedCadBase()[formatSelect.value]?.l;
         if (baseLen != null) lengthInput.value = String(baseLen);
         updateUI();
         ensureLegend();
@@ -514,7 +534,7 @@ export const DrukCADView: View = {
       listenersBound = true;
     }
 
-    const initBase = data.base[formatSelect.value]?.l;
+    const initBase = getCombinedCadBase()[formatSelect.value]?.l;
     if (initBase != null) lengthInput.value = String(initBase);
     updateUI();
     ensureLegend();
@@ -641,6 +661,7 @@ export const DrukCADView: View = {
     autoCalc({ root: container, calc: performCalculation, cancelOn: [addToCartBtn] });
 
     ctx?.on?.("prices-updated", () => {
+      populateDynamicCadFormatOptions();
       ensureLegend();
       performCalculation();
     });

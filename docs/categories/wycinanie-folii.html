@@ -17,21 +17,7 @@
 
   <div class="row">
     <label>Rodzaj folii:</label>
-    <div style="display: flex; flex-direction: column; gap: 8px; margin-top: 10px;">
-      <label class="checkbox-label" style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
-        <input type="checkbox" id="wf-gold" class="wf-foil-type" value="zlota" style="width: 18px; height: 18px; cursor: pointer;">
-        <span>Złota</span>
-      </label>
-      <label class="checkbox-label" style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
-        <input type="checkbox" id="wf-silver" class="wf-foil-type" value="srebrna" style="width: 18px; height: 18px; cursor: pointer;">
-        <span>Srebrna</span>
-      </label>
-      <label class="checkbox-label" style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
-        <input type="checkbox" id="wf-custom" class="wf-foil-type" value="custom" style="width: 18px; height: 18px; cursor: pointer;">
-        <span>Inny kolor (wpisz poniżej):</span>
-      </label>
-      <input type="text" id="wf-color" placeholder="Wpisz kolor" autocomplete="off" style="margin-left: 26px;">
-    </div>
+    <div id="wf-foil-type-list" style="display: flex; flex-direction: column; gap: 8px; margin-top: 10px;"></div>
     <div id="wf-color-hint" class="ghost-hint"></div>
   </div>
 
@@ -70,10 +56,7 @@
           <th>Pow. ≥ 1 m²</th>
         </tr>
       </thead>
-      <tbody>
-        <tr><td>Kolorowa (inne kolory)</td><td id="wf-legend-kolorowa-below">200,00 zł/m²</td><td id="wf-legend-kolorowa-above">125,00 zł/m²</td></tr>
-        <tr><td>Złota / Srebrna</td><td id="wf-legend-zloto-below">220,00 zł/m²</td><td id="wf-legend-zloto-above">150,00 zł/m²</td></tr>
-      </tbody>
+      <tbody id="wf-legend-body"></tbody>
     </table>
 
     <p class="cennik-note" id="wf-legend-note">* Cena zawiera: folia + wycinanie + wybieranie.</p>

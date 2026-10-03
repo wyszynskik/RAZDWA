@@ -25,11 +25,13 @@ import {
   type CatalogRevisionState,
 } from "./catalogRevision";
 import {
+  getPrice,
   setPrice,
   setPriceLabels,
   setPriceSubgroups,
   getPriceLabels,
   getPriceSubgroups,
+  getVariantDefinitions,
   setVariantDefinitions,
   mergeVariantSubgroupsIntoRegistry,
   variantsToPriceLabels,
@@ -56,11 +58,79 @@ export interface CatalogStatus {
   dirty: boolean;
 }
 
+export interface RemoteCatalogDiff {
+  /** Klucz istnieje w obu, wartość się różni — zostanie nadpisany (merge, nie usunięty). */
+  pricesChanged: number;
+  /** Wariant istnieje lokalnie, arkusz go nie zna — setVariantDefinitions ZASTĘPUJE całość, więc zniknie. */
+  variantsRemoved: number;
+  /** Wariant istnieje w obu, treść się różni. */
+  variantsChanged: number;
+}
+
+/**
+ * Różnica między lokalnym (ZAPISANYM — localStorage/rejestr) stanem a stanem
+ * z arkusza, licząc TAK jak faktycznie zadziała applyCatalogState:
+ *  - prices: scalenie klucz-po-kluczu, klucz nieznany arkuszowi PRZETRWA —
+ *    liczymy tylko klucze obecne w obu z różną wartością,
+ *  - variants: setVariantDefinitions ZASTĘPUJE całą tablicę, jeśli arkusz ma
+ *    jakiekolwiek warianty — lokalny wariant nieobecny w odpowiedzi arkusza
+ *    zostaje bezpowrotnie usunięty, nie "nietknięty" jak przy prices.
+ * Audyt K4: poprzednio ten fakt nie był w żaden sposób widoczny przed klikiem
+ * "Pobierz ceny z arkusza" — admin dowiadywał się po fakcie.
+ */
+export function diffAgainstLocal(remote: RemoteCatalogState): RemoteCatalogDiff {
+  const localPrices = (getPrice("defaultPrices") as Record<string, number | null>) ?? {};
+  let pricesChanged = 0;
+  for (const [key, remoteValue] of Object.entries(remote.prices)) {
+    if (Object.prototype.hasOwnProperty.call(localPrices, key) && localPrices[key] !== remoteValue) {
+      pricesChanged++;
+    }
+  }
+
+  let variantsRemoved = 0;
+  let variantsChanged = 0;
+  if (remote.variants.length > 0) {
+    const remoteByKey = new Map(remote.variants.map((v) => [v.key, v]));
+    for (const local of getVariantDefinitions()) {
+      const match = remoteByKey.get(local.key);
+      if (!match) {
+        variantsRemoved++;
+      } else if (JSON.stringify(match) !== JSON.stringify(local)) {
+        variantsChanged++;
+      }
+    }
+  }
+
+  return { pricesChanged, variantsRemoved, variantsChanged };
+}
+
+/**
+ * Tekst do pokazania PRZED confirm() nadpisującym lokalny stan. `extraVariantsLost`
+ * to warianty poza rejestrem (np. niezapisany draft w panelu Ustawień), które
+ * diffAgainstLocal nie widzi, bo liczy tylko ZAPISANY rejestr.
+ */
+export function describeCatalogDiff(diff: RemoteCatalogDiff, extraVariantsLost = 0): string {
+  const parts: string[] = [];
+  if (diff.pricesChanged > 0) parts.push(`${diff.pricesChanged} cen zmieni wartość`);
+  if (diff.variantsChanged > 0) parts.push(`${diff.variantsChanged} wariantów zmieni treść`);
+  const removed = diff.variantsRemoved + extraVariantsLost;
+  if (removed > 0) parts.push(`${removed} wariantów zostanie USUNIĘTYCH (nie istnieją w arkuszu)`);
+  if (parts.length === 0) {
+    return "Brak wykrytych różnic — lokalny stan wygląda zgodny z arkuszem.";
+  }
+  return parts.join(", ") + ".";
+}
+
 export interface ApplyResult {
   ok: boolean;
   revision?: number;
   message?: string;
+  /** true = GAS odpowiedział "locked" (ktoś inny właśnie zapisuje) — stan przejściowy. */
+  locked?: boolean;
 }
+
+const LOCKED_MESSAGE =
+  "Ktoś właśnie zapisuje cennik na innym stanowisku. Odczekaj chwilę i spróbuj ponownie.";
 
 type SnoozeRecord = { revision: number | null; until: number };
 
@@ -227,15 +297,18 @@ export async function ensureAppliedRevision(): Promise<EnsureRevisionResult> {
     };
   }
 
-  const remote = await fetchStateFromAppsScript();
-  if (!remote) {
+  const fetched = await fetchStateFromAppsScript();
+  if (!fetched.ok) {
     return {
       ok: false,
       revision: null,
       applied: false,
-      message: "Nie udało się połączyć z arkuszem, żeby ustalić wersję cennika.",
+      message: fetched.locked
+        ? LOCKED_MESSAGE
+        : "Nie udało się połączyć z arkuszem, żeby ustalić wersję cennika.",
     };
   }
+  const remote = fetched.state;
 
   if (remote.catalogRevision === null) {
     return {
@@ -277,12 +350,14 @@ export async function applyRemoteCatalog(force = false): Promise<ApplyResult> {
     };
   }
 
-  const remote = await fetchStateFromAppsScript();
-  if (!remote) {
-    return { ok: false, message: "Brak połączenia z arkuszem — spróbuj ponownie." };
+  const fetched = await fetchStateFromAppsScript();
+  if (!fetched.ok) {
+    return fetched.locked
+      ? { ok: false, locked: true, message: LOCKED_MESSAGE }
+      : { ok: false, message: "Brak połączenia z arkuszem — spróbuj ponownie." };
   }
 
-  const result = await applyCatalogState(remote);
+  const result = await applyCatalogState(fetched.state);
   if (result.ok) broadcastCatalog({ type: "catalog-applied", revision: result.revision ?? null });
   return result;
 }

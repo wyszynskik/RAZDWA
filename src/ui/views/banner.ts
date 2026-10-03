@@ -1,6 +1,6 @@
 import { View, ViewContext } from "../types";
 import { autoCalc } from "../autoCalc";
-import { calculateBanner } from "../../categories/banner";
+import { calculateBanner, resolveStaticBannerTiers } from "../../categories/banner";
 import { formatPLN } from "../../core/money";
 import { getPrice } from "../../services/priceService";
 import { resolveStoredPrice } from "../../core/compat";
@@ -100,7 +100,7 @@ export const BannerView: View = {
         breakdownDisplay.insertAdjacentElement("afterend", legend);
       }
 
-      const rows = getCombinedMaterials("banner")
+      const rows = getCombinedMaterials("banner", undefined, resolveStaticBannerTiers)
         .map((material) => {
           const tiers = (material.tiers ?? [])
             .map((tier) => {

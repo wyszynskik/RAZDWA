@@ -4,7 +4,12 @@ import { calculateDrukCAD } from "../src/categories/druk-cad";
 import categories from "../data/categories.json";
 
 describe("Druk A4/A3 + skan", () => {
-  const pricing = categories.find((c) => c.id === "druk-a4-a3-skan")?.pricing;
+  // Historyczny id "druk-a4-a3-skan" nie istnieje w data/categories.json od
+  // renamu na "druk-a4-a3" — categories.json'owy wpis (patrz też
+  // categoryRegistry.ts) ma dokładnie tę samą wartość label_sticker_cost
+  // (1.6) co domyślny fallback w calculateDrukA4A3Skan, więc ta poprawka jest
+  // behawioralnie neutralna: usuwa martwe "undefined" bez zmiany wyników.
+  const pricing = categories.find((c) => c.id === "druk-a4-a3")?.pricing;
 
   it("should calculate simple B&W A4 print", () => {
     const result = calculateDrukA4A3Skan(

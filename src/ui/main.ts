@@ -76,6 +76,8 @@ import {
   startCatalogWatcher,
   applyRemoteCatalog,
   snoozeCatalogReminder,
+  diffAgainstLocal,
+  describeCatalogDiff,
   type CatalogStatus,
 } from "../services/catalogSync";
 import {
@@ -485,7 +487,13 @@ class SimpleEventEmitter {
 
 const CATALOG_BANNER_ID = "catalogUpdateBanner";
 
+let catalogBannerCooldownTimer: ReturnType<typeof setInterval> | null = null;
+
 function hideCatalogBanner(): void {
+  if (catalogBannerCooldownTimer !== null) {
+    clearInterval(catalogBannerCooldownTimer);
+    catalogBannerCooldownTimer = null;
+  }
   document.getElementById(CATALOG_BANNER_ID)?.remove();
   renderCatalogSyncNote();
 }
@@ -552,13 +560,22 @@ function showCatalogBanner(status: CatalogStatus): void {
 
   const applyBtn = banner.querySelector<HTMLButtonElement>('[data-action="apply"]');
   applyBtn?.addEventListener("click", async () => {
-    if (
-      status.dirty &&
-      !confirm(
-        "Masz niezapisane zmiany w cenniku. Pobranie wersji z arkusza je nadpisze.\n\nKontynuować?"
-      )
-    ) {
-      return;
+    if (status.dirty) {
+      // Audyt K4: pokaż CO konkretnie nadpisanie zmieni/usunie, zanim admin
+      // potwierdzi — poprzednio "Kontynuować?" bez żadnej informacji o skali.
+      let diffLine = "Nie udało się sprawdzić różnic przed pobraniem (brak połączenia).";
+      const preview = await fetchStateFromAppsScript();
+      if (preview.ok) diffLine = describeCatalogDiff(diffAgainstLocal(preview.state));
+
+      if (
+        !confirm(
+          "Masz niezapisane zmiany w cenniku. Pobranie wersji z arkusza je nadpisze.\n\n" +
+            diffLine +
+            "\n\nKontynuować?"
+        )
+      ) {
+        return;
+      }
     }
 
     applyBtn.disabled = true;
@@ -572,6 +589,37 @@ function showCatalogBanner(status: CatalogStatus): void {
       // niżej przekłada się na ctx "prices-updated" (patrz komentarz przy
       // eventBus.on("price-changed", ...)).
       showToast("Ceny zaktualizowane z arkusza", "success");
+      return;
+    }
+
+    // "locked" = ktoś inny właśnie zapisuje cennik — stan przejściowy, nie
+    // awaria. Zamiast od razu odblokować przycisk (user wbiłby się w ten sam
+    // lock drugim kliknięciem), 60s odliczanie — ŻADNEGO automatycznego
+    // ponowienia (audyt S3: retry tylko dla sieci/timeoutu, nigdy dla
+    // odpowiedzi serwera), tylko blokada na czas typowej kolizji zapisu.
+    if (result.locked) {
+      // banner ma role="status"+aria-live="polite" (atomic live region) — co
+      // sekundę zmieniany tekst przycisku ogłosiłby się czytnikowi ekranu 60x.
+      // "off" na czas odliczania, "polite" wraca przy finalnym "Spróbuj
+      // ponownie" (ta jedna zmiana ma sens ogłosić).
+      banner.setAttribute("aria-live", "off");
+      let secondsLeft = 60;
+      const tick = () => {
+        applyBtn.textContent = `Ktoś właśnie zapisuje — odczekaj (${secondsLeft}s)`;
+        secondsLeft--;
+      };
+      tick();
+      catalogBannerCooldownTimer = setInterval(() => {
+        if (secondsLeft < 0) {
+          if (catalogBannerCooldownTimer !== null) clearInterval(catalogBannerCooldownTimer);
+          catalogBannerCooldownTimer = null;
+          banner.setAttribute("aria-live", "polite");
+          applyBtn.disabled = false;
+          applyBtn.textContent = "Spróbuj ponownie";
+          return;
+        }
+        tick();
+      }, 1000);
       return;
     }
 
@@ -2024,6 +2072,25 @@ document.addEventListener("DOMContentLoaded", () => {
 
       dismissOrderStatusPanel();
       const payload = buildOrderExportPayload(items, customer);
+
+      // Rabat/narzut i notatka muszą trafić do payloadu PRZED policzeniem
+      // requestId — inaczej fingerprint (computeOrderRequestId) łapie surową
+      // sumę z buildOrderExportPayload, nie finalną po rabacie. Dwa zamówienia
+      // różniące się TYLKO rabatem dostawały identyczny requestId i gubiły
+      // się w 90-sekundowym dedupie (audyt: S2). Patrz też komentarz przy
+      // computeOrderRequestId (orderExportService.ts) o świadomym kompromisie
+      // dedupu między kartami — ten fix go nie dotyka, tylko naprawia WEJŚCIE.
+      const _dPct = Math.round(getSummaryPercentValue("summaryDiscountPercent") * 100);
+      const _sPct = Math.round(getSummaryPercentValue("summarySurchargePercent") * 100);
+      payload.summary.total = applySummaryPercentAdjustments(cart.getGrandTotal());
+      if (_dPct || _sPct) {
+        payload.summary.adjustmentPercent = _sPct - _dPct;
+        const _note = [_dPct && `Rabat: ${_dPct}%`, _sPct && `Narzut: ${_sPct}%`]
+          .filter(Boolean)
+          .join(", ");
+        payload.customer.notes = [payload.customer.notes, _note].filter(Boolean).join(" | ");
+      }
+
       if (lastSendRequestId !== null) {
         payload.requestId = lastSendRequestId;
       } else {
@@ -2031,7 +2098,7 @@ document.addEventListener("DOMContentLoaded", () => {
         lastSendRequestId = payload.requestId;
       }
 
-      const provisionalTotal = applySummaryPercentAdjustments(cart.getGrandTotal());
+      const provisionalTotal = payload.summary.total;
       if (provisionalTotal <= 0) {
         releaseGuard();
         showToast("Suma wyszła na zero — sprawdź rabat albo dodaj coś do koszyka.", "error");
@@ -2050,16 +2117,6 @@ document.addEventListener("DOMContentLoaded", () => {
 
       applySendPhase("sending");
       try {
-        const _dPct = Math.round(getSummaryPercentValue("summaryDiscountPercent") * 100);
-        const _sPct = Math.round(getSummaryPercentValue("summarySurchargePercent") * 100);
-        payload.summary.total = applySummaryPercentAdjustments(cart.getGrandTotal());
-        if (_dPct || _sPct) {
-          payload.summary.adjustmentPercent = _sPct - _dPct;
-          const _note = [_dPct && `Rabat: ${_dPct}%`, _sPct && `Narzut: ${_sPct}%`]
-            .filter(Boolean)
-            .join(", ");
-          payload.customer.notes = [payload.customer.notes, _note].filter(Boolean).join(" | ");
-        }
         const result = await sendOrderToAppsScript(payload, exportConfig);
 
         if (result.ok === true && result.verified === true) {
@@ -2545,8 +2602,9 @@ document.addEventListener("DOMContentLoaded", () => {
     if (Date.now() - lastSyncTs < STARTUP_SYNC_TTL_MS) return;
 
     try {
-      const remote = await fetchStateFromAppsScript();
-      if (!remote) return;
+      const fetched = await fetchStateFromAppsScript();
+      if (!fetched.ok) return;
+      const remote = fetched.state;
 
       let pricesFromRemoteApplied = false;
 

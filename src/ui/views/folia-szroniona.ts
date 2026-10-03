@@ -1,6 +1,6 @@
 import { View, ViewContext } from "../types";
 import { autoCalc } from "../autoCalc";
-import { calculateFoliaSzroniona } from "../../categories/folia-szroniona";
+import { calculateFoliaSzroniona, resolveStaticFoliaTiers } from "../../categories/folia-szroniona";
 import { formatPLN } from "../../core/money";
 import { resolveStoredPrice } from "../../core/compat";
 import { getCombinedMaterials } from "../../core/dynamicMaterials";
@@ -112,7 +112,11 @@ export const FoliaSzronionaView: View = {
         (breakdownDisplay ?? resultDisplay).insertAdjacentElement("afterend", legend);
       }
 
-      const materials = getCombinedMaterials("foliaSzroniona") as Array<{
+      const materials = getCombinedMaterials(
+        "foliaSzroniona",
+        undefined,
+        resolveStaticFoliaTiers
+      ) as Array<{
         id: string;
         storageId?: string;
         name: string;

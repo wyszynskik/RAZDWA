@@ -37,13 +37,41 @@ import { MATERIAL_ASSIGNMENT_PREFIX, parseTierSuffix } from "./variantKeys";
 
 export type { MaterialPriceFormula, MaterialPriceFormulaOp } from "../services/priceService";
 
-export type DynamicMaterialCategoryId = "banner" | "solwentPlakaty" | "foliaSzroniona";
+export type DynamicMaterialCategoryId =
+  | "banner"
+  | "solwentPlakaty"
+  | "foliaSzroniona"
+  | "wycinanieFolii"
+  | "canvasFramed"
+  | "canvasUnframed"
+  | "laminowanieFormat"
+  | "laminowanieIntro"
+  | "rollup"
+  | "wlepkiM2"
+  | "wlepkiSzt";
 
-/** getPrice() root key -> text prefix used inside defaultPrices tier keys. */
-const PRICE_KEY_PREFIX: Record<DynamicMaterialCategoryId, string> = {
+/**
+ * getPrice() root key -> text prefix used inside defaultPrices tier keys.
+ * Exported so categoryRegistry.ts's completeness test can enumerate every
+ * DynamicMaterialCategoryId at runtime (Object.keys) without a second,
+ * hand-maintained literal list that could drift from this one.
+ */
+export const PRICE_KEY_PREFIX: Record<DynamicMaterialCategoryId, string> = {
   banner: "banner",
   solwentPlakaty: "solwent",
   foliaSzroniona: "folia-szroniona",
+  wycinanieFolii: "wycinanie-folii",
+  canvasFramed: "canvas-framed",
+  canvasUnframed: "canvas-unframed",
+  laminowanieFormat: "laminowanie",
+  laminowanieIntro: "laminowanie-intro",
+  rollup: "rollup",
+  // Segment dodatkowy ("grupa"/"tabela"), żeby klucze nowych, dynamicznych
+  // pozycji NIGDY nie mogły przypadkiem trafić w te same klucze co 3
+  // statyczne grupy m² / 4 statyczne tabele szt (ich klucze zaczynają się
+  // odpowiednio "wlepki-{nazwa}-"/"wlepki-szt-{nazwa}-" bez tego segmentu).
+  wlepkiM2: "wlepki-grupa",
+  wlepkiSzt: "wlepki-szt-tabela",
 };
 
 export interface MaterialTier {
@@ -158,10 +186,35 @@ function resolveRelativeMaterialTiers(
  * builds the base pool (static + manually-priced dynamic materials only),
  * pass 2 resolves every formula-carrying material against that pool. A
  * formula material is never itself eligible as a base (see basePool above).
+ *
+ * `staticMaterialsOverride` lets a caller supply the static pool directly
+ * instead of `getPrice(categoryId)?.materials` — needed when the static list
+ * isn't a top-level prices.json array (e.g. canvas's per-mode `formats[]`,
+ * mapped to MaterialDefinition by the caller before this is invoked).
+ *
+ * `resolveStaticOverride`, when given, maps each STATIC material's tiers
+ * through the category's own admin-price-override lookup (e.g.
+ * `overrideTiersWithStoredPrices`) before that material enters either the
+ * returned list or the base pool a relative (materialPriceFormula) material
+ * mirrors. Without it, a relative material mirrors the raw prices.json
+ * default even if the admin has since overridden the base's price via the
+ * normal price table — this closes that gap. Never applied to
+ * dynamic/manual materials: those already read live `defaultPrices`
+ * directly, with no separate "default vs override" layer to reconcile.
  */
-export function getCombinedMaterials(categoryId: DynamicMaterialCategoryId): MaterialDefinition[] {
-  const staticMaterials = ((getPrice(categoryId) as { materials?: MaterialDefinition[] })
-    ?.materials ?? []) as MaterialDefinition[];
+export function getCombinedMaterials(
+  categoryId: DynamicMaterialCategoryId,
+  staticMaterialsOverride?: MaterialDefinition[],
+  resolveStaticOverride?: (material: MaterialDefinition) => MaterialTier[]
+): MaterialDefinition[] {
+  let staticMaterials =
+    staticMaterialsOverride ??
+    (((getPrice(categoryId) as { materials?: MaterialDefinition[] })?.materials ??
+      []) as MaterialDefinition[]);
+
+  if (resolveStaticOverride) {
+    staticMaterials = staticMaterials.map((m) => ({ ...m, tiers: resolveStaticOverride(m) }));
+  }
 
   const dynamicRows: VariantDefinition[] = getVariantDefinitions().filter(
     (v) => v.categoryId === categoryId && v.subcategoryPrefix === MATERIAL_ASSIGNMENT_PREFIX
