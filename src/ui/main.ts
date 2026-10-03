@@ -76,6 +76,8 @@ import {
   startCatalogWatcher,
   applyRemoteCatalog,
   snoozeCatalogReminder,
+  diffAgainstLocal,
+  describeCatalogDiff,
   type CatalogStatus,
 } from "../services/catalogSync";
 import {
@@ -558,13 +560,22 @@ function showCatalogBanner(status: CatalogStatus): void {
 
   const applyBtn = banner.querySelector<HTMLButtonElement>('[data-action="apply"]');
   applyBtn?.addEventListener("click", async () => {
-    if (
-      status.dirty &&
-      !confirm(
-        "Masz niezapisane zmiany w cenniku. Pobranie wersji z arkusza je nadpisze.\n\nKontynuować?"
-      )
-    ) {
-      return;
+    if (status.dirty) {
+      // Audyt K4: pokaż CO konkretnie nadpisanie zmieni/usunie, zanim admin
+      // potwierdzi — poprzednio "Kontynuować?" bez żadnej informacji o skali.
+      let diffLine = "Nie udało się sprawdzić różnic przed pobraniem (brak połączenia).";
+      const preview = await fetchStateFromAppsScript();
+      if (preview.ok) diffLine = describeCatalogDiff(diffAgainstLocal(preview.state));
+
+      if (
+        !confirm(
+          "Masz niezapisane zmiany w cenniku. Pobranie wersji z arkusza je nadpisze.\n\n" +
+            diffLine +
+            "\n\nKontynuować?"
+        )
+      ) {
+        return;
+      }
     }
 
     applyBtn.disabled = true;

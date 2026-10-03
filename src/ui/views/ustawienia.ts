@@ -103,6 +103,8 @@ import {
   checkCatalogRevision,
   ensureAppliedRevision,
   applyRemoteCatalog,
+  diffAgainstLocal,
+  describeCatalogDiff,
 } from "../../services/catalogSync";
 import { writeAppliedRevision, writeAppliedUpdatedAt } from "../../services/catalogRevision";
 import { warmPriceCache, getZeroPriceLabels, getZeroPriceDefaults } from "../../core/compat";
@@ -5919,9 +5921,26 @@ export const UstawieniaView: View = {
     // z arkusza i nadpisuje nim lokalny stan — ale WYŁĄCZNIE po jawnym potwierdzeniu,
     // że to świadome odrzucenie własnych, niezsynchronizowanych zmian.
     container.querySelector("#btn-fetch-remote")?.addEventListener("click", async () => {
+      // Audyt K4: pokaż CO konkretnie zostanie nadpisane/usunięte przed
+      // potwierdzeniem — poprzednio admin dowiadywał się po fakcie. Draft
+      // (_draftVariantDefs) jest niezapisany, więc diffAgainstLocal (liczy
+      // ZAPISANY rejestr) go nie widzi — dorzucamy osobno.
+      let diffLine = "Nie udało się sprawdzić różnic przed pobraniem (brak połączenia).";
+      const preview = await fetchStateFromAppsScript();
+      if (preview.ok) {
+        const draftLost =
+          preview.state.variants.length > 0
+            ? _draftVariantDefs.filter(
+                (d) => !preview.state.variants.some((v) => v.key === d.key)
+              ).length
+            : 0;
+        diffLine = describeCatalogDiff(diffAgainstLocal(preview.state), draftLost);
+      }
+
       const proceed = confirm(
-        "Pobranie cennika z arkusza NADPISZE Twoje niezsynchronizowane zmiany lokalne. " +
-          "Tej operacji nie można cofnąć.\n\nKontynuować?"
+        "Pobranie cennika z arkusza NADPISZE Twoje niezsynchronizowane zmiany lokalne.\n\n" +
+          diffLine +
+          "\n\nTej operacji nie można cofnąć.\n\nKontynuować?"
       );
       if (!proceed) return;
 
