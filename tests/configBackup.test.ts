@@ -133,6 +133,36 @@ describe("parseConfigImport - akceptacja", () => {
     }
   });
 
+  it("round-trip zachowuje materialPriceFormula (regresja: pole było ucinane przed dodaniem go do variantSchema)", () => {
+    // dynamicMaterials.ts: materiał relatywny ("+20% od materiału X") niesie
+    // materialPriceFormula, kształtem RÓŻNY od priceFormula (baseMaterialId,
+    // nie baseCategoryId+basePrefix). variantSchema go nie znał, więc zod
+    // (domyślnie tnący nieznane klucze) cicho gubił to pole przy każdym
+    // eksporcie->imporcie pliku JSON z relatywnym materiałem.
+    const relativeMaterial = makeVariant({
+      key: "mat__banner__pochodny",
+      categoryId: "banner",
+      subcategoryPrefix: "__material__",
+      subgroupLabel: "",
+      label: "Pochodny +20%",
+      subgroupSortOrder: undefined,
+      materialPriceFormula: { baseMaterialId: "powlekany", op: "percent", value: 20 },
+    });
+    const original = makeData({ variants: [relativeMaterial] });
+
+    const result = parseConfigImport(serializeConfigExport(buildConfigExport(original)));
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.file.data.variants[0]).toEqual(relativeMaterial);
+      expect(result.file.data.variants[0].materialPriceFormula).toEqual({
+        baseMaterialId: "powlekany",
+        op: "percent",
+        value: 20,
+      });
+    }
+  });
+
   it("describeConfigImport podaje liczniki", () => {
     const summary = describeConfigImport(buildConfigExport(makeData()));
     expect(summary).toContain("Ceny: 2");

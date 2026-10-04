@@ -1,9 +1,11 @@
+import { z } from "zod";
 import { CartItem, CustomerData } from "../core/types";
 import type { VariantDefinition } from "./priceService";
 import { normalizePhoneDigits } from "../core/customerValidation";
 import { GAS_URL, APP_ENV } from "../core/env";
 import { getAdminToken } from "../core/adminSession";
 import { parseRevision } from "./catalogRevision";
+import { safeKeySchema, variantSchema } from "../core/variantSchema";
 
 export const ORDER_EXPORT_CONFIG_KEY = "razdwa_order_export_config";
 
@@ -366,6 +368,16 @@ function fnv1aHex(input: string): string {
  * w handleOrderSave (Code.gs) — bez żadnej komunikacji między zakładkami.
  * Dlatego pomijamy pola różniące się między zakładkami mimo tej samej
  * treści (createdAt, requestId) i kubełkujemy czas zamiast go liczyć dokładnie.
+ *
+ * Świadomy kompromis: to samo w 100% zamówienie (ten sam klient, koszyk,
+ * suma) wysłane dwa razy w tym samym 90-sekundowym oknie zawsze dostanie
+ * ten sam requestId i zostanie zdedupowane do jednego wiersza — nawet
+ * jeśli klient naprawdę chciał złożyć dwa odrębne zamówienia. Nie dodawać
+ * do fingerprintu żadnego licznika/nonce w celu odróżnienia tego przypadku:
+ * zepsułoby to dedup między kartami, który jest tu głównym celem. Ryzyko
+ * uznane za akceptowalne — dane klienta czyszczą się po udanym zapisie
+ * (main.ts), więc kolizja wymaga ręcznego powtórzenia identycznych danych
+ * w 90s.
  */
 export function computeOrderRequestId(
   payload: OrderExportPayload,
@@ -633,183 +645,6 @@ export async function sendOrderToAppsScript(
   }
 }
 
-export async function savePricesToAppsScript(
-  prices: Record<string, number | null>,
-  config: OrderExportConfig = getOrderExportConfig()
-): Promise<OrderExportResult> {
-  if (!config.enabled) {
-    return { ok: false, message: "Wysyłka do Apps Script jest wyłączona." };
-  }
-
-  if (!config.appsScriptUrl) {
-    return { ok: false, message: "Brak URL Apps Script Web App." };
-  }
-
-  if (config.dryRun) {
-    return { ok: true, verified: true, message: "dry-run: cennik nie został wysłany." };
-  }
-
-  const token = getAdminToken();
-  if (!token) {
-    return {
-      ok: false,
-      noToken: true,
-      message: "Brak tokenu sesji. Zaloguj się ponownie do panelu ustawień.",
-    };
-  }
-  const body = JSON.stringify({
-    type: "prices_update",
-    token,
-    prices,
-  });
-
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), config.timeoutMs);
-
-  try {
-    const response = await fetchWithRetry(config.appsScriptUrl, {
-      method: "POST",
-      mode: "cors",
-      headers: { "Content-Type": "text/plain" },
-      body,
-      signal: controller.signal,
-    });
-
-    const responseBody = await readAppsScriptBody(response);
-    return evaluateGasResult(
-      responseBody,
-      response.status,
-      response.ok,
-      "Cennik wysłany do Apps Script."
-    );
-  } catch (err) {
-    const errorName = err instanceof Error ? err.name : "";
-    const errorMessage = err instanceof Error ? err.message : "";
-    const isCorsOrNetworkFailure =
-      errorName !== "AbortError" &&
-      (`${errorName} ${errorMessage}`.toLowerCase().includes("failed to fetch") ||
-        `${errorName} ${errorMessage}`.toLowerCase().includes("networkerror") ||
-        `${errorName} ${errorMessage}`.toLowerCase().includes("load failed"));
-
-    if (isCorsOrNetworkFailure) {
-      try {
-        await fetch(config.appsScriptUrl, {
-          method: "POST",
-          mode: "no-cors",
-          headers: { "Content-Type": "text/plain" },
-          body,
-          signal: controller.signal,
-        });
-        return {
-          ok: false,
-          status: 0,
-          verified: false,
-          unverified: true,
-          message:
-            "Cennik wysłany bez potwierdzenia (CORS/sieć). Sprawdź arkusz Sheets — jeśli zmiany nie ma, wyślij ponownie.",
-        };
-      } catch {
-        // continue to final error
-      }
-    }
-
-    const msg =
-      errorName === "AbortError"
-        ? "Przekroczono limit czasu wysyłki cennika."
-        : `Nie udało się wysłać cennika: ${(err as Error)?.message ?? "nieznany błąd"}.`;
-
-    return { ok: false, message: msg, verified: false };
-  } finally {
-    clearTimeout(timeout);
-  }
-}
-
-export async function saveVariantsToAppsScript(
-  variants: VariantDefinition[],
-  config: OrderExportConfig = getOrderExportConfig()
-): Promise<OrderExportResult> {
-  if (!config.enabled) {
-    return { ok: false, message: "Wysyłka do Apps Script jest wyłączona." };
-  }
-  if (!config.appsScriptUrl) {
-    return { ok: false, message: "Brak URL Apps Script Web App." };
-  }
-
-  if (config.dryRun) {
-    return { ok: true, verified: true, message: "dry-run: warianty nie zostały wysłane." };
-  }
-
-  const token = getAdminToken();
-  if (!token) {
-    return {
-      ok: false,
-      noToken: true,
-      message: "Brak tokenu sesji. Zaloguj się ponownie do panelu ustawień.",
-    };
-  }
-  const body = JSON.stringify({ type: "variants_update", token, variants });
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), config.timeoutMs);
-
-  try {
-    const response = await fetchWithRetry(config.appsScriptUrl, {
-      method: "POST",
-      mode: "cors",
-      headers: { "Content-Type": "text/plain" },
-      body,
-      signal: controller.signal,
-    });
-
-    const responseBody = await readAppsScriptBody(response);
-    return evaluateGasResult(
-      responseBody,
-      response.status,
-      response.ok,
-      "Warianty wysłane do Apps Script."
-    );
-  } catch (err) {
-    const errorName = err instanceof Error ? err.name : "";
-    const errorMessage = err instanceof Error ? err.message : "";
-    const isCorsOrNetworkFailure =
-      errorName !== "AbortError" &&
-      (`${errorName} ${errorMessage}`.toLowerCase().includes("failed to fetch") ||
-        `${errorName} ${errorMessage}`.toLowerCase().includes("networkerror") ||
-        `${errorName} ${errorMessage}`.toLowerCase().includes("load failed"));
-
-    if (isCorsOrNetworkFailure) {
-      try {
-        await fetch(config.appsScriptUrl, {
-          method: "POST",
-          mode: "no-cors",
-          headers: { "Content-Type": "text/plain" },
-          body,
-          signal: controller.signal,
-        });
-        return {
-          ok: false,
-          status: 0,
-          verified: false,
-          unverified: true,
-          errorType: "no_cors_sent",
-          message:
-            "Wysłano bez potwierdzenia odpowiedzi (fallback no-cors). Sprawdź arkusz Sheets — jeśli wariantów nie ma, wyślij ponownie.",
-        };
-      } catch {
-        // continue
-      }
-    }
-
-    const msg =
-      errorName === "AbortError"
-        ? "Przekroczono limit czasu wysyłki wariantów."
-        : `Nie udało się wysłać wariantów: ${(err as Error)?.message ?? "nieznany błąd"}.`;
-
-    return { ok: false, message: msg, verified: false };
-  } finally {
-    clearTimeout(timeout);
-  }
-}
-
 export interface RemoteCatalogState {
   prices: Record<string, number | null>;
   variants: VariantDefinition[];
@@ -819,10 +654,76 @@ export interface RemoteCatalogState {
   catalogUpdatedAt: string | null;
 }
 
+const priceEntrySchema = z.number().nullable();
+
+/**
+ * Arkusz Google Sheets to zewnętrzne wejście — literówka, pusta komórka albo
+ * ręczna edycja może wysłać do klienta dane niezgodne z kształtem, który
+ * oczekuje reszta aplikacji. Filtrujemy PER WPIS (nie całość na raz), żeby
+ * jeden zepsuty rekord nie zablokował odświeżenia dobrych cen/wariantów.
+ * safeKeySchema odrzuca przy okazji __proto__/prototype/constructor jako klucz.
+ */
+function sanitizeRemotePrices(raw: unknown): Record<string, number | null> {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
+
+  const result: Record<string, number | null> = {};
+  for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
+    const keyCheck = safeKeySchema.safeParse(key);
+    if (!keyCheck.success) {
+      console.warn(
+        `[fetchStateFromAppsScript] odrzucono cenę "${key}": ${keyCheck.error.issues[0]?.message ?? "nieznany błąd"}`
+      );
+      continue;
+    }
+    const valueCheck = priceEntrySchema.safeParse(value);
+    if (!valueCheck.success) {
+      console.warn(
+        `[fetchStateFromAppsScript] odrzucono cenę "${key}": ${valueCheck.error.issues[0]?.message ?? "nieznany błąd"}`
+      );
+      continue;
+    }
+    result[key] = valueCheck.data;
+  }
+  return result;
+}
+
+function sanitizeRemoteVariants(raw: unknown): VariantDefinition[] {
+  if (!Array.isArray(raw)) return [];
+
+  const result: VariantDefinition[] = [];
+  for (const entry of raw) {
+    const check = variantSchema.safeParse(entry);
+    if (!check.success) {
+      const key =
+        entry && typeof entry === "object" && "key" in entry ? String((entry as { key: unknown }).key) : "?";
+      console.warn(
+        `[fetchStateFromAppsScript] odrzucono wariant "${key}": ${check.error.issues[0]?.message ?? "nieznany błąd"}`
+      );
+      continue;
+    }
+    result.push(check.data as VariantDefinition);
+  }
+  return result;
+}
+
+/**
+ * `locked: true` = GAS odpowiedział ({ok:false, error:"locked"}), bo getState
+ * czyta katalog pod tym samym lockiem co zapis i trafił w środku zapisu
+ * kogoś innego — stan przejściowy (sekundy), nie awaria. `locked: false` =
+ * sieć/timeout/HTTP error/nieprawidłowa odpowiedź — nieodróżnialne od siebie,
+ * bo fetchWithRetry już wyczerpał swoje próby dla sieci/timeoutu (audyt S3:
+ * ta sama zasada co fetchCatalogRevision — retry TYLKO dla sieci/timeoutu,
+ * nigdy dla odpowiedzi serwera; "locked" jest odpowiedzią serwera, więc nie
+ * dostaje automatycznego retry tutaj, tylko lepszy komunikat dla wołającego).
+ */
+export type FetchStateResult =
+  | { ok: true; state: RemoteCatalogState }
+  | { ok: false; locked: boolean };
+
 export async function fetchStateFromAppsScript(
   config: OrderExportConfig = getOrderExportConfig()
-): Promise<RemoteCatalogState | null> {
-  if (!config.enabled || !config.appsScriptUrl) return null;
+): Promise<FetchStateResult> {
+  if (!config.enabled || !config.appsScriptUrl) return { ok: false, locked: false };
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), config.timeoutMs);
@@ -835,41 +736,30 @@ export async function fetchStateFromAppsScript(
       signal: controller.signal,
     });
 
-    if (!response.ok) return null;
+    if (!response.ok) return { ok: false, locked: false };
 
     const data = (await response.json()) as {
       ok?: unknown;
+      error?: unknown;
       prices?: unknown;
       variants?: unknown;
       catalogRevision?: unknown;
       catalogUpdatedAt?: unknown;
     };
 
-    // getState czyta katalog pod tym samym lockiem co zapis, więc trafiony
-    // w środku zapisu odpowiada { ok: false, error: "locked" } zamiast danych.
-    // Traktujemy to jak brak odpowiedzi — wołający ponowi próbę.
-    if (data.ok === false) return null;
-
-    const prices: Record<string, number | null> =
-      data.prices && typeof data.prices === "object" && !Array.isArray(data.prices)
-        ? (data.prices as Record<string, number | null>)
-        : {};
-
-    const variants: VariantDefinition[] = Array.isArray(data.variants)
-      ? (data.variants as unknown[]).filter(
-          (v): v is VariantDefinition =>
-            !!v && typeof v === "object" && typeof (v as VariantDefinition).key === "string"
-        )
-      : [];
+    if (data.ok === false) return { ok: false, locked: data.error === "locked" };
 
     return {
-      prices,
-      variants,
-      catalogRevision: parseRevision(data.catalogRevision),
-      catalogUpdatedAt: typeof data.catalogUpdatedAt === "string" ? data.catalogUpdatedAt : null,
+      ok: true,
+      state: {
+        prices: sanitizeRemotePrices(data.prices),
+        variants: sanitizeRemoteVariants(data.variants),
+        catalogRevision: parseRevision(data.catalogRevision),
+        catalogUpdatedAt: typeof data.catalogUpdatedAt === "string" ? data.catalogUpdatedAt : null,
+      },
     };
   } catch {
-    return null;
+    return { ok: false, locked: false };
   } finally {
     clearTimeout(timeout);
   }

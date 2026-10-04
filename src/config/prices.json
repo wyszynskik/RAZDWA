@@ -858,22 +858,22 @@
     "title": "Wycinanie z folii",
     "unit": "m2",
     "pricing": "per_unit",
-    "variants": [
+    "materials": [
       {
         "id": "kolorowa",
         "name": "Folia kolorowa",
-        "rates": {
-          "below1m2": 200,
-          "aboveOrEqual1m2": 125
-        }
+        "tiers": [
+          { "min": 0, "max": 0, "price": 200 },
+          { "min": 1, "max": null, "price": 125 }
+        ]
       },
       {
         "id": "zloto-srebro",
-        "name": "Folia zĹ‚oto / srebro",
-        "rates": {
-          "below1m2": 220,
-          "aboveOrEqual1m2": 150
-        }
+        "name": "Folia złoto / srebro",
+        "tiers": [
+          { "min": 0, "max": 0, "price": 220 },
+          { "min": 1, "max": null, "price": 150 }
+        ]
       }
     ],
     "rules": [

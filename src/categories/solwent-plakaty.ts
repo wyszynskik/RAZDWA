@@ -2,7 +2,11 @@ import { calculatePrice } from "../core/pricing";
 import { PriceTable, CalculationResult } from "../core/types";
 import { getPrice } from "../services/priceService";
 import { overrideTiersWithStoredPrices } from "../core/compat";
-import { getCombinedMaterials } from "../core/dynamicMaterials";
+import {
+  getCombinedMaterials,
+  type MaterialDefinition,
+  type MaterialTier,
+} from "../core/dynamicMaterials";
 
 export interface SolwentPlakatyInput {
   areaM2: number;
@@ -33,6 +37,17 @@ function normalizeMaterialKey(value: string): string {
     .trim();
 }
 
+/**
+ * Statyczne materiały mają swoje progi pod starym kluczem
+ * "solwent-{materialId}-{min}-{max}"/"...{min}+". Wpięte też w
+ * getCombinedMaterials() (3. argument) — nie tylko przy obliczeniu ceny
+ * wybranego materiału, ale też w legendzie widoku, żeby materiał relatywny
+ * do statycznej bazy mirrorował żywą cenę wszędzie, nie tylko przy checkout.
+ */
+export function resolveStaticSolwentTiers(material: MaterialDefinition): MaterialTier[] {
+  return overrideTiersWithStoredPrices(`solwent-${material.id}`, material.tiers);
+}
+
 export function calculateSolwentPlakaty(input: SolwentPlakatyInput): CalculationResult {
   const tableData = getPrice("solwentPlakaty") as any;
   const materialKey = normalizeMaterialKey(input.material);
@@ -40,7 +55,11 @@ export function calculateSolwentPlakaty(input: SolwentPlakatyInput): Calculation
     .match(/(\d{2,3}g)/i)?.[1]
     ?.toLowerCase();
 
-  const combinedMaterials = getCombinedMaterials("solwentPlakaty");
+  const combinedMaterials = getCombinedMaterials(
+    "solwentPlakaty",
+    undefined,
+    resolveStaticSolwentTiers
+  );
   const materialData =
     combinedMaterials.find((m) => {
       return (

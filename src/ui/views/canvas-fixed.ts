@@ -1,6 +1,13 @@
 import { View, ViewContext } from "../types";
 import { autoCalc } from "../autoCalc";
-import { calculateCanvas, CanvasOptions, CanvasResult } from "../../categories/canvas";
+import {
+  calculateCanvas,
+  CanvasOptions,
+  CanvasResult,
+  getCanvasMaterials,
+  resolveCanvasUnitPrice,
+  type CanvasFormatModeId,
+} from "../../categories/canvas";
 import { formatPLN } from "../../core/money";
 import { getPrice } from "../../services/priceService";
 import { resolveStoredPrice } from "../../core/compat";
@@ -75,24 +82,22 @@ export const CanvasView: View = {
         legendExpress.innerText = `+${Math.round(resolveStoredPrice("modifier-express", 0.2) * 100)}%`;
       }
 
-      if (legendFramedRows) {
-        const rows = (framedMode?.formats ?? [])
-          .filter((f: any) => !f.customSize && !f.customQuote)
-          .map((f: any) => {
-            const price = resolveStoredPrice(`canvas-framed-${f.id}`, f.price);
-            const label = String(f.label ?? f.id).replace("x", " × ");
+      if (legendFramedRows && framedMode) {
+        const rows = getCanvasMaterials("framed", framedMode)
+          .map((m) => {
+            const price = resolveCanvasUnitPrice("framed", framedMode, m);
+            const label = m.name.replace("x", " × ");
             return `<tr><td>${label} cm</td><td>${formatPLN(price)}</td></tr>`;
           })
           .join("");
         legendFramedRows.innerHTML = rows;
       }
 
-      if (legendUnframedRows) {
-        const rows = (unframedMode?.formats ?? [])
-          .filter((f: any) => !f.customSize && !f.customQuote)
-          .map((f: any) => {
-            const price = resolveStoredPrice(`canvas-unframed-${f.id}`, f.price);
-            const label = String(f.label ?? f.id).replace("x", " × ");
+      if (legendUnframedRows && unframedMode) {
+        const rows = getCanvasMaterials("unframed", unframedMode)
+          .map((m) => {
+            const price = resolveCanvasUnitPrice("unframed", unframedMode, m);
+            const label = m.name.replace("x", " × ");
             return `<tr><td>${label} cm</td><td>${formatPLN(price)}</td></tr>`;
           })
           .join("");
@@ -125,6 +130,7 @@ export const CanvasView: View = {
         formatRow.style.display = "";
         sizeRow.style.display = "none";
 
+        const previouslySelected = formatSel.value;
         formatSel.innerHTML = "";
         const placeholderOpt = document.createElement("option");
         placeholderOpt.value = "";
@@ -132,12 +138,30 @@ export const CanvasView: View = {
         placeholderOpt.selected = true;
         placeholderOpt.text = "— wybierz format —";
         formatSel.appendChild(placeholderOpt);
-        (mode.formats ?? []).forEach((f: any) => {
+
+        const materials = getCanvasMaterials(modeId as CanvasFormatModeId, mode);
+        materials.forEach((m) => {
+          const opt = document.createElement("option");
+          opt.value = m.id;
+          opt.text = m.name;
+          formatSel.appendChild(opt);
+        });
+        const customEntries = (mode.formats ?? []).filter(
+          (f: any) => f.customSize || f.customQuote
+        );
+        customEntries.forEach((f: any) => {
           const opt = document.createElement("option");
           opt.value = f.id;
           opt.text = f.label;
           formatSel.appendChild(opt);
         });
+
+        if (
+          previouslySelected &&
+          Array.from(formatSel.options).some((o) => o.value === previouslySelected)
+        ) {
+          formatSel.value = previouslySelected;
+        }
       }
 
       formatSel.onchange = () => {
@@ -235,6 +259,7 @@ export const CanvasView: View = {
     autoCalc({ root: container, calc: calculate, cancelOn: [addBtn] });
     updateLegend();
     ctx?.on?.("prices-updated", () => {
+      if (modeSel.value && modeSel.value !== "m2-unframed") syncModeUI();
       updateLegend();
       calculate();
     });

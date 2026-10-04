@@ -329,3 +329,83 @@ describe("getCombinedMaterials — materialPriceFormula (cena relatywna do inneg
     expect(getCombinedMaterials("banner").find((m) => m.id === "duzy-rabat")).toBeUndefined();
   });
 });
+
+describe("getCombinedMaterials — resolveStaticOverride (3. parametr)", () => {
+  beforeEach(() => {
+    stubStorage();
+  });
+
+  afterEach(() => {
+    resetPrices();
+    setVariantDefinitions([]);
+    vi.unstubAllGlobals();
+  });
+
+  it("bez podania resolveStaticOverride zachowanie identyczne jak dziś (regresja zero)", () => {
+    setVariantDefinitions([]);
+    const withoutResolver = getCombinedMaterials("banner");
+    const withNoopResolver = getCombinedMaterials("banner", undefined, undefined);
+
+    expect(withNoopResolver).toEqual(withoutResolver);
+  });
+
+  it("mapuje tiers KAŻDEGO materiału statycznego przez resolveStaticOverride, zanim trafi do zwracanej listy", () => {
+    setVariantDefinitions([]);
+    const staticMaterials = (getPrice("banner") as any).materials as Array<{
+      id: string;
+      tiers: Array<{ min: number; max: number | null; price: number }>;
+    }>;
+    const bumped = getCombinedMaterials("banner", undefined, (m) => [
+      { min: 1, max: null, price: 999 },
+    ]);
+
+    expect(bumped.length).toBe(staticMaterials.length);
+    bumped.forEach((m) => {
+      expect(m.tiers).toEqual([{ min: 1, max: null, price: 999 }]);
+    });
+  });
+
+  it("materiał RELATYWNY do bazy statycznej mirroruje cenę PO przejściu przez resolveStaticOverride, nie surową z prices.json", () => {
+    const staticBase = (getPrice("banner") as any).materials[0];
+    const derivedId = "pochodny-od-nadpisanej-bazy";
+    setVariantDefinitions([
+      makeMaterialRow({
+        key: buildMaterialAssignmentKey("banner", derivedId),
+        label: "Pochodny",
+        materialPriceFormula: { baseMaterialId: staticBase.id, op: "percent", value: 10 },
+      }),
+    ]);
+
+    // Symuluje admina, który wcześniej nadpisał cenę bazy przez zwykłą edycję
+    // cennika — resolveStaticOverride reprezentuje tę żywą wartość, różną od
+    // surowego JSON-a.
+    const overriddenBasePrice = staticBase.tiers[0].price + 1000;
+    const derived = getCombinedMaterials("banner", undefined, (m) =>
+      m.id === staticBase.id ? [{ min: 1, max: null, price: overriddenBasePrice }] : m.tiers
+    ).find((m) => m.id === derivedId);
+
+    expect(derived).toBeDefined();
+    expect(derived!.tiers).toEqual([
+      { min: 1, max: null, price: Math.round(overriddenBasePrice * 1.1 * 100) / 100 },
+    ]);
+  });
+
+  it("resolveStaticOverride NIE dotyka materiałów dynamicznych (manualnie dodanych) — te już czytają żywe defaultPrices bezpośrednio", () => {
+    const materialId = "dynamiczny-material";
+    setVariantDefinitions([
+      makeMaterialRow({
+        key: buildMaterialAssignmentKey("banner", materialId),
+        label: "Dynamiczny",
+      }),
+    ]);
+    const prefix = materialTierKeyPrefix("banner", materialId);
+    setPrice(`defaultPrices.${prefix}1+`, 42);
+
+    const combined = getCombinedMaterials("banner", undefined, () => [
+      { min: 1, max: null, price: 999 },
+    ]);
+    const dynamic = combined.find((m) => m.id === materialId);
+
+    expect(dynamic!.tiers).toEqual([{ min: 1, max: null, price: 42 }]);
+  });
+});

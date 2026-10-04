@@ -189,7 +189,10 @@ test.describe("disabled add-to-cart hint (dlaczego przycisk wyłączony)", () =>
     await expect(colorHint).toHaveText("Wybierz kolor/rodzaj folii, aby zobaczyć cenę.");
     await expect(areaInfo).toHaveText("Wyliczona powierzchnia: -");
 
-    await page.locator("#wf-gold").check();
+    // Rodzaje folii są teraz renderowane dynamicznie z getCombinedMaterials()
+    // (panel admina może dodać kolejne) -- wybieramy pierwszy dostępny, zamiast
+    // odwoływać się do konkretnego, dawniej zahardkodowanego id.
+    await page.locator("#wf-foil-type-list .wf-foil-type").first().check();
     await expect(colorHint).toHaveText("");
 
     await page.locator("#wf-width").fill("500");

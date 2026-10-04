@@ -2,7 +2,11 @@ import { calculatePrice } from "../core/pricing";
 import { PriceTable, CalculationResult } from "../core/types";
 import { getPrice } from "../services/priceService";
 import { overrideTiersWithStoredPrices, resolveStoredPrice } from "../core/compat";
-import { getCombinedMaterials } from "../core/dynamicMaterials";
+import {
+  getCombinedMaterials,
+  type MaterialDefinition,
+  type MaterialTier,
+} from "../core/dynamicMaterials";
 
 export interface BannerOptions {
   material: string;
@@ -11,9 +15,23 @@ export interface BannerOptions {
   express?: boolean;
 }
 
+/**
+ * Statyczne materiały mają swoje progi pod starym kluczem
+ * "banner-{materialId}-{min}-{max}"/"...{min}+" — dokładnie tą samą
+ * konwencją, jaką buduje generyczny mechanizm materiałów. Wpięte też w
+ * getCombinedMaterials() (3. argument) — nie tylko przy obliczeniu ceny
+ * wybranego materiału, ale też w legendzie widoku, żeby materiał relatywny
+ * do statycznej bazy mirrorował żywą cenę wszędzie, nie tylko przy checkout.
+ */
+export function resolveStaticBannerTiers(material: MaterialDefinition): MaterialTier[] {
+  return overrideTiersWithStoredPrices(`banner-${material.id}`, material.tiers);
+}
+
 export function calculateBanner(options: BannerOptions): CalculationResult {
   const tableData = getPrice("banner") as any;
-  const materialData = getCombinedMaterials("banner").find((m) => m.id === options.material);
+  const materialData = getCombinedMaterials("banner", undefined, resolveStaticBannerTiers).find(
+    (m) => m.id === options.material
+  );
 
   if (!materialData) {
     throw new Error(`Unknown material: ${options.material}`);

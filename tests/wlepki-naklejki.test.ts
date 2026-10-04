@@ -1,5 +1,12 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, afterEach, vi } from "vitest";
 import { calculateWlepki, calculateWlepkiSzt } from "../src/categories/wlepki-naklejki";
+import { buildMaterialAssignmentKey } from "../src/core/dynamicMaterials";
+import { MATERIAL_ASSIGNMENT_PREFIX } from "../src/core/variantKeys";
+import {
+  setVariantDefinitions,
+  resetPrices,
+  PRICES_STORAGE_KEY,
+} from "../src/services/priceService";
 
 describe("Wlepki / Naklejki Category", () => {
   it("should calculate Folia biała po obrysie 1-5m2 at 67zł/m2", () => {
@@ -91,5 +98,78 @@ describe("Wlepki / Naklejki Category", () => {
     const result = calculateWlepkiSzt({ tableId: "plotowane-folia", qty: 1, express: true });
     // 50 * 1.2 = 60
     expect(result.totalPrice).toBe(60);
+  });
+});
+
+describe("Wlepki/Naklejki — materiał relatywny do bazy STATYCZNEJ z nadpisaną ceną", () => {
+  afterEach(() => {
+    resetPrices();
+    setVariantDefinitions([]);
+    vi.unstubAllGlobals();
+  });
+
+  function stubStorage(seed: Record<string, number>) {
+    const stored: Record<string, string> = { [PRICES_STORAGE_KEY]: JSON.stringify(seed) };
+    vi.stubGlobal("localStorage", {
+      getItem: (k: string) => stored[k] ?? null,
+      setItem: (k: string, v: string) => {
+        stored[k] = String(v);
+      },
+      removeItem: (k: string) => {
+        delete stored[k];
+      },
+    });
+  }
+
+  it("grupa m²: mirroruje cenę NADPISANĄ dla 'wlepki_obrys_folia' (1-5 m²), nie surową z prices.json", () => {
+    stubStorage({ "wlepki-obrys-folia-1-5": 999 });
+
+    const derivedId = "pochodny-od-obrys-folia";
+    setVariantDefinitions([
+      {
+        key: buildMaterialAssignmentKey("wlepkiM2", derivedId),
+        categoryId: "wlepkiM2",
+        subcategoryPrefix: MATERIAL_ASSIGNMENT_PREFIX,
+        subgroupLabel: "",
+        label: "Pochodny",
+        legend: "",
+        visibleInSettings: true,
+        visibleInCalculator: true,
+        sortOrder: 0,
+        createdAt: "2026-01-01T00:00:00.000Z",
+        updatedAt: "2026-01-01T00:00:00.000Z",
+        materialPriceFormula: { baseMaterialId: "wlepki_obrys_folia", op: "percent", value: 10 },
+      },
+    ]);
+
+    const result = calculateWlepki({ groupId: derivedId, area: 2, modifiers: [] });
+
+    expect(result.tierPrice).toBe(Math.round(999 * 1.1 * 100) / 100);
+  });
+
+  it("tabela szt: mirroruje cenę NADPISANĄ dla 'papier-sra3' (qty 3), nie surową z prices.json", () => {
+    stubStorage({ "wlepki-szt-papier-sra3-3": 999 });
+
+    const derivedId = "pochodny-od-papier-sra3";
+    setVariantDefinitions([
+      {
+        key: buildMaterialAssignmentKey("wlepkiSzt", derivedId),
+        categoryId: "wlepkiSzt",
+        subcategoryPrefix: MATERIAL_ASSIGNMENT_PREFIX,
+        subgroupLabel: "",
+        label: "Pochodny",
+        legend: "",
+        visibleInSettings: true,
+        visibleInCalculator: true,
+        sortOrder: 0,
+        createdAt: "2026-01-01T00:00:00.000Z",
+        updatedAt: "2026-01-01T00:00:00.000Z",
+        materialPriceFormula: { baseMaterialId: "papier-sra3", op: "percent", value: 10 },
+      },
+    ]);
+
+    const result = calculateWlepkiSzt({ tableId: derivedId, qty: 3 });
+
+    expect(result.unitPrice).toBe(Math.round(999 * 1.1 * 100) / 100);
   });
 });

@@ -2,23 +2,24 @@
 
 ## Cel systemu
 
-[Krótki opis architektury i celu technicznego]
+RAZDWA — kalkulator wycen druku (SPA) dla drukarni: klient dobiera produkt/wariant/materiał w ~24 kategoriach, aplikacja liczy cenę na żywo i wysyła zamówienie do arkusza Google Sheets. Osobny panel admina (Ustawienia) pozwala edytować cennik, warianty i materiały bez ingerencji w kod, z synchronizacją do tego samego arkusza.
 
 ## Stack
 
-- Frontend: [np. WordPress / React / Elementor]
-- Backend: [np. Node.js / PHP]
-- Baza danych: [np. MySQL / PostgreSQL]
-- Automatyzacje: [np. Google Apps Script / Make / n8n]
-- Integracje: [np. API, webhooki, płatności]
+- Frontend: vanilla TypeScript SPA, bez frameworka UI (ręczny DOM + hash router), bundlowany `esbuild` (`scripts/build.mjs`) do `docs/assets/app.js`
+- Backend: Google Apps Script (Web App, `doGet`/`doPost`) — kod poza tym repozytorium
+- Baza danych: arkusz Google Sheets (adresowany przez GAS jako jedyny trwały magazyn zamówień/cennika po stronie serwera)
+- Walidacja: `zod` na ścieżkach zapisu w panelu admina
+- Testy: `vitest` (unit), `@playwright/test` (smoke)
+- Automatyzacje/CI: brak dodatkowych no-code narzędzi — cała logika w repo + Apps Script
 
 ## Struktura
 
-- `src/` — kod aplikacji
-- `docs/` — dokumentacja
-- `tests/` — testy
-- `assets/` — pliki statyczne
-- `scripts/` — narzędzia pomocnicze
+- `src/` — kod aplikacji (TypeScript, źródło)
+- `docs/` — build output serwowany jako strona (GitHub Pages), zawiera `docs/assets/app.js` (bundle) i legacy `docs/categories/*.js`
+- `tests/` — testy (vitest)
+- `scripts/` — build i narzędzia pomocnicze (`build.mjs`, migracje, `run-vitest.mjs`)
+- `devdocs/` — dokumentacja techniczna (GAS setup, kontrakty API, log sesji)
 
 ## Zasady architektoniczne
 

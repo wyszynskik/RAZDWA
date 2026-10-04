@@ -1,12 +1,68 @@
-﻿import { calculatePrice } from "../core/pricing";
+import { calculatePrice } from "../core/pricing";
 import { CalculationResult, PriceTable } from "../core/types";
-import { getPrice } from "../services/priceService";
+import {
+  getCombinedMaterials,
+  type MaterialDefinition,
+  type MaterialTier,
+} from "../core/dynamicMaterials";
+import { resolveStoredPrice } from "../core/compat";
 
 export interface WycinanieFoliiOptions {
-  variantId: "kolorowa" | "zloto-srebro";
+  variantId: string;
   widthMm: number;
   heightMm: number;
   express: boolean;
+}
+
+/**
+ * Kolorowa/zloto-srebro istniały jako płaskie klucze (bez konwencji progowej
+ * {min}-{max}/{min}+) na długo przed mechanizmem dynamicznych materiałów —
+ * admin mógł już wcześniej nadpisać te 2 stawki przez panel ustawień. Żeby
+ * nie osierocić tych wpisów, te dwa warianty nadal czytają swoje stare klucze
+ * jako nadpisanie ponad wartościami z prices.json; każdy NOWY (dynamicznie
+ * dodany) wariant używa wyłącznie generycznej konwencji z dynamicMaterials.ts.
+ */
+const LEGACY_RATE_KEYS: Partial<Record<string, { above: string; below: string }>> = {
+  kolorowa: { above: "wycinanie-folii-kolorowa", below: "wycinanie-folii-kolorowa-ponizej" },
+  "zloto-srebro": {
+    above: "wycinanie-folii-zloto-srebro",
+    below: "wycinanie-folii-zloto-srebro-ponizej",
+  },
+};
+
+/** Progi sortowane rosnąco: pierwszy = "poniżej 1 m²", ostatni = "od 1 m² wzwyż". */
+export function resolveVariantRates(material: MaterialDefinition): {
+  below: number;
+  above: number;
+} {
+  const sorted = [...material.tiers].sort((a, b) => a.min - b.min);
+  const belowPrice = sorted[0]?.price ?? 0;
+  const abovePrice = sorted[sorted.length - 1]?.price ?? belowPrice;
+  const legacy = LEGACY_RATE_KEYS[material.id];
+  if (!legacy) return { below: belowPrice, above: abovePrice };
+  return {
+    below: resolveStoredPrice(legacy.below, belowPrice),
+    above: resolveStoredPrice(legacy.above, abovePrice),
+  };
+}
+
+/**
+ * Tier-shaped odpowiednik resolveVariantRates(), do wpięcia w
+ * getCombinedMaterials() jako resolveStaticOverride — żeby materiał
+ * relatywny do "kolorowa"/"zloto-srebro" mirrorował żywą (nadpisaną) cenę
+ * bazy, nie surową z prices.json. Pierwszy próg (po sortowaniu) = "poniżej",
+ * ostatni = "od 1 m² wzwyż" — ta sama konwencja co resolveVariantRates.
+ */
+export function resolveStaticFoilTiers(material: MaterialDefinition): MaterialTier[] {
+  const sorted = [...material.tiers].sort((a, b) => a.min - b.min);
+  const legacy = LEGACY_RATE_KEYS[material.id];
+  if (!legacy || sorted.length === 0) return sorted;
+  const lastIndex = sorted.length - 1;
+  return sorted.map((tier, i) => {
+    if (i === 0) return { ...tier, price: resolveStoredPrice(legacy.below, tier.price) };
+    if (i === lastIndex) return { ...tier, price: resolveStoredPrice(legacy.above, tier.price) };
+    return tier;
+  });
 }
 
 export function calculateWycinanieFolii(options: WycinanieFoliiOptions): CalculationResult {
@@ -15,20 +71,18 @@ export function calculateWycinanieFolii(options: WycinanieFoliiOptions): Calcula
     throw new Error("Nieprawidłowa powierzchnia");
   }
 
-  const variantId = options.variantId;
-  const data = getPrice("defaultPrices") as any;
+  const material = getCombinedMaterials("wycinanieFolii", undefined, resolveStaticFoilTiers).find(
+    (m) => m.id === options.variantId
+  );
+  if (!material) {
+    throw new Error("Nieznany rodzaj folii");
+  }
 
-  // Dwie stawki per wariant: powyżej/równe 1m2 (tańsza) i poniżej 1m2 (droższa)
-  const defaultAbove = variantId === "zloto-srebro" ? 150 : 125;
-  const defaultBelow = variantId === "zloto-srebro" ? 220 : 200;
-  const rateAbove = data?.[`wycinanie-folii-${variantId}`] ?? defaultAbove;
-  const rateBelow = data?.[`wycinanie-folii-${variantId}-ponizej`] ?? defaultBelow;
-
-  // Wybieramy stawkę przed zbudowaniem tabeli, żeby uniknąć problemów z float granicą 1m2
-  const activeRate = areaM2 < 1 ? rateBelow : rateAbove;
+  const { below, above } = resolveVariantRates(material);
+  const activeRate = areaM2 < 1 ? below : above;
 
   const table: PriceTable = {
-    id: `wycinanie-folii-${variantId}`,
+    id: `wycinanie-folii-${options.variantId}`,
     title: "Wycinanie z folii",
     unit: "m2",
     pricing: "per_unit",
