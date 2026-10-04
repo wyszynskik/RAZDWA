@@ -82,7 +82,10 @@ export function diffAgainstLocal(remote: RemoteCatalogState): RemoteCatalogDiff 
   const localPrices = (getPrice("defaultPrices") as Record<string, number | null>) ?? {};
   let pricesChanged = 0;
   for (const [key, remoteValue] of Object.entries(remote.prices)) {
-    if (Object.prototype.hasOwnProperty.call(localPrices, key) && localPrices[key] !== remoteValue) {
+    if (
+      Object.prototype.hasOwnProperty.call(localPrices, key) &&
+      localPrices[key] !== remoteValue
+    ) {
       pricesChanged++;
     }
   }

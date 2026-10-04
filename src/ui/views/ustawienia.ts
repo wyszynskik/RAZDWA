@@ -5930,9 +5930,8 @@ export const UstawieniaView: View = {
       if (preview.ok) {
         const draftLost =
           preview.state.variants.length > 0
-            ? _draftVariantDefs.filter(
-                (d) => !preview.state.variants.some((v) => v.key === d.key)
-              ).length
+            ? _draftVariantDefs.filter((d) => !preview.state.variants.some((v) => v.key === d.key))
+                .length
             : 0;
         diffLine = describeCatalogDiff(diffAgainstLocal(preview.state), draftLost);
       }

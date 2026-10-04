@@ -7,7 +7,11 @@
  */
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { diffAgainstLocal, describeCatalogDiff } from "../src/services/catalogSync";
-import { setPrice, setVariantDefinitions, type VariantDefinition } from "../src/services/priceService";
+import {
+  setPrice,
+  setVariantDefinitions,
+  type VariantDefinition,
+} from "../src/services/priceService";
 import type { RemoteCatalogState } from "../src/services/orderExportService";
 
 function makeVariant(overrides: Partial<VariantDefinition> = {}): VariantDefinition {
@@ -62,7 +66,9 @@ describe("diffAgainstLocal / describeCatalogDiff", () => {
     setPrice("defaultPrices", { "cat-a-1": 10 });
     setVariantDefinitions([makeVariant()]);
 
-    const diff = diffAgainstLocal(makeRemote({ prices: { "cat-a-1": 10 }, variants: [makeVariant()] }));
+    const diff = diffAgainstLocal(
+      makeRemote({ prices: { "cat-a-1": 10 }, variants: [makeVariant()] })
+    );
 
     expect(diff).toEqual({ pricesChanged: 0, variantsRemoved: 0, variantsChanged: 0 });
     expect(describeCatalogDiff(diff)).toMatch(/zgodny/);

@@ -695,7 +695,9 @@ function sanitizeRemoteVariants(raw: unknown): VariantDefinition[] {
     const check = variantSchema.safeParse(entry);
     if (!check.success) {
       const key =
-        entry && typeof entry === "object" && "key" in entry ? String((entry as { key: unknown }).key) : "?";
+        entry && typeof entry === "object" && "key" in entry
+          ? String((entry as { key: unknown }).key)
+          : "?";
       console.warn(
         `[fetchStateFromAppsScript] odrzucono wariant "${key}": ${check.error.issues[0]?.message ?? "nieznany błąd"}`
       );
