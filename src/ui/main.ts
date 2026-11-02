@@ -845,7 +845,7 @@ function populateAddedByDatalist(): void {
   const dl = document.getElementById("addedByOptions") as HTMLDataListElement | null;
   if (!dl) return;
   dl.innerHTML = getAddedByRecent()
-    .map((v) => `<option value="${v}"></option>`)
+    .map((v) => `<option value="${escapeHtml(v)}"></option>`)
     .join("");
 }
 
