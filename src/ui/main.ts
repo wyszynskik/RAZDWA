@@ -34,7 +34,6 @@ import {
 import { isAdminSession, clearAdminSession } from "../core/adminSession";
 import { CartItem, CustomerData } from "../core/types";
 import { buildLegacyBasketCartItem } from "../core/legacyCartAdapter";
-import { downloadExcel } from "./excel";
 import {
   buildOrderExportPayload,
   computeOrderRequestId,
@@ -1656,7 +1655,6 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   });
 
-  // Send order: Apps Script (if configured) or local Excel fallback
   const resetOrderState = () => {
     if (summaryDiscountPercent) {
       summaryDiscountPercent.value = "0";
