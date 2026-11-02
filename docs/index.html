@@ -217,8 +217,8 @@
           <div id="customer-restore-status" style="display:none;font-size:0.85em;color:#16a34a;padding:4px 0 10px;line-height:1.5;"></div>
           <form id="customerForm" class="order-form" novalidate>
             <div class="order-row">
-              <label for="custName">Imi&#x119; i nazwisko</label>
-              <input id="custName" type="text" placeholder="Jan Kowalski" autocomplete="name" required minlength="2" maxlength="100">
+              <label for="custName">Imi&#x119; i nazwisko <span class="req-mark" aria-hidden="true">*</span></label>
+              <input id="custName" type="text" placeholder="Jan Kowalski" autocomplete="name" required aria-required="true" minlength="2" maxlength="100">
             </div>
             <div class="order-row">
               <label for="custCompany">Nazwa firmy</label>
@@ -229,12 +229,12 @@
               <input id="custNip" type="text" placeholder="1234567890 (opcjonalnie)" autocomplete="off" maxlength="10">
             </div>
             <div class="order-row">
-              <label for="custPhone">Telefon</label>
-              <input id="custPhone" type="tel" placeholder="+48 000 000 000" autocomplete="tel" inputmode="tel" required minlength="9" maxlength="15">
+              <label for="custPhone">Telefon <span class="req-mark" aria-hidden="true">*</span></label>
+              <input id="custPhone" type="tel" placeholder="+48 000 000 000" autocomplete="tel" inputmode="tel" required aria-required="true" minlength="9" maxlength="15">
             </div>
             <div class="order-row">
-              <label for="custEmail">E-mail</label>
-              <input id="custEmail" type="email" placeholder="jan@przyklad.pl" autocomplete="email" required maxlength="254">
+              <label for="custEmail">E-mail <span class="req-mark" aria-hidden="true">*</span></label>
+              <input id="custEmail" type="email" placeholder="jan@przyklad.pl" autocomplete="email" required aria-required="true" maxlength="254">
             </div>
             <div class="order-row order-row--paired">
               <div class="order-row-half">
@@ -246,8 +246,8 @@
                 </select>
               </div>
               <div class="order-row-half">
-                <label for="custAddedBy">Kto doda&#x142;</label>
-                <input id="custAddedBy" type="text" placeholder="Np. Adam / Biuro" autocomplete="off" required minlength="2" maxlength="100" list="addedByOptions">
+                <label for="custAddedBy">Kto doda&#x142; <span class="req-mark" aria-hidden="true">*</span></label>
+                <input id="custAddedBy" type="text" placeholder="Np. Adam / Biuro" autocomplete="off" required aria-required="true" minlength="2" maxlength="100" list="addedByOptions">
                 <datalist id="addedByOptions"></datalist>
               </div>
             </div>

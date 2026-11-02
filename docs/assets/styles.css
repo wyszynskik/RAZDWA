@@ -4264,6 +4264,11 @@ a.employee-mode-btn {
   line-height: 1.4;
 }
 
+.req-mark {
+  color: #ef4444;
+  margin-left: 2px;
+}
+
 .ghost-hint {
   display: block;
   font-size: 12px;
