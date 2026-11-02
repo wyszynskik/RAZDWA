@@ -34,7 +34,6 @@ import {
 import { isAdminSession, clearAdminSession } from "../core/adminSession";
 import { CartItem, CustomerData } from "../core/types";
 import { buildLegacyBasketCartItem } from "../core/legacyCartAdapter";
-import { downloadExcel } from "./excel";
 import {
   buildOrderExportPayload,
   computeOrderRequestId,
@@ -62,7 +61,6 @@ import { PDFDocument, StandardFonts, rgb, PDFFont } from "pdf-lib";
 import fontkit from "@pdf-lib/fontkit";
 import {
   validateCustomerForm,
-  isValidNIP,
   isValidPhone,
   normalizePhoneDigits,
 } from "../core/customerValidation";
@@ -847,7 +845,7 @@ function populateAddedByDatalist(): void {
   const dl = document.getElementById("addedByOptions") as HTMLDataListElement | null;
   if (!dl) return;
   dl.innerHTML = getAddedByRecent()
-    .map((v) => `<option value="${v}"></option>`)
+    .map((v) => `<option value="${escapeHtml(v)}"></option>`)
     .join("");
 }
 
@@ -1092,6 +1090,36 @@ function showStartupErrorBanner(reason: string): void {
   document.body.insertAdjacentElement("afterbegin", banner);
 }
 
+function setOfflineBannerVisible(visible: boolean): void {
+  const id = "offline-banner";
+  const existing = document.getElementById(id);
+  if (!visible) {
+    existing?.remove();
+    return;
+  }
+  if (existing) return;
+  const banner = document.createElement("div");
+  banner.id = id;
+  banner.setAttribute("role", "status");
+  banner.style.cssText = [
+    "position:fixed",
+    "top:0",
+    "left:0",
+    "right:0",
+    "z-index:99998",
+    "background:#78350f",
+    "color:#fef3c7",
+    "font-size:13px",
+    "line-height:1.5",
+    "padding:8px 16px",
+    "text-align:center",
+    "border-bottom:2px solid #b45309",
+  ].join(";");
+  banner.textContent =
+    "⚠ Brak połączenia z internetem — zamówienie nie wyśle się, dopóki połączenie nie wróci.";
+  document.body.insertAdjacentElement("afterbegin", banner);
+}
+
 let _startupConfigFailed = false;
 
 const RAZDWA_UNVERIFIED_KEY = "razdwa_unverified_request_id";
@@ -1150,6 +1178,10 @@ document.addEventListener("DOMContentLoaded", () => {
   } catch {
     // sessionStorage niedostępny — brak akcji
   }
+
+  setOfflineBannerVisible(!navigator.onLine);
+  window.addEventListener("online", () => setOfflineBannerVisible(false));
+  window.addEventListener("offline", () => setOfflineBannerVisible(true));
 
   const viewContainer = document.getElementById("viewContainer");
   const globalExpress = document.getElementById("globalExpress") as HTMLInputElement;
@@ -1622,7 +1654,6 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   });
 
-  // Send order: Apps Script (if configured) or local Excel fallback
   const resetOrderState = () => {
     if (summaryDiscountPercent) {
       summaryDiscountPercent.value = "0";
@@ -1836,7 +1867,7 @@ document.addEventListener("DOMContentLoaded", () => {
       const dialog = document.createElement("div");
       dialog.className = "clear-confirm big-order-confirm";
       dialog.innerHTML = `
-        <div class="clear-confirm__msg">Duże zamówienie: <strong>${formatPLN(totalPln)}</strong>, ${itemsCount} poz.${priorityBadge}<br><span style="font-size:0.88em;opacity:0.75;">${escapeHtml(cust.name)}${phoneHint}</span><div class="big-order-items">${itemsHtml}</div></div>
+        <div class="clear-confirm__msg">Duże zamówienie: <strong>${formatPLN(totalPln)}</strong>, ${itemsCount} poz.${priorityBadge}<br><span style="font-size:0.88em;opacity:0.75;">${escapeHtml(cust.name)}${phoneHint}</span><div class="big-order-items">${itemsHtml}</div><div style="font-size:0.85em;opacity:0.7;margin-top:8px;">"Wyślij" zapisuje zamówienie w systemie — po wysłaniu nie da się go edytować z tego miejsca. "Anuluj" wraca do koszyka bez wysyłki.</div></div>
         <div class="clear-confirm__actions">
           <button type="button" class="clear-confirm__cancel ghost">Anuluj</button>
           <button type="button" class="clear-confirm__ok danger">Wyślij</button>

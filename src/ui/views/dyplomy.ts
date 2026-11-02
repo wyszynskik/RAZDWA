@@ -10,6 +10,7 @@ import {
 } from "../../categories/dyplomy";
 import { formatPLN } from "../../core/money";
 import { resolveStoredPrice } from "../../core/compat";
+import { escapeHtml } from "../../core/validation";
 import { mountDynamicSubgroupContainers } from "../dynamicSubgroups";
 import { setFieldHint, flashFieldHints, setButtonGuarded } from "../viewHelpers";
 
@@ -252,7 +253,7 @@ export const DyplomyView: View = {
         const result = calculateDyplomyEko({ format, qty, isSatin, express: ctx.expressMode });
 
         const breakdown = [
-          `<div><strong>Parametry:</strong> ${qty} szt, ${format}, ${paperLabel}</div>`,
+          `<div><strong>Parametry:</strong> ${qty} szt, ${escapeHtml(format)}, ${escapeHtml(paperLabel)}</div>`,
           `<div><strong>Cena bazowa:</strong> ${formatPLN(result.basePrice)}</div>`,
         ];
         if (isSatin) {

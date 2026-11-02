@@ -342,8 +342,12 @@ export const PlakatyWFView: View = {
 
     autoCalc({ root: container, calc: calcWielkoformatowe, cancelOn: [addBtn] });
     ctx?.on?.("prices-updated", () => {
-      ensureLegend();
-      calcWielkoformatowe();
+      try {
+        ensureLegend();
+        calcWielkoformatowe();
+      } catch (_) {
+        /* ignore */
+      }
     });
 
     // Handle trim checkboxes

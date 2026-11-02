@@ -20,7 +20,7 @@ export function autoCalc({ root, calc, delay = 120, cancelOn }: AutoCalcOptions)
       try {
         calc();
       } catch (_) {
-        /* ignore — view will show "—" until inputs are valid */
+        /* ignore */
       }
     }, delay);
   };

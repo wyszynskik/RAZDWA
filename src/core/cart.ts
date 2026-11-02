@@ -2,6 +2,8 @@ import { CartItem } from "./types";
 import { EXPRESS_RATE, getExpressRate } from "./modifiers";
 import { cartStorageKey } from "./draftSession";
 
+const MAX_CART_AGE_MS = 48 * 60 * 60 * 1000;
+
 export class Cart {
   private items: CartItem[] = [];
   private storageKey = cartStorageKey();
@@ -34,6 +36,10 @@ export class Cart {
       } else if (parsed && typeof parsed === "object") {
         const data = parsed as { items?: unknown; savedAt?: unknown };
         const storedAt = typeof data.savedAt === "number" ? data.savedAt : 0;
+        if (storedAt > 0 && Date.now() - storedAt > MAX_CART_AGE_MS) {
+          localStorage.removeItem(this.storageKey);
+          return;
+        }
         if (storedAt >= this.savedAt && Array.isArray(data.items)) {
           this.items = (data.items as unknown[]).filter(isValidItem);
           this.savedAt = storedAt;
