@@ -61,7 +61,6 @@ import { PDFDocument, StandardFonts, rgb, PDFFont } from "pdf-lib";
 import fontkit from "@pdf-lib/fontkit";
 import {
   validateCustomerForm,
-  isValidNIP,
   isValidPhone,
   normalizePhoneDigits,
 } from "../core/customerValidation";

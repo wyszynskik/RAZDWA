@@ -17,26 +17,6 @@ export function normalizePhoneDigits(phone: string): string {
   return digits;
 }
 
-export function validateNIPDigits(digits: string): string | null {
-  if (digits.length !== 10) return "NIP musi zawierać 10 cyfr";
-  const weights = [6, 5, 7, 2, 3, 4, 5, 6, 7];
-  const sum = weights.reduce((acc, w, i) => acc + w * parseInt(digits[i], 10), 0);
-  const check = sum % 11;
-  if (check === 10 || check !== parseInt(digits[9], 10))
-    return "Nieprawidłowy NIP (błędna suma kontrolna)";
-  return null;
-}
-
-export function isValidNIP(nip: string): boolean {
-  const cleanNip = String(nip ?? "").replace(/\D/g, "");
-  if (!/^\d{10}$/.test(cleanNip)) return false;
-  const weights = [6, 5, 7, 2, 3, 4, 5, 6, 7];
-  const sum = weights.reduce((acc, w, i) => acc + w * Number(cleanNip[i]), 0);
-  const checkDigit = sum % 11;
-  if (checkDigit === 10) return false;
-  return checkDigit === Number(cleanNip[9]);
-}
-
 export function isValidPhone(phone: string): boolean {
   return normalizePhoneDigits(phone).length === 9;
 }
