@@ -16,7 +16,10 @@ concurrency:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    # Przypięte na 24.04: ubuntu-latest przeszło na 26.04, którego
+    # @playwright/test@1.60.0 jeszcze nie wspiera (npx playwright install
+    # --with-deps chromium się wywala). Odpiąć, gdy Playwright dogoni.
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
 
