@@ -1279,7 +1279,11 @@ export const CadUploadView: View = {
     renderLegend();
 
     ctx?.on?.("prices-updated", () => {
-      renderLegend();
+      try {
+        renderLegend();
+      } catch (_) {
+        /* ignore */
+      }
     });
   },
 

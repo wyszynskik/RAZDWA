@@ -213,7 +213,7 @@ export const CanvasView: View = {
 
       const result = calculateCanvas(options);
 
-      if (result.totalPrice <= 0) {
+      if (!(result.totalPrice > 0)) {
         if (resultEl) resultEl.style.display = "none";
         setFieldHint(qtyHint, "Brak ceny dla tej kombinacji — skontaktuj się z nami.");
         setButtonGuarded(addBtn, false);
