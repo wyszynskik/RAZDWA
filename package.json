@@ -30,5 +30,8 @@
     "@pdf-lib/fontkit": "^1.1.1",
     "pdf-lib": "^1.17.1",
     "zod": "^4.6.6"
+  },
+  "overrides": {
+    "minimatch": "11.0.1"
   }
 }
