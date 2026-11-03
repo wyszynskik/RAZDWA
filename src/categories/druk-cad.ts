@@ -16,7 +16,7 @@ export interface DrukCADOptions {
  * @deprecated Use drukCADCategory module instead.
  * Kept for compatibility with tests.
  */
-export function calculateDrukCAD(options: DrukCADOptions, pricing?: any) {
+export function calculateDrukCAD(options: DrukCADOptions, _pricing?: any) {
   const res = calculateCad({
     mode: options.mode,
     format: options.format,

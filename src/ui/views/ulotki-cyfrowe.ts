@@ -9,7 +9,6 @@ import {
   quoteJednostronne,
 } from "../../categories/ulotki-cyfrowe-jednostronne";
 import { formatPLN } from "../../core/money";
-import { resolveStoredPrice } from "../../core/compat";
 import {
   setFieldHint,
   flashFieldHints,
@@ -111,7 +110,7 @@ export const UlotkiCyfroweView: View = {
     let currentOptions: any = null;
     let blockedHints: (HTMLElement | null)[] = [];
 
-    const renderBreakdown = (result: any, options: any, paperVal: string) => {
+    const renderBreakdown = (result: any, options: any) => {
       const basePrice = result.basePrice;
       const satinAmount = result.isSatin ? parseFloat((basePrice * 0.12).toFixed(2)) : 0;
       const expressAmount = options.express ? parseFloat((basePrice * 0.2).toFixed(2)) : 0;
@@ -261,7 +260,7 @@ export const UlotkiCyfroweView: View = {
           tierHint.innerText = `${currentOptions.qty} szt, ${currentOptions.format}, ${paperVal.replace("_", " ")} — cena bazowa: ${formatPLN(result.totalPrice)}`;
         if (expressHint) expressHint.style.display = ctx.expressMode ? "block" : "none";
         if (satinHint) satinHint.style.display = isSatin ? "block" : "none";
-        renderBreakdown(currentResult, currentOptions, paperVal);
+        renderBreakdown(currentResult, currentOptions);
         resultDisplay.style.display = "block";
         setButtonGuarded(addToCartBtn, true);
         blockedHints = [];

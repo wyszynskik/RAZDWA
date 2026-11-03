@@ -1816,20 +1816,6 @@ function getBroszuryKatalogiSectionTitle(key: string): string {
   return "BROSZURY I KATALOGI";
 }
 
-function getZaproszeniaSectionTitle(key: string): string {
-  const m = key.match(
-    /^zaproszenia-(satyna-)?(a6|a5|dl)-(single|double)-(normal|skladane|folded)-(\d+)$/
-  );
-  if (!m) return "ZAPROSZENIA";
-
-  const materialLabel = m[1] ? "SATYNA" : "KREDA";
-  const formatLabel = m[2].toUpperCase();
-  const sidesLabel = m[3] === "single" ? "JEDNOSTRONNE" : "DWUSTRONNE";
-  const foldLabel = m[4] === "skladane" || m[4] === "folded" ? "SKŁADANE" : "BEZ SKŁADANIA";
-
-  return `ZAPROSZENIA ${materialLabel} ${formatLabel} ${sidesLabel} – ${foldLabel}`;
-}
-
 function getZaproszeniaMaterialTitle(key: string): string {
   const m = key.match(
     /^zaproszenia-(satyna-)?(a6|a5|dl)-(single|double)-(normal|skladane|folded)-\d+$/
@@ -2600,9 +2586,6 @@ function getCategoryKeys(prices: PriceMap, category: PriceCategory): string[] {
   }
 
   const keys = Object.keys(prices).filter((key) => keyMatchesCategory(key, category));
-  if (_lastAddedKey && _lastAddedKey in prices) {
-    const matched = keyMatchesCategory(_lastAddedKey, category);
-  }
   if (category.id === "druk-a4-a3") {
     return sortDrukA4A3CategoryKeys(keys);
   }

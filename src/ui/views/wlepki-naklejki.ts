@@ -1,4 +1,4 @@
-﻿import { View, ViewContext } from "../types";
+﻿import { View } from "../types";
 import { autoCalc } from "../autoCalc";
 import {
   calculateWlepki,
@@ -147,8 +147,6 @@ export const WlepkiView: View = {
     ) as HTMLElement | null;
     const areaHint = container.querySelector("#wlepki-area-hint") as HTMLElement | null;
     const resultDiv = container.querySelector("#wlepki-result") as HTMLElement;
-    const unitPriceEl = container.querySelector("#unit-price") as HTMLElement | null;
-    const basePriceEl = container.querySelector("#base-price") as HTMLElement | null;
     const totalPriceEl = container.querySelector("#total-price") as HTMLElement;
     const breakdownLinesEl = container.querySelector(
       "#wlepki-breakdown-lines"

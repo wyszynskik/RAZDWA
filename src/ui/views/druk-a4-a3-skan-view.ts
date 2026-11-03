@@ -289,9 +289,7 @@ export const DrukA4A3SkanView: View = {
       const sleeveUnit = Number(getPRICE()?.sleeve_price ?? 0.8);
       const printQtySafe = Math.max(0, Number(currentOptions.printQty) || 0);
       const surchargeQtySafe = Math.max(0, Number(currentOptions.surchargeQty) || 0);
-      const normalQty = Math.max(0, printQtySafe - surchargeQtySafe);
       const unitPrintValue = Number(result.unitPrintPrice || 0);
-      const normalPrintCost = parseFloat((normalQty * unitPrintValue).toFixed(2));
       const baseWithoutExpress = Number(result.baseTotal || 0);
       const expressCost = currentOptions.express
         ? parseFloat((Number(result.totalPrice || 0) - baseWithoutExpress).toFixed(2))

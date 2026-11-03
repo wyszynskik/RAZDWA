@@ -166,7 +166,6 @@ export const VoucheryView: View = {
       }
 
       const expressAmount = options.express ? parseFloat((basePrice * expressRate).toFixed(2)) : 0;
-      const materialTotal = parseFloat((satinAmount + modiglianiAmount).toFixed(2));
       const envelopeUnitPrice =
         typeof options.envelopeUnitPrice === "number" ? options.envelopeUnitPrice : 0;
       const envelopeQty = typeof options.envelopeQty === "number" ? options.envelopeQty : 0;
