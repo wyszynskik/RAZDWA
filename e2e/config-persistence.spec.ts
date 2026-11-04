@@ -261,6 +261,13 @@ test.describe("trwałość konfiguracji podgrup", () => {
     await openSettings(page);
     await addSubgroupWithTier(page, SUBGROUP_NAME);
     await savePrices(page);
+    // savePrices() czeka tylko na WIDOCZNOŚĆ #save-msg — asynchroniczny check
+    // wersji cennika (catalog-snapshot) dopisuje swój komunikat do #save-msg
+    // później. Pod obciążeniem CI ten późny stan nadpisywał błąd walidacji
+    // importu i test łapał komunikat synchronizacji zamiast "format". GAS jest
+    // zaślepiony, więc finalny stan to zawsze "zapisano lokalnie" — czekamy na
+    // niego zanim zaimportujemy uszkodzony plik.
+    await expect(page.locator("#save-msg")).toContainText("zapisano lokalnie");
     const before = await readVariants(page);
 
     const badPath = join(tmpdir(), `razdwa-e2e-bad-${Date.now()}.json`);
