@@ -1632,12 +1632,12 @@ function getPriceLabel(key: string): string {
     return `Dyplomy Ekonomiczny ${dyplomyEkoMatch[1]} – ${dyplomyEkoMatch[2]} szt.`;
   }
 
-  const ulotkiJedMatch = key.match(/^ulotki-jed-(a6|a5|dl|a4)-(\d+)$/);
+  const ulotkiJedMatch = key.match(/^ulotki-jed-([a-z0-9]+)-(\d+)$/);
   if (ulotkiJedMatch) {
     return `Ulotki jednostronne ${ulotkiJedMatch[1].toUpperCase()} – ${ulotkiJedMatch[2]} szt.`;
   }
 
-  const ulotkiDwuMatch = key.match(/^ulotki-dwu-(a6|a5|dl|a4)-(\d+)$/);
+  const ulotkiDwuMatch = key.match(/^ulotki-dwu-([a-z0-9]+)-(\d+)$/);
   if (ulotkiDwuMatch) {
     return `Ulotki dwustronne ${ulotkiDwuMatch[1].toUpperCase()} – ${ulotkiDwuMatch[2]} szt.`;
   }
@@ -1839,7 +1839,7 @@ function getZaproszeniaSubgroupTitle(key: string): string {
 }
 
 function getUlotkiSectionTitle(key: string): string {
-  const m = key.match(/^ulotki-(jed|dwu)-(a6|a5|dl)-\d+$/);
+  const m = key.match(/^ulotki-(jed|dwu)-([a-z0-9]+)-\d+$/);
   if (!m) return "ULOTKI";
 
   const sideLabel = m[1] === "jed" ? "JEDNOSTRONNE" : "DWUSTRONNE";
@@ -2086,7 +2086,7 @@ function sortUlotkiCategoryKeys(keys: string[]): string[] {
   const formatRank: Record<string, number> = { a6: 0, a5: 1, dl: 2, a4: 3 };
 
   const parse = (key: string) => {
-    const m = key.match(/^ulotki-(jed|dwu)-(a6|a5|dl|a4)-(\d+)$/);
+    const m = key.match(/^ulotki-(jed|dwu)-([a-z0-9]+)-(\d+)$/);
     if (m) {
       return {
         side: m[1] === "jed" ? 0 : 1,
