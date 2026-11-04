@@ -83,8 +83,6 @@ export const CadUploadView: View = {
     // Dynamically render extra CAD options from JSON
     const extraOptions = await loadCadExtraOptions();
     if (container.dataset.cadMountGen !== mountToken) return; // superseded while awaiting — do not wire up listeners on a DOM state we no longer own
-    const extraOptionsMap = Object.fromEntries(extraOptions.map((opt) => [opt.id, opt]));
-
     // Render extra options in the UI
     const extraRow = container.querySelector<HTMLElement>(".cad-extra-services-row");
     if (extraRow) {
@@ -182,7 +180,6 @@ export const CadUploadView: View = {
     let dpi = 300;
     let grandTotalColorVariant = 0;
     let grandTotalBwVariant = 0;
-    let additionalScanPrice = 0;
     const cadPricing: any = getPrice("drukCAD");
 
     const renderLegend = () => {
@@ -281,14 +278,6 @@ export const CadUploadView: View = {
         return `${abs} pliki`;
       }
       return `${abs} plików`;
-    }
-
-    function wrapFileName(name: string, chunkSize = 10): string {
-      const chunks: string[] = [];
-      for (let i = 0; i < name.length; i += chunkSize) {
-        chunks.push(escapeHtml(name.slice(i, i + chunkSize)));
-      }
-      return chunks.join("<wbr>");
     }
 
     function calcSurchargeMultiplier(): number {
@@ -1018,9 +1007,6 @@ export const CadUploadView: View = {
 
       const id = Number(row.dataset.fileId || "0");
       files = files.filter((f) => f.id !== id);
-      if (files.length === 0) {
-        additionalScanPrice = 0;
-      }
       syncSequentialIds();
       renderFiles();
     });

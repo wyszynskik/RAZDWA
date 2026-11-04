@@ -5,7 +5,6 @@ import { getPrice } from "../services/priceService";
 import { PriceTable } from "../core/types";
 import { resolveStoredPrice } from "../core/compat";
 
-const plakatyData: any = (getPrice("plakaty") as any).legacy200g;
 const fullData: any = getPrice("plakaty") as any;
 
 // ---------------------------------------------------------------------------
@@ -65,7 +64,7 @@ export const plakatyCategory: CategoryModule = {
       try {
         const res = calculatePrice(qty, table, mods);
         resultEl.textContent = formatPLN(res.totalPrice);
-      } catch (e) {
+      } catch {
         resultEl.textContent = "Błąd";
       }
     }

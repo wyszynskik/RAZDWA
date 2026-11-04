@@ -69,30 +69,6 @@ export function calculateDrukA4A3Skan(options: DrukA4A3SkanOptions, pricing?: an
   };
 }
 
-function getPricePerPage(
-  format: "A4" | "A3",
-  quantity: number,
-  color: "czarnoBialy" | "kolorowy"
-): number {
-  // Use PRICE from compat.ts (same data, no duplication) and apply stored overrides.
-  const modeKey = color === "czarnoBialy" ? "bw" : "color";
-  const tiers = (getPRICE().print as any)[modeKey][format];
-
-  let selectedTier = tiers[tiers.length - 1];
-  for (const tier of tiers) {
-    if (quantity >= tier.from && quantity <= tier.to) {
-      selectedTier = tier;
-      break;
-    }
-  }
-
-  const adminModeKey = color === "czarnoBialy" ? "bw" : "kolor";
-  const suffix =
-    selectedTier.to > 50000 ? `${selectedTier.from}+` : `${selectedTier.from}-${selectedTier.to}`;
-  const storageKey = `druk-${adminModeKey}-${format.toLowerCase()}-${suffix}`;
-  return resolveStoredPrice(storageKey, selectedTier.unit);
-}
-
 export const drukA4A3Category: CategoryModule = {
   id: "druk-a4-a3",
   name: "📄 Druk A4/A3 + skan",

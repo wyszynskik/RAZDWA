@@ -1509,7 +1509,6 @@ export const LaminowanieView: View = {
           { label: "Cena jednostkowa", value: formatPLN(unitPrice) },
         ];
 
-        const baseTotal = parseFloat((unitPrice * qty).toFixed(2));
         if (extraThicknessPrice > 0) {
           breakdown.push({
             label: "Dopłata grubości",

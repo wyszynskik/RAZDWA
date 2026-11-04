@@ -1907,6 +1907,22 @@
             "price": 399.0
           }
         ]
+      },
+      "A4": {
+        "name": "A4 (210x297)",
+        "tiers": [
+          { "min": 10, "max": 10, "price": 60.0 },
+          { "min": 20, "max": 20, "price": 78.0 },
+          { "min": 30, "max": 30, "price": 98.0 },
+          { "min": 40, "max": 40, "price": 115.0 },
+          { "min": 50, "max": 50, "price": 138.0 },
+          { "min": 100, "max": 100, "price": 175.0 },
+          { "min": 200, "max": 200, "price": 290.0 },
+          { "min": 300, "max": 300, "price": 350.0 },
+          { "min": 500, "max": 500, "price": 530.0 },
+          { "min": 1000, "max": 1000, "price": 860.0 },
+          { "min": 1500, "max": 1500, "price": 1099.0 }
+        ]
       }
     }
   },
@@ -2181,6 +2197,22 @@
             "max": 1000,
             "price": 590.0
           }
+        ]
+      },
+      "A4": {
+        "name": "A4 (210x297)",
+        "tiers": [
+          { "min": 10, "max": 10, "price": 69.0 },
+          { "min": 20, "max": 20, "price": 99.0 },
+          { "min": 30, "max": 30, "price": 130.0 },
+          { "min": 40, "max": 40, "price": 160.0 },
+          { "min": 50, "max": 50, "price": 180.0 },
+          { "min": 100, "max": 100, "price": 240.0 },
+          { "min": 200, "max": 200, "price": 410.0 },
+          { "min": 300, "max": 300, "price": 560.0 },
+          { "min": 500, "max": 500, "price": 800.0 },
+          { "min": 1000, "max": 1000, "price": 1299.0 },
+          { "min": 1500, "max": 1500, "price": 1999.0 }
         ]
       }
     }
@@ -3377,6 +3409,17 @@
     "ulotki-jed-dl-500": 230.0,
     "ulotki-jed-dl-700": 310.0,
     "ulotki-jed-dl-1000": 399.0,
+    "ulotki-jed-a4-10": 60.0,
+    "ulotki-jed-a4-20": 78.0,
+    "ulotki-jed-a4-30": 98.0,
+    "ulotki-jed-a4-40": 115.0,
+    "ulotki-jed-a4-50": 138.0,
+    "ulotki-jed-a4-100": 175.0,
+    "ulotki-jed-a4-200": 290.0,
+    "ulotki-jed-a4-300": 350.0,
+    "ulotki-jed-a4-500": 530.0,
+    "ulotki-jed-a4-1000": 860.0,
+    "ulotki-jed-a4-1500": 1099.0,
     "ulotki-dwu-a6-10": 40.0,
     "ulotki-dwu-a6-20": 47.0,
     "ulotki-dwu-a6-30": 49.0,
@@ -3428,6 +3471,17 @@
     "ulotki-dwu-dl-500": 350.0,
     "ulotki-dwu-dl-700": 460.0,
     "ulotki-dwu-dl-1000": 590.0,
+    "ulotki-dwu-a4-10": 69.0,
+    "ulotki-dwu-a4-20": 99.0,
+    "ulotki-dwu-a4-30": 130.0,
+    "ulotki-dwu-a4-40": 160.0,
+    "ulotki-dwu-a4-50": 180.0,
+    "ulotki-dwu-a4-100": 240.0,
+    "ulotki-dwu-a4-200": 410.0,
+    "ulotki-dwu-a4-300": 560.0,
+    "ulotki-dwu-a4-500": 800.0,
+    "ulotki-dwu-a4-1000": 1299.0,
+    "ulotki-dwu-a4-1500": 1999.0,
     "artykuly-teczka-biala-gumka": 4.0,
     "artykuly-teczka-niebieska-twarda": 15.0,
     "artykuly-teczka-kolor-gumka": 5.5,

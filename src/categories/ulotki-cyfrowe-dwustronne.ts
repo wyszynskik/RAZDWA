@@ -4,8 +4,6 @@ import { calculatePrice } from "../core/pricing";
 import { PriceTable, CalculationResult } from "../core/types";
 import { mergeStoredNumericTiers, resolveStoredPrice } from "../core/compat";
 
-const prices: any = getPrice("ulotkiDwustronne");
-
 export interface UlotkiDwustronneOptions {
   qty: number;
   format: string;

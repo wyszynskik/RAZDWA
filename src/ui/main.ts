@@ -31,7 +31,7 @@ import {
   clearDraftSession,
   purgeStaleDraftSessions,
 } from "../core/draftSession";
-import { isAdminSession, clearAdminSession } from "../core/adminSession";
+import { clearAdminSession } from "../core/adminSession";
 import { CartItem, CustomerData } from "../core/types";
 import { buildLegacyBasketCartItem } from "../core/legacyCartAdapter";
 import {
@@ -68,7 +68,7 @@ import categories from "../../data/categories.json";
 import { runMigrationIfNeeded } from "../services/priceMigrator";
 import { withConfigDirtySuppressed } from "../services/configSyncState";
 import { runSubgroupOrderMigrationIfNeeded } from "../services/subgroupOrderMigration";
-import { warmPriceCache, hasCachedPrices } from "../core/compat";
+import { hasCachedPrices } from "../core/compat";
 import { reconcilePriceStore } from "../services/priceStoreSync";
 import {
   startCatalogWatcher,
@@ -213,10 +213,6 @@ function showOrderStatusPanel(
     .querySelector(".order-status-panel__close")
     ?.addEventListener("click", dismissOrderStatusPanel);
   host.prepend(panel);
-}
-
-function hideOrderLoadingPopup() {
-  /* zachowane dla kompatybilności */
 }
 
 function getSummaryPercentValue(elementId: string): number {
@@ -2267,7 +2263,7 @@ document.addEventListener("DOMContentLoaded", () => {
           message: result.message,
           errorType: result.errorType,
         });
-      } catch (error) {
+      } catch {
         unverifiedSend = false;
         if (retryUnlockTimer !== null) {
           clearTimeout(retryUnlockTimer);

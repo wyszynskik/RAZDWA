@@ -257,20 +257,8 @@ export function calculateCadScanningPrice(
 ): number {
   if (!scanning) return 0;
 
-  // Skanowanie WF:
-  // - szukamy najmniejszego standardu (297, 420, 594, 610, 841, 914, 1067 mm),
-  //   do którego zmieści się krótszy wymiar dokumentu (szerokość rolki),
-  // - dłuższy wymiar to długość do rozliczenia: cm (zaokrąglone) * 0.08,
-  // - mnożymy przez liczbę stron.
-  const STANDARD_WIDTHS_MM = [297, 420, 594, 610, 841, 914, 1067];
-
-  const shorterSideMm = Math.min(widthMm, heightMm);
+  // Skanowanie WF: dłuższy wymiar to długość do rozliczenia (cm zaokrąglone × stawka).
   const longerSideMm = Math.max(widthMm, heightMm);
-
-  // Szukamy najmniejszego standardu, do którego zmieści się krótszy wymiar (szerokość rolki)
-  const requiredWidthMm =
-    STANDARD_WIDTHS_MM.find((std) => shorterSideMm <= std) ||
-    STANDARD_WIDTHS_MM[STANDARD_WIDTHS_MM.length - 1];
 
   // Do rozliczenia skanowania liczy się dłuższy wymiar (długość przejazdu przez skaner)
   const lengthCm = Math.round(longerSideMm / 10);

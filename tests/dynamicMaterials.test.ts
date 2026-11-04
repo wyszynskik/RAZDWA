@@ -355,7 +355,7 @@ describe("getCombinedMaterials — resolveStaticOverride (3. parametr)", () => {
       id: string;
       tiers: Array<{ min: number; max: number | null; price: number }>;
     }>;
-    const bumped = getCombinedMaterials("banner", undefined, (m) => [
+    const bumped = getCombinedMaterials("banner", undefined, (_m) => [
       { min: 1, max: null, price: 999 },
     ]);
 

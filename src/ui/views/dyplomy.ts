@@ -1,4 +1,4 @@
-import { View, ViewContext } from "../types";
+import { View } from "../types";
 import { autoCalc } from "../autoCalc";
 import {
   calculateDyplomy,

@@ -21,7 +21,6 @@ const _log: VariantLogEntry[] = [];
 
 export function logVariantOperation(entry: VariantLogEntry): void {
   _log.push(entry);
-  const keyPart = entry.key ? ` ${entry.key}` : ` (${entry.categoryId}/${entry.prefix || "?"})`;
 }
 
 export function getVariantLog(): readonly VariantLogEntry[] {

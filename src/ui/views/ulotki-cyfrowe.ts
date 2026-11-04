@@ -9,7 +9,6 @@ import {
   quoteJednostronne,
 } from "../../categories/ulotki-cyfrowe-jednostronne";
 import { formatPLN } from "../../core/money";
-import { resolveStoredPrice } from "../../core/compat";
 import {
   setFieldHint,
   flashFieldHints,
@@ -111,7 +110,7 @@ export const UlotkiCyfroweView: View = {
     let currentOptions: any = null;
     let blockedHints: (HTMLElement | null)[] = [];
 
-    const renderBreakdown = (result: any, options: any, paperVal: string) => {
+    const renderBreakdown = (result: any, options: any) => {
       const basePrice = result.basePrice;
       const satinAmount = result.isSatin ? parseFloat((basePrice * 0.12).toFixed(2)) : 0;
       const expressAmount = options.express ? parseFloat((basePrice * 0.2).toFixed(2)) : 0;
@@ -158,16 +157,19 @@ export const UlotkiCyfroweView: View = {
       const paperVal = paperSelect.value;
       const isSatin = paperVal.startsWith("satyna");
       const factor = isSatin ? SATIN_MULTIPLIER : 1;
-      const formatOrder: Array<"A5" | "A6" | "DL"> = ["A5", "A6", "DL"];
+      const formatOrder: Array<"A5" | "A6" | "DL" | "A4"> = ["A5", "A6", "DL", "A4"];
 
       const priceByFormatByQty: Record<string, Record<number, number>> = {};
       const qtySet = new Set<number>();
 
       formatOrder.forEach((format) => {
-        const table =
-          sides === "dwustronne"
-            ? getUlotkiDwustronneTable(format)
-            : getUlotkiJednostronneTable(format);
+        let table;
+        try {
+          table = sides === "dwustronne" ? getUlotkiDwustronneTable(format) : getUlotkiJednostronneTable(format);
+        } catch {
+          priceByFormatByQty[format] = {};
+          return;
+        }
         const tiers = table.tiers ?? [];
         const map: Record<number, number> = {};
         tiers.forEach((tier: any) => {
@@ -198,7 +200,8 @@ export const UlotkiCyfroweView: View = {
             const a5 = priceByFormatByQty.A5?.[qty];
             const a6 = priceByFormatByQty.A6?.[qty];
             const dl = priceByFormatByQty.DL?.[qty];
-            return `<tr><td>${qty}</td><td>${typeof a5 === "number" ? formatPLN(a5) : "-"}</td><td>${typeof a6 === "number" ? formatPLN(a6) : "-"}</td><td>${typeof dl === "number" ? formatPLN(dl) : "-"}</td></tr>`;
+            const a4 = priceByFormatByQty.A4?.[qty];
+            return `<tr><td>${qty}</td><td>${typeof a5 === "number" ? formatPLN(a5) : "-"}</td><td>${typeof a6 === "number" ? formatPLN(a6) : "-"}</td><td>${typeof dl === "number" ? formatPLN(dl) : "-"}</td><td>${typeof a4 === "number" ? formatPLN(a4) : "-"}</td></tr>`;
           })
           .join("");
       }
@@ -261,7 +264,7 @@ export const UlotkiCyfroweView: View = {
           tierHint.innerText = `${currentOptions.qty} szt, ${currentOptions.format}, ${paperVal.replace("_", " ")} — cena bazowa: ${formatPLN(result.totalPrice)}`;
         if (expressHint) expressHint.style.display = ctx.expressMode ? "block" : "none";
         if (satinHint) satinHint.style.display = isSatin ? "block" : "none";
-        renderBreakdown(currentResult, currentOptions, paperVal);
+        renderBreakdown(currentResult, currentOptions);
         resultDisplay.style.display = "block";
         setButtonGuarded(addToCartBtn, true);
         blockedHints = [];

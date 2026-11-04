@@ -37,8 +37,6 @@ export const DrukCADView: View = {
   },
 
   initLogic(container: HTMLElement, ctx: ViewContext) {
-    let calcCount = 0;
-    let updateUICount = 0;
     let listenersBound = false;
     const data = getPrice("drukCAD");
     if (!data?.price || !data?.base) {
@@ -294,8 +292,6 @@ export const DrukCADView: View = {
       };
     };
 
-    const getEffectiveCadOps = (): CadOpItem[] => [...cadOps];
-
     const collectCommitOps = (): CadOpItem[] => {
       const ops: CadOpItem[] = [...cadOps];
       const klientOp = getInlineKlientSkladanieOp();
@@ -503,9 +499,7 @@ export const DrukCADView: View = {
     );
 
     const updateUI = () => {
-      updateUICount++;
       const format = formatSelect.value;
-      const mode = modeSelect.value;
       const baseLen = getCombinedCadBase()[format]?.l;
       baseInfo.innerText = `Wymiar bazowy: ${baseLen} mm`;
 
@@ -580,7 +574,6 @@ export const DrukCADView: View = {
     container.addEventListener("cad:reset", resetCadScanState);
 
     const performCalculation = () => {
-      calcCount++;
       if (qtySheetsInput && qtySheetsInput.value.trim() === "") {
         resultDisplay.style.display = "none";
         setFieldHint(qtySheetsHint, "Podaj ilość arkuszy, aby zobaczyć cenę.");

@@ -1,4 +1,4 @@
-import { View, ViewContext } from "../types";
+import { View } from "../types";
 import { autoCalc } from "../autoCalc";
 import {
   calculateRollUp,
@@ -81,8 +81,6 @@ export const RollUpView: View = {
         "#rollup-legend-header"
       ) as HTMLElement | null;
       const legendBody = container.querySelector("#rollup-legend-body") as HTMLElement | null;
-
-      const expressRate = resolveStoredPrice("modifier-express", 0.2);
 
       const populateFormatSelect = () => {
         const previouslySelected = formatSel.value;
@@ -209,9 +207,6 @@ export const RollUpView: View = {
           getRollUpFormats().find((m) => m.id === options.format)?.name ?? options.format;
 
         const unitBase = parseFloat((result.basePrice / options.qty).toFixed(2));
-        const expressAmount = options.express
-          ? parseFloat((result.basePrice * expressRate).toFixed(2))
-          : 0;
 
         const breakdown: BreakdownRow[] = [
           {
