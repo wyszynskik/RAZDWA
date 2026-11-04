@@ -2081,10 +2081,10 @@ function sortDyplomyEkoCategoryKeys(keys: string[]): string[] {
 }
 
 function sortUlotkiCategoryKeys(keys: string[]): string[] {
-  const formatRank: Record<string, number> = { a6: 0, a5: 1, dl: 2 };
+  const formatRank: Record<string, number> = { a6: 0, a5: 1, dl: 2, a4: 3 };
 
   const parse = (key: string) => {
-    const m = key.match(/^ulotki-(jed|dwu)-(a6|a5|dl)-(\d+)$/);
+    const m = key.match(/^ulotki-(jed|dwu)-(a6|a5|dl|a4)-(\d+)$/);
     if (m) {
       return {
         side: m[1] === "jed" ? 0 : 1,

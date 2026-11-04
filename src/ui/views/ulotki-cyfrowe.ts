@@ -157,16 +157,19 @@ export const UlotkiCyfroweView: View = {
       const paperVal = paperSelect.value;
       const isSatin = paperVal.startsWith("satyna");
       const factor = isSatin ? SATIN_MULTIPLIER : 1;
-      const formatOrder: Array<"A5" | "A6" | "DL"> = ["A5", "A6", "DL"];
+      const formatOrder: Array<"A5" | "A6" | "DL" | "A4"> = ["A5", "A6", "DL", "A4"];
 
       const priceByFormatByQty: Record<string, Record<number, number>> = {};
       const qtySet = new Set<number>();
 
       formatOrder.forEach((format) => {
-        const table =
-          sides === "dwustronne"
-            ? getUlotkiDwustronneTable(format)
-            : getUlotkiJednostronneTable(format);
+        let table;
+        try {
+          table = sides === "dwustronne" ? getUlotkiDwustronneTable(format) : getUlotkiJednostronneTable(format);
+        } catch {
+          priceByFormatByQty[format] = {};
+          return;
+        }
         const tiers = table.tiers ?? [];
         const map: Record<number, number> = {};
         tiers.forEach((tier: any) => {
@@ -197,7 +200,8 @@ export const UlotkiCyfroweView: View = {
             const a5 = priceByFormatByQty.A5?.[qty];
             const a6 = priceByFormatByQty.A6?.[qty];
             const dl = priceByFormatByQty.DL?.[qty];
-            return `<tr><td>${qty}</td><td>${typeof a5 === "number" ? formatPLN(a5) : "-"}</td><td>${typeof a6 === "number" ? formatPLN(a6) : "-"}</td><td>${typeof dl === "number" ? formatPLN(dl) : "-"}</td></tr>`;
+            const a4 = priceByFormatByQty.A4?.[qty];
+            return `<tr><td>${qty}</td><td>${typeof a5 === "number" ? formatPLN(a5) : "-"}</td><td>${typeof a6 === "number" ? formatPLN(a6) : "-"}</td><td>${typeof dl === "number" ? formatPLN(dl) : "-"}</td><td>${typeof a4 === "number" ? formatPLN(a4) : "-"}</td></tr>`;
           })
           .join("");
       }
