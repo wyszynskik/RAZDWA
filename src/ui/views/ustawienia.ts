@@ -747,9 +747,11 @@ function getAddablePrefixOptions(category: PriceCategory): PrefixOption[] {
         { value: "ulotki-jed-a5-", label: "Ulotki jednostronne A5" },
         { value: "ulotki-jed-a6-", label: "Ulotki jednostronne A6" },
         { value: "ulotki-jed-dl-", label: "Ulotki jednostronne DL" },
+        { value: "ulotki-jed-a4-", label: "Ulotki jednostronne A4" },
         { value: "ulotki-dwu-a5-", label: "Ulotki dwustronne A5" },
         { value: "ulotki-dwu-a6-", label: "Ulotki dwustronne A6" },
-        { value: "ulotki-dwu-dl-", label: "Ulotki dwustronne DL" }
+        { value: "ulotki-dwu-dl-", label: "Ulotki dwustronne DL" },
+        { value: "ulotki-dwu-a4-", label: "Ulotki dwustronne A4" }
       );
       break;
     case "wizytowki":
@@ -1630,12 +1632,12 @@ function getPriceLabel(key: string): string {
     return `Dyplomy Ekonomiczny ${dyplomyEkoMatch[1]} – ${dyplomyEkoMatch[2]} szt.`;
   }
 
-  const ulotkiJedMatch = key.match(/^ulotki-jed-(a6|a5|dl)-(\d+)$/);
+  const ulotkiJedMatch = key.match(/^ulotki-jed-(a6|a5|dl|a4)-(\d+)$/);
   if (ulotkiJedMatch) {
     return `Ulotki jednostronne ${ulotkiJedMatch[1].toUpperCase()} – ${ulotkiJedMatch[2]} szt.`;
   }
 
-  const ulotkiDwuMatch = key.match(/^ulotki-dwu-(a6|a5|dl)-(\d+)$/);
+  const ulotkiDwuMatch = key.match(/^ulotki-dwu-(a6|a5|dl|a4)-(\d+)$/);
   if (ulotkiDwuMatch) {
     return `Ulotki dwustronne ${ulotkiDwuMatch[1].toUpperCase()} – ${ulotkiDwuMatch[2]} szt.`;
   }
