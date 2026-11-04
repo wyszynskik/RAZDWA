@@ -2085,19 +2085,26 @@ function sortUlotkiCategoryKeys(keys: string[]): string[] {
 
   const parse = (key: string) => {
     const m = key.match(/^ulotki-(jed|dwu)-(a6|a5|dl)-(\d+)$/);
-    if (!m) {
+    if (m) {
       return {
-        side: 99,
-        format: 99,
-        qty: Number.POSITIVE_INFINITY,
+        side: m[1] === "jed" ? 0 : 1,
+        format: formatRank[m[2]] ?? 99,
+        qty: Number.parseInt(m[3], 10),
         raw: key,
       };
     }
 
+    // Niestandardowy klucz (np. nowa, niezależna podkategoria dodana w
+    // Ustawieniach) — nie pasuje do natywnego wzorca jed/dwu-a6/a5/dl, ale
+    // buildQuantityKey("ulotki", ...) zawsze kończy klucz na "-{ilość}", więc
+    // ilość da się wyciągnąć tak samo. Bez tego wszystkie nowe podkategorie
+    // dostawały qty=Infinity i sortowały się alfabetycznie po kluczu, nie
+    // po ilości (np. "-100" przed "-50").
+    const qtyMatch = key.match(/-(\d+)$/);
     return {
-      side: m[1] === "jed" ? 0 : 1,
-      format: formatRank[m[2]] ?? 99,
-      qty: Number.parseInt(m[3], 10),
+      side: 99,
+      format: 99,
+      qty: qtyMatch ? Number.parseInt(qtyMatch[1], 10) : Number.POSITIVE_INFINITY,
       raw: key,
     };
   };
