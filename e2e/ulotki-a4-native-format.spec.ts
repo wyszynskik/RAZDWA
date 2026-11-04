@@ -83,9 +83,12 @@ test.describe("Ulotki A4 — natywny format reaguje na jedno/dwustronne", () => 
 
     // Etykieta wiersza, nie surowy klucz (regresja: "ulotki dwu a4 10" zamiast
     // "Ulotki dwustronne A4 – 10 szt.", bo getPriceLabel miał regex tylko dla A6/A5/DL).
-    const row = page.locator("tr").filter({ has: page.locator('input[data-field="unitPrice"]') }).filter({
-      hasText: "Ulotki dwustronne A4",
-    });
+    const row = page
+      .locator("tr")
+      .filter({ has: page.locator('input[data-field="unitPrice"]') })
+      .filter({
+        hasText: "Ulotki dwustronne A4",
+      });
     await expect(row.first()).toBeVisible();
   });
 });
