@@ -165,7 +165,10 @@ export const UlotkiCyfroweView: View = {
       formatOrder.forEach((format) => {
         let table;
         try {
-          table = sides === "dwustronne" ? getUlotkiDwustronneTable(format) : getUlotkiJednostronneTable(format);
+          table =
+            sides === "dwustronne"
+              ? getUlotkiDwustronneTable(format)
+              : getUlotkiJednostronneTable(format);
         } catch {
           priceByFormatByQty[format] = {};
           return;
