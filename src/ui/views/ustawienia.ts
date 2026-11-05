@@ -1620,6 +1620,13 @@ function humanizeSegment(value: string): string {
 
 function getPriceLabel(key: string): string {
   if (customPriceLabels[key]) return customPriceLabels[key];
+  return getAutoPriceLabel(key);
+}
+
+/** Etykieta wyliczona z klucza, bez nadpisania z customPriceLabels — baseline
+ * do porównania w flushInputs(), żeby pusty/niezmieniony input etykiety nie
+ * tworzył zbędnego nadpisania identycznego z tym co i tak by się wygenerowało. */
+function getAutoPriceLabel(key: string): string {
   if (PRICE_LABELS[key]) return PRICE_LABELS[key];
 
   const dyplomyMatch = key.match(/^dyplomy-qty-(\d+)$/);
@@ -2907,6 +2914,18 @@ export const UstawieniaView: View = {
         if (key) {
           prices[key] = nextPrice;
         }
+
+        // Tylko klucze natywne mają pole etykiety w DOM (zob. renderTable) —
+        // podkategorie custom trzymają etykietę w variant.label, nie tutaj.
+        const labelInput = row.querySelector<HTMLInputElement>("input[data-field='label']");
+        if (key && labelInput) {
+          const rawLabel = labelInput.value.trim();
+          if (rawLabel === "" || rawLabel === getAutoPriceLabel(key)) {
+            delete customPriceLabels[key];
+          } else {
+            customPriceLabels[key] = rawLabel;
+          }
+        }
       });
     }
 
@@ -3437,7 +3456,11 @@ export const UstawieniaView: View = {
         rows.push(`
           <tr data-key="${escapeHtml(key)}" class="${rowClasses.join(" ")}">
           <td class="settings-td-product">
-            <span class="settings-product-label${useAltLabel ? " settings-product-label--alt" : ""}" title="${escapeHtml(label)}">${escapeHtml(label)}</span>
+            ${
+              variantsByKey.get(key)
+                ? `<span class="settings-product-label${useAltLabel ? " settings-product-label--alt" : ""}" title="${escapeHtml(label)}">${escapeHtml(label)}</span>`
+                : `<input type="text" data-field="label" value="${escapeHtml(label)}" title="Etykieta generowana automatycznie — edytuj, aby nadpisać. Wyczyść pole, żeby wrócić do automatycznej." class="settings-input settings-input--label settings-product-label${useAltLabel ? " settings-product-label--alt" : ""}">`
+            }
             ${materialSizeText ? `<span class="settings-product-materialsize" style="display:block; font-size:0.8em; color:#7a8a9a;">${escapeHtml(materialSizeText)}</span>` : ""}
             ${priceFormula ? `<span class="settings-product-materialsize" style="display:block; font-size:0.8em; color:#7a8a9a;" title="Cena liczona na żywo od innego papieru">🔗 ${priceFormula.op === "percent" ? `${priceFormula.value >= 0 ? "+" : ""}${priceFormula.value}%` : `${priceFormula.value >= 0 ? "+" : ""}${priceFormula.value} zł`} od bazowego</span>` : ""}
           </td>
