@@ -15,11 +15,12 @@ if (existsSync(".env")) {
 const url = process.env.GOOGLE_APPS_SCRIPT_URL ?? "";
 const env = process.env.RAZDWA_ENV ?? "dev";
 const clientId = process.env.RAZDWA_CLIENT_ID ?? "";
+const outfile = process.env.RAZDWA_BUILD_OUTFILE ?? "docs/assets/app.js";
 
 await build({
   entryPoints: ["src/ui/main.ts"],
   bundle: true,
-  outfile: "docs/assets/app.js",
+  outfile,
   platform: "browser",
   target: "es2019",
   minify: true,

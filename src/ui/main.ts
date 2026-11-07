@@ -157,11 +157,13 @@ function dismissOrderStatusPanel() {
 
 const ERROR_MESSAGES: Record<string, string> = {
   timeout: "Przekroczono limit czasu połączenia (15 s). Sprawdź internet i spróbuj ponownie.",
-  network: "Brak połączenia z serwerem. Sprawdź internet i spróbuj ponownie.",
+  network:
+    "Brak połączenia z serwerem. Sprawdź internet i spróbuj ponownie. Jeśli problem nie ustąpi, zgłoś się do autora aplikacji.",
   no_cors_sent:
     "Wysłano bez potwierdzenia odpowiedzi serwera. Sprawdź arkusz Sheets — jeśli zamówienia nie ma, wyślij ponownie.",
   gas_error: "Serwer odrzucił zamówienie. Sprawdź dane formularza i spróbuj ponownie.",
-  unknown: "Nieoczekiwany błąd. Spróbuj ponownie lub skontaktuj się z obsługą.",
+  unknown:
+    "Nieoczekiwany błąd. Spróbuj ponownie. Jeśli problem nie ustąpi, zgłoś się do autora aplikacji.",
 };
 
 function showOrderStatusPanel(
