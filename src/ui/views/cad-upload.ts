@@ -525,6 +525,31 @@ export const CadUploadView: View = {
       }).grandTotal;
     }
 
+    /**
+     * Cena za 1 stronę A4 przy aktualnym progu (z sumy stron A4 w całej
+     * tabeli). Używana do pokazania realnej kwoty PER WIERSZ — ten sam próg
+     * co calculateA4Total, więc suma cen wierszy = calculateA4Total.
+     */
+    function calculateA4UnitPrice(mode: "color" | "bw"): number {
+      const totalA4Pages = files
+        .filter((f) => f.format === "A4")
+        .reduce((sum, f) => sum + f.pageCount, 0);
+      if (totalA4Pages <= 0) return 0;
+
+      return calculateSimplePrint({
+        mode,
+        format: "A4",
+        pages: totalA4Pages,
+        email: false,
+        ink25: false,
+        ink25Qty: 0,
+      }).unitPrice;
+    }
+
+    function calculateA4RowPrice(file: CadUploadFileEntry, mode: "color" | "bw"): number {
+      return calculateA4UnitPrice(mode) * file.pageCount * (file.printQty || 1);
+    }
+
     function calculateRowTotal(
       file: CadUploadFileEntry,
       mode: "color" | "bw",
@@ -555,12 +580,29 @@ export const CadUploadView: View = {
       calculationsList.innerHTML = files
         .map((file) => {
           if (file.format === "A4") {
+            const totalA4Pages = files
+              .filter((f) => f.format === "A4")
+              .reduce((sum, f) => sum + f.pageCount, 0);
+            const a4UnitColor = calculateA4UnitPrice("color");
+            const a4UnitBw = calculateA4UnitPrice("bw");
+            const a4RowColor = calculateA4RowPrice(file, "color");
+            const a4RowBw = calculateA4RowPrice(file, "bw");
+
             return `
             <div class="obliczenie-item">
               <strong>${file.id}. ${escapeHtml(file.name)}</strong>
               <div class="obliczenie-text">
                 Format: A4 (${Math.round(file.widthMm)}x${Math.round(file.heightMm)}mm), ${file.pageCount} str.<br/>
-                Cena liczona z progu ilościowego od sumy wszystkich stron A4 — zobacz podsumowanie.
+                Metoda: cennik Druk A4/A3, próg ilościowy od ${totalA4Pages} str. A4 łącznie w tabeli.
+              </div>
+              <div class="obliczenie-text">
+                🎨 Kolor: ${a4UnitColor.toFixed(2)} × ${file.pageCount} = ${formatPLN(a4RowColor)}
+              </div>
+              <div class="obliczenie-text">
+                ⚫ Czarny: ${a4UnitBw.toFixed(2)} × ${file.pageCount} = ${formatPLN(a4RowBw)}
+              </div>
+              <div class="obliczenie-cena">
+                🎨 ${formatPLN(a4RowColor)} &nbsp;|&nbsp; ⚫ ${formatPLN(a4RowBw)}
               </div>
               ${buildSourceFileBreakdownHtml(file)}
             </div>
@@ -634,11 +676,16 @@ export const CadUploadView: View = {
       if (sameSourceRows.length <= 1) return "";
 
       const totalPages = sameSourceRows.reduce((sum, f) => sum + f.pageCount, 0);
+      const surcharge = calcSurchargeMultiplier();
       const rows = sameSourceRows
-        .map(
-          (f) =>
-            `<div class="cad-source-breakdown-row">${escapeHtml(formatLabel(f.format))}: ${f.pageCount} str.</div>`
-        )
+        .map((f) => {
+          const isFA4 = f.format === "A4";
+          const fColor = isFA4
+            ? calculateA4RowPrice(f, "color")
+            : calculateRowTotal(f, "color", surcharge);
+          const fBw = isFA4 ? calculateA4RowPrice(f, "bw") : calculateRowTotal(f, "bw", surcharge);
+          return `<div class="cad-source-breakdown-row">${escapeHtml(formatLabel(f.format))}: ${f.pageCount} str. — 🎨 ${formatPLN(fColor)} / ⚫ ${formatPLN(fBw)}</div>`;
+        })
         .join("");
 
       return `
@@ -713,11 +760,17 @@ export const CadUploadView: View = {
       const surcharge = calcSurchargeMultiplier();
       tableBody.innerHTML = files
         .map((file) => {
-          const rowColor = calculateRowTotal(file, "color", surcharge);
-          const rowBw = calculateRowTotal(file, "bw", surcharge);
+          const isA4 = file.format === "A4";
+          // A4 nie korzysta z surcharge CAD (zapełnienie/powiększenie) — jego
+          // cena idzie progami kategorii Druk A4/A3, niezależnie od tych opcji.
+          const rowColor = isA4
+            ? calculateA4RowPrice(file, "color")
+            : calculateRowTotal(file, "color", surcharge);
+          const rowBw = isA4
+            ? calculateA4RowPrice(file, "bw")
+            : calculateRowTotal(file, "bw", surcharge);
           const [paperFormat, dims, pagesRaw] = formatSizeLabel(file).split("|");
           const pages = Number(pagesRaw || "1");
-          const isA4 = file.format === "A4";
 
           // Jeden wgrany plik rozbity na kilka wierszy (mix formatów) — przy
           // każdym z nich pokazujemy łączną liczbę stron CAŁEGO pliku, nie
@@ -746,14 +799,10 @@ export const CadUploadView: View = {
             <input type="number" data-action="qty" value="${file.printQty || 1}" min="1" step="1" />
           </td>
           <td class="col-price">
-            ${
-              isA4
-                ? `<div class="cad-price-cell cad-price-cell--excluded">Wliczone w sumę A4<br/><span class="cad-price-excluded-pages">(${pages} str. — zobacz podsumowanie)</span></div>`
-                : `<div class="cad-price-cell">
+            <div class="cad-price-cell">
               <div class="cad-price-line"><span>🎨 Kolor</span><strong>${formatPLN(rowColor)}</strong></div>
               <div class="cad-price-line"><span>⚫ Cz-B</span><strong>${formatPLN(rowBw)}</strong></div>
-            </div>`
-            }
+            </div>
           </td>
           <td class="col-remove">
             <button type="button" class="cad-delete-x" data-action="delete" aria-label="Usuń plik">×</button>
@@ -770,10 +819,6 @@ export const CadUploadView: View = {
 
     function renderSummary(): void {
       const surcharge = calcSurchargeMultiplier();
-
-      const totalA4Pages = files
-        .filter((f) => f.format === "A4")
-        .reduce((sum, f) => sum + f.pageCount, 0);
 
       let totalPrintColorVariant = 0;
       let totalFoldingColorVariant = 0;
@@ -891,15 +936,6 @@ export const CadUploadView: View = {
           <div class="summary-item">
             <span>Składanie (stawka × liczba dokumentów):</span>
             <span>${formatPLN(totalFoldingColorVariant)}</span>
-          </div>`
-              : ""
-          }
-          ${
-            totalA4Pages > 0
-              ? `
-          <div class="summary-item summary-item--note">
-            <span>ℹ️ W tym strony A4 (cennik Druk A4/A3):</span>
-            <span><strong>${totalA4Pages} str., wliczone powyżej</strong></span>
           </div>`
               : ""
           }
