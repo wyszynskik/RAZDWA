@@ -763,6 +763,7 @@ function updateCartUI() {
           <div class="basketName">${escapeHtml(g.item.name)}${qtyBadge}</div>
           ${g.item.isExpress ? '<span class="expressChip">⚡ EXPRESS</span>' : ""}
           <div class="basketMeta">${escapeHtml(g.item.optionsHint)}</div>
+          ${g.item.hasPricingWarning ? '<div class="basketWarning">⚠️ Nie wliczono ceny za część pozycji — dopisz ręcznie z cennika</div>' : ""}
         </div>
         <div class="basketItemRight">
           <div class="basketPrice">${formatPLN(g.total)}</div>

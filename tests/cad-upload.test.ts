@@ -22,6 +22,17 @@ async function makePdfFile(pageCount: number): Promise<File> {
   return new File([bytes.buffer as ArrayBuffer], "test.pdf", { type: "application/pdf" });
 }
 
+// ISO 216 w punktach (72pt/in, 1mm = 72/25.4pt) — A4 595×842pt, A3 842×1191pt.
+const A4_PT: [number, number] = [595, 842];
+const A3_PT: [number, number] = [842, 1191];
+
+async function makeMixedPdfFile(pageSizesPt: Array<[number, number]>): Promise<File> {
+  const doc = await PDFDocument.create();
+  for (const size of pageSizesPt) doc.addPage(size);
+  const bytes = await doc.save();
+  return new File([bytes.buffer as ArrayBuffer], "mixed.pdf", { type: "application/pdf" });
+}
+
 let storageData: Record<string, string> = {};
 
 beforeEach(() => {
@@ -60,6 +71,17 @@ describe("detectFormatFromDimensions", () => {
     expect(detectFormatFromDimensions(200, 300)).toBe("nieformatowy"));
   // orientation-independent
   it("landscape A1 841×594 → A1", () => expect(detectFormatFromDimensions(841, 594)).toBe("A1"));
+
+  // ─── A4 ───────────────────────────────────────────────────────────────────
+  it("A4 210×297 → A4", () => expect(detectFormatFromDimensions(210, 297)).toBe("A4"));
+  it("A4 landscape 297×210 → A4 (bez względu na orientację)", () =>
+    expect(detectFormatFromDimensions(297, 210)).toBe("A4"));
+  it("A4 na granicy tolerancji 213×294 (+3mm/-3mm) → A4", () =>
+    expect(detectFormatFromDimensions(213, 294)).toBe("A4"));
+  it("214×297 (4mm poza tolerancją szerokości) → nieformatowy, NIE A4", () =>
+    expect(detectFormatFromDimensions(214, 297)).toBe("nieformatowy"));
+  it("realny A3 297×420 → A3, NIE A4 (krótsza strona 297mm daleko od 210mm A4)", () =>
+    expect(detectFormatFromDimensions(297, 420)).toBe("A3"));
 });
 
 // ─── calculatePriceFromDimensions ─────────────────────────────────────────────
@@ -284,17 +306,19 @@ describe("G — Guardy wydajnościowe CAD Upload", () => {
     await expect(updateCadFileEntry(file, true)).rejects.toThrow("PAGES_LIMIT");
   });
 
-  it("PDF z 99 stronami → resolves (poniżej hard-stopu)", async () => {
+  it("PDF z 99 stronami → resolves (poniżej hard-stopu), jedna pozycja (jednolity format)", async () => {
     const file = await makePdfFile(CAD_PDF_HARD_PAGES - 1);
-    const entry = await updateCadFileEntry(file, true);
-    expect(entry.pageCount).toBe(CAD_PDF_HARD_PAGES - 1);
+    const entries = await updateCadFileEntry(file, true);
+    expect(entries).toHaveLength(1);
+    expect(entries[0].pageCount).toBe(CAD_PDF_HARD_PAGES - 1);
   });
 
   it("PDF z 30 stronami → resolves, pageCount >= CAD_PDF_WARN_PAGES", async () => {
     const file = await makePdfFile(CAD_PDF_WARN_PAGES);
-    const entry = await updateCadFileEntry(file, true);
-    expect(entry.pageCount).toBeGreaterThanOrEqual(CAD_PDF_WARN_PAGES);
-    expect(entry.pageCount).toBeLessThan(CAD_PDF_HARD_PAGES);
+    const entries = await updateCadFileEntry(file, true);
+    expect(entries).toHaveLength(1);
+    expect(entries[0].pageCount).toBeGreaterThanOrEqual(CAD_PDF_WARN_PAGES);
+    expect(entries[0].pageCount).toBeLessThan(CAD_PDF_HARD_PAGES);
   });
 
   it("nieobsługiwany format pliku → rejects z FORMAT_UNSUPPORTED", async () => {
@@ -309,6 +333,84 @@ describe("G — Guardy wydajnościowe CAD Upload", () => {
       type: "application/pdf",
     });
     await expect(updateCadFileEntry(file, true)).rejects.toThrow("READ_ERROR");
+  });
+});
+
+// ─── H — A4 w CAD Upload: bez ceny, bez mylenia z A3, mix w jednym pliku ──────
+describe("H — A4 w CAD Upload", () => {
+  it("A4 formatowy/nieformatowy nie ma ceny (0 zł) niezależnie od qty", () => {
+    expect(calculatePriceFromDimensions(210, 297, "color", 1)).toBe(0);
+    expect(calculatePriceFromDimensions(210, 297, "bw", 10)).toBe(0);
+  });
+
+  it("calculateCadUpload dla A4 → detectedFormat=A4, totalPrice=0", () => {
+    const result = calculateCadUpload({ wMm: 210, hMm: 297, mode: "color", qty: 3 });
+    expect(result.detectedFormat).toBe("A4");
+    expect(result.totalPrice).toBe(0);
+  });
+
+  it("składanie A4 → 0 zł nawet gdy folding=true (guard niezależny od tabeli cen)", () => {
+    expect(calculateCadFoldingPrice("A4", true, 210, 297, true, 5)).toBe(0);
+  });
+
+  it("PDF samych stron A4 → jedna pozycja, format A4, cena 0", async () => {
+    const file = await makeMixedPdfFile([A4_PT, A4_PT, A4_PT]);
+    const entries = await updateCadFileEntry(file, true);
+    expect(entries).toHaveLength(1);
+    expect(entries[0].format).toBe("A4");
+    expect(entries[0].pageCount).toBe(3);
+    expect(entries[0].printPrice).toBe(0);
+  });
+
+  it("PDF mieszany 10×A3 + 10×A4 w jednym pliku → 2 pozycje, każda z poprawnym formatem i licznikiem", async () => {
+    const pages: Array<[number, number]> = [
+      ...Array(10).fill(A3_PT),
+      ...Array(10).fill(A4_PT),
+    ];
+    const file = await makeMixedPdfFile(pages);
+    const entries = await updateCadFileEntry(file, true);
+
+    expect(entries).toHaveLength(2);
+
+    const a3Entry = entries.find((e) => e.format === "A3");
+    const a4Entry = entries.find((e) => e.format === "A4");
+
+    expect(a3Entry?.pageCount).toBe(10);
+    expect(a4Entry?.pageCount).toBe(10);
+    expect(a4Entry?.printPrice).toBe(0);
+    expect(a3Entry?.printPrice).toBeGreaterThan(0);
+
+    // Żadna strona A3 nie wsiąkła do grupy A4 i vice versa.
+    expect(entries.reduce((sum, e) => sum + e.pageCount, 0)).toBe(20);
+
+    // Nazwa pozycji oznacza z którego pliku i jakiego formatu pochodzi.
+    expect(a3Entry?.name).toBe("mixed.pdf [A3]");
+    expect(a4Entry?.name).toBe("mixed.pdf [A4]");
+
+    // Obie pozycje pochodzą z JEDNEGO wgranego pliku — ten sam sourceFileId,
+    // żeby liczyć go jako 1 plik względem MAX_CAD_FILES, nie 2.
+    expect(a3Entry?.sourceFileId).toBe(a4Entry?.sourceFileId);
+  });
+
+  it("dwa NIEZALEŻNE pliki (osobne wywołania) dostają RÓŻNE sourceFileId", async () => {
+    const fileA = await makeMixedPdfFile([A3_PT]);
+    const fileB = await makeMixedPdfFile([A3_PT]);
+    const [entriesA, entriesB] = await Promise.all([
+      updateCadFileEntry(fileA, true),
+      updateCadFileEntry(fileB, true),
+    ]);
+
+    expect(entriesA[0].sourceFileId).not.toBe(entriesB[0].sourceFileId);
+  });
+
+  it("mix A3+A4: strony A3 nie są liczone jako A4 i odwrotnie (brak wycieku grup)", async () => {
+    const pages: Array<[number, number]> = [A4_PT, A3_PT, A4_PT, A3_PT, A4_PT];
+    const file = await makeMixedPdfFile(pages);
+    const entries = await updateCadFileEntry(file, true);
+
+    expect(entries).toHaveLength(2);
+    expect(entries.find((e) => e.format === "A4")?.pageCount).toBe(3);
+    expect(entries.find((e) => e.format === "A3")?.pageCount).toBe(2);
   });
 });
 

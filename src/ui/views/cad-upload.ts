@@ -11,7 +11,7 @@ import { resolveStoredPrice } from "../../core/compat";
 import { getPrice } from "../../services/priceService";
 
 type ParseResult =
-  | { ok: true; entry: CadUploadFileEntry }
+  | { ok: true; entries: CadUploadFileEntry[] }
   | { ok: false; name: string; cause: string };
 
 // Helper to load extra CAD options from JSON
@@ -94,7 +94,7 @@ export const CadUploadView: View = {
           <div class=\"cad-extra-option\">
             <label class=\"cad-option-item\">
               <input type=\"checkbox\" id=\"cad-opt-${opt.id}\">
-              <span>${opt.name} (${formatPLN(opt.price)} / ${opt.unit || (opt.id.includes("m2") ? "m²" : "szt")})</span>
+              <span>${escapeHtml(opt.name)} (${formatPLN(opt.price)} / ${opt.unit || (opt.id.includes("m2") ? "m²" : "szt")})</span>
             </label>
             <div id=\"cad-${opt.id}-qty-row\" style=\"display:none\" class=\"row cad-row-tight cad-qty-row\">
               <label for=\"cad-${opt.id}-qty\">Ilość (${opt.unit || (opt.id.includes("m2") ? "m²" : "szt")}):</label>
@@ -406,10 +406,16 @@ export const CadUploadView: View = {
       files = files.map((file, index) => ({ ...file, id: index + 1 }));
     }
 
+    // MAX_CAD_FILES limituje WGRANE PLIKI, nie wiersze tabeli — jeden plik z
+    // mixem A3+A4 daje 2 wiersze, ale to wciąż 1 plik względem tego limitu.
+    function sourceFileCount(): number {
+      return new Set(files.map((f) => f.sourceFileId)).size;
+    }
+
     function getAllowedFiles(fileList: FileList): File[] {
-      const remainingSlots = Math.max(0, MAX_CAD_FILES - files.length);
+      const remainingSlots = Math.max(0, MAX_CAD_FILES - sourceFileCount());
       if (warningEl) {
-        warningEl.style.display = files.length >= MAX_CAD_FILES ? "block" : "none";
+        warningEl.style.display = sourceFileCount() >= MAX_CAD_FILES ? "block" : "none";
       }
 
       if (remainingSlots <= 0) {
@@ -506,6 +512,18 @@ export const CadUploadView: View = {
 
       calculationsList.innerHTML = files
         .map((file) => {
+          if (file.format === "A4") {
+            return `
+            <div class="obliczenie-item">
+              <strong>${file.id}. ${escapeHtml(file.name)}</strong>
+              <div class="obliczenie-text">
+                Format: A4 (${Math.round(file.widthMm)}mm×${Math.round(file.heightMm)}mm), ${file.pageCount} str.<br/>
+                Nie wliczone do ceny — dolicz ręcznie z cennika A4.
+              </div>
+            </div>
+          `;
+          }
+
           const lengthMeters = Math.max(file.widthMm, file.heightMm) / 1000;
           const isMb = !file.isFormatowy;
 
@@ -573,6 +591,7 @@ export const CadUploadView: View = {
       return updateCadFileEntry(
         {
           id: file.id,
+          sourceFileId: file.sourceFileId,
           name: file.name,
           widthPx: file.widthPx,
           heightPx: file.heightPx,
@@ -629,6 +648,17 @@ export const CadUploadView: View = {
           const rowBw = calculateRowTotal(file, "bw", surcharge);
           const [paperFormat, dims, pagesRaw] = formatSizeLabel(file).split("|");
           const pages = Number(pagesRaw || "1");
+          const isA4 = file.format === "A4";
+
+          // Jeden wgrany plik rozbity na kilka wierszy (mix formatów) — przy
+          // każdym z nich pokazujemy łączną liczbę stron CAŁEGO pliku, nie
+          // tylko stron w tym jednym wierszu/formacie.
+          const sameSourceRows = files.filter((f) => f.sourceFileId === file.sourceFileId);
+          const totalPagesInSourceFile = sameSourceRows.reduce((sum, f) => sum + f.pageCount, 0);
+          const sourceFileNote =
+            sameSourceRows.length > 1
+              ? `<div class="cad-size-total-pages">Plik łącznie: ${totalPagesInSourceFile} str.</div>`
+              : "";
 
           return `
         <tr data-file-id="${file.id}">
@@ -639,22 +669,27 @@ export const CadUploadView: View = {
           <td class="col-size">
             <div class="cad-size-main">${escapeHtml(paperFormat || "—")}</div>
             <div class="cad-size-dims">${escapeHtml(dims || "0mm×0mm")}</div>
-            <div class="cad-size-pages">Ilość: ${Number.isFinite(pages) ? pages : 1}</div>
+            <div class="cad-size-pages">Ilość stron: ${Number.isFinite(pages) ? pages : 1}</div>
+            ${sourceFileNote}
           </td>
           <td class="col-fold">
-            <input type="checkbox" class="fold-check" data-action="fold" ${file.folding ? "checked" : ""} />
+            <input type="checkbox" class="fold-check" data-action="fold" ${file.folding ? "checked" : ""} ${isA4 ? "disabled" : ""} />
           </td>
           <td class="col-scan">
-            <input type="checkbox" class="scan-check" data-action="scan" ${file.scanning ? "checked" : ""} />
+            <input type="checkbox" class="scan-check" data-action="scan" ${file.scanning ? "checked" : ""} ${isA4 ? "disabled" : ""} />
           </td>
           <td class="col-qty">
             <input type="number" data-action="qty" value="${file.printQty || 1}" min="1" step="1" />
           </td>
           <td class="col-price">
-            <div class="cad-price-cell">
+            ${
+              isA4
+                ? `<div class="cad-price-cell cad-price-cell--excluded">Nie wliczone do ceny<br/><span class="cad-price-excluded-pages">(${pages} str. A4)</span></div>`
+                : `<div class="cad-price-cell">
               <div class="cad-price-line"><span>🎨 Kolor</span><strong>${formatPLN(rowColor)}</strong></div>
               <div class="cad-price-line"><span>⚫ Cz-B</span><strong>${formatPLN(rowBw)}</strong></div>
-            </div>
+            </div>`
+            }
           </td>
           <td class="col-remove">
             <button type="button" class="cad-delete-x" data-action="delete" aria-label="Usuń plik">×</button>
@@ -671,6 +706,10 @@ export const CadUploadView: View = {
 
     function renderSummary(): void {
       const surcharge = calcSurchargeMultiplier();
+
+      const totalA4Pages = files
+        .filter((f) => f.format === "A4")
+        .reduce((sum, f) => sum + f.pageCount, 0);
 
       let totalPrintColorVariant = 0;
       let totalFoldingColorVariant = 0;
@@ -784,6 +823,15 @@ export const CadUploadView: View = {
               : ""
           }
           ${
+            totalA4Pages > 0
+              ? `
+          <div class="summary-item summary-item--warn">
+            <span>⚠️ Strony A4 nie wliczone do ceny:</span>
+            <span><strong>${totalA4Pages} str.</strong></span>
+          </div>`
+              : ""
+          }
+          ${
             totalScanColorVariant > 0
               ? `
           <div class="summary-item">
@@ -852,9 +900,11 @@ export const CadUploadView: View = {
         CAD_UPLOAD_CONCURRENCY,
         async (file, index) => {
           try {
-            const entry = await updateCadFileEntry(file, isColor);
+            // Jeden plik może dać kilka pozycji (mix formatów, np. A3+A4 w
+            // jednym PDF) — entries, nie entry.
+            const entries = await updateCadFileEntry(file, isColor);
             showStatus(`Przetwarzanie: ${index + 1}/${acceptedFiles.length}`);
-            return { ok: true, entry };
+            return { ok: true, entries };
           } catch (err) {
             showStatus(`Przetwarzanie: ${index + 1}/${acceptedFiles.length}`);
             return { ok: false, name: file.name, cause: (err as Error).message };
@@ -862,9 +912,12 @@ export const CadUploadView: View = {
         }
       );
 
-      const validFiles = results
-        .filter((r): r is { ok: true; entry: CadUploadFileEntry } => r.ok)
-        .map((r) => ({ ...r.entry, mode: getMode() }));
+      const okResults = results.filter(
+        (r): r is { ok: true; entries: CadUploadFileEntry[] } => r.ok
+      );
+      const validFiles = okResults.flatMap((r) =>
+        r.entries.map((entry) => ({ ...entry, mode: getMode() }))
+      );
 
       const failedFiles = results.filter(
         (r): r is { ok: false; name: string; cause: string } => !r.ok
@@ -874,14 +927,16 @@ export const CadUploadView: View = {
       syncSequentialIds();
 
       if (warningEl) {
-        warningEl.style.display = files.length > MAX_CAD_FILES ? "block" : "none";
+        warningEl.style.display = sourceFileCount() > MAX_CAD_FILES ? "block" : "none";
       }
 
       const messages: string[] = [];
 
-      if (validFiles.length > 0) {
+      if (okResults.length > 0) {
+        const splitNote =
+          validFiles.length > okResults.length ? ` (${validFiles.length} pozycji)` : "";
         messages.push(
-          `Dodano ${validFiles.length} plików. Łącznie: ${files.length}/${MAX_CAD_FILES}.`
+          `Dodano ${okResults.length} plików${splitNote}. Łącznie: ${sourceFileCount()}/${MAX_CAD_FILES}.`
         );
       }
 
@@ -900,7 +955,12 @@ export const CadUploadView: View = {
         messages.push(`Pominięto: ${failList}.`);
       }
 
-      const warnPageFiles = validFiles.filter((f) => f.pageCount >= CAD_PDF_WARN_PAGES);
+      // Próg ostrzeżenia liczony od sumy stron CAŁEGO pliku (wszystkie
+      // formaty razem), nie od stron pojedynczej wyodrębnionej pozycji —
+      // inaczej mix A3+A4 nigdy by nie przekroczył progu mimo długiego PDF.
+      const warnPageFiles = okResults.filter(
+        (r) => r.entries.reduce((sum, e) => sum + e.pageCount, 0) >= CAD_PDF_WARN_PAGES
+      );
       if (warnPageFiles.length > 0) {
         messages.push(
           `${warnPageFiles.length} plik(ów) ma ≥${CAD_PDF_WARN_PAGES} stron – przetwarzanie mogło potrwać dłużej.`
@@ -1209,10 +1269,27 @@ export const CadUploadView: View = {
         const totalFolding = files.reduce((sum, f) => sum + f.foldingPrice, 0);
         const totalScan = files.reduce((sum, f) => sum + f.scanPrice, 0);
 
+        // Rozbicie stron po formacie — pokazuje osobie obsługującej zamówienie
+        // ile stron wyceniono (A3/A2/...) i ile stron A4 zostało poza ceną,
+        // nie tylko "X plików" (co po mixie A3+A4 w jednym pliku jest
+        // niejednoznaczne — jeden upload może dać 2 pozycje).
+        const pagesByFormat = new Map<string, number>();
+        for (const f of files) {
+          pagesByFormat.set(f.format, (pagesByFormat.get(f.format) || 0) + f.pageCount);
+        }
+        const a4Pages = pagesByFormat.get("A4") || 0;
+        const pricedBreakdown = [...pagesByFormat.entries()]
+          .filter(([fmt]) => fmt !== "A4")
+          .map(([fmt, count]) => `${count} str. ${formatLabel(fmt)}`)
+          .join(", ");
+        const a4Note = a4Pages > 0 ? `${a4Pages} str. A4 (nie wliczone do ceny)` : "";
+        const pagesBreakdown = [pricedBreakdown, a4Note].filter(Boolean).join(" + ");
+
         const modeLabel = mode === "color" ? "KOLOR" : "CZ-B";
         const opts = [
           formatPlikCount(files.length),
           modeLabel,
+          pagesBreakdown,
           totalFolding > 0 ? "ze składaniem" : "",
           totalScan > 0 ? "ze skanowaniem" : "",
         ]
@@ -1231,6 +1308,7 @@ export const CadUploadView: View = {
           isExpress: ctx.expressMode,
           totalPrice: grandTotalPrice,
           optionsHint: opts,
+          hasPricingWarning: a4Pages > 0,
           payload: { files: snapshotFiles, mode, price: grandTotalPrice },
         });
 

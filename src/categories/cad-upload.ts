@@ -11,12 +11,20 @@ import { PDFDocument } from "pdf-lib";
 export const CAD_PDF_WARN_PAGES = 30;
 export const CAD_PDF_HARD_PAGES = 100;
 
+// Licznik monotoniczny, nie Date.now() — przy równoległym przetwarzaniu kilku
+// plików naraz (mapWithConcurrency) dwa Date.now() mogłyby trafić na tę samą
+// milisekundę i dwa RÓŻNE pliki dostałyby ten sam sourceFileId, co zaniżyłoby
+// policzoną liczbę plików źródłowych.
+let nextSourceFileId = 1;
+
 /** Pixel to millimeters conversion at 300 DPI */
 export const PX_TO_MM_300DPI = 25.4 / 300;
 
 /** File entry with dimensions and pricing data */
 export interface CadUploadFileEntry {
   id: number;
+  /** Wspólne dla wszystkich pozycji powstałych z JEDNEGO wgranego pliku (mix formatów = fan-out). Liczba unikalnych sourceFileId, nie liczba wierszy, jest tym co liczy się do MAX_CAD_FILES. */
+  sourceFileId: number;
   name: string;
   widthPx: number;
   heightPx: number;
@@ -53,6 +61,20 @@ function detectFormatDetailsFromDimensions(widthMm: number, heightMm: number): C
 
   const shorter = Math.min(widthMm, heightMm);
   const longer = Math.max(widthMm, heightMm);
+
+  // A4 nie jest szerokością rolki (jak A3+) — to jedyny arkusz o dwóch
+  // ustalonych wymiarach w tej kategorii, więc wymaga dopasowania 2D
+  // (oba wymiary blisko 210×297), a nie tylko sprawdzenia krótszej strony.
+  // Musi być sprawdzone PRZED ladder'em A3+ poniżej: 210mm < 297mm, więc bez
+  // tego trafiałoby w pierwszy branch ladder'a (shorter<=300 → A3).
+  // A4 nie ma ceny (ani w formatowe, ani w mb) — patrz guard "A4" w
+  // calculateCadPrintPriceWithDimensions / calculateCadFoldingPrice poniżej.
+  if (
+    Math.abs(shorter - 210) <= FORMAT_TOLERANCE_CLASSIFY &&
+    Math.abs(longer - 297) <= FORMAT_TOLERANCE_CLASSIFY
+  ) {
+    return { format: "A4", isFormatowy: true, isStandardWidth: true };
+  }
 
   function inRange(value: number, target: number): boolean {
     return value <= target + FORMAT_TOLERANCE_CLASSIFY;
@@ -197,6 +219,12 @@ function calculateCadPrintPriceWithDimensions(
   mode: "bw" | "color",
   qty: number
 ): number {
+  // A4 to informacyjny licznik stron, nigdy pozycja cenowa (decyzja biznesowa:
+  // cenę A4 dolicza ręcznie osoba obsługująca zamówienie, z cennika poza tą
+  // kategorią). Explicit guard zamiast polegać na braku klucza "A4" w
+  // tabelach cen — ten brak mógłby kiedyś przestać być prawdziwy.
+  if (format === "A4") return 0;
+
   const prices = getCadPrice()[mode];
 
   if (isFormatowy) {
@@ -238,6 +266,7 @@ export function calculateCadFoldingPrice(
   qty: number
 ): number {
   if (!folding) return 0;
+  if (format === "A4") return 0; // patrz guard w calculateCadPrintPriceWithDimensions
 
   const storageKey = FOLD_STORAGE_KEY[format];
   const foldPrice = getFoldPrice();
@@ -274,49 +303,56 @@ export function updateCadFileEntry(
   entry: Partial<CadUploadFileEntry>,
   mode: "bw" | "color"
 ): CadUploadFileEntry;
-export function updateCadFileEntry(file: File, isColor?: boolean): Promise<CadUploadFileEntry>;
+export function updateCadFileEntry(file: File, isColor?: boolean): Promise<CadUploadFileEntry[]>;
 export function updateCadFileEntry(
   arg1: Partial<CadUploadFileEntry> | File,
   arg2?: "bw" | "color" | boolean
-): CadUploadFileEntry | Promise<CadUploadFileEntry> {
+): CadUploadFileEntry | Promise<CadUploadFileEntry[]> {
   if (arg1 instanceof File) {
     const file = arg1;
     const isColor = typeof arg2 === "boolean" ? arg2 : false;
     const mode: "bw" | "color" = isColor ? "color" : "bw";
+    const isPdf = file.type === "application/pdf";
 
-    return loadImageDimensions(file).then(({ widthPx, heightPx, pageCount }) => {
-      const widthMm = pxToMm(widthPx);
-      const heightMm = pxToMm(heightPx);
-      const fmt = detectFormatFromDimensions(widthMm, heightMm, true);
-      const printPrice = calculateCadPrintPriceWithDimensions(
-        widthMm,
-        heightMm,
-        fmt.format,
-        fmt.isFormatowy,
-        mode,
-        pageCount
-      );
-      return {
-        id: Date.now(),
-        name: file.name,
-        widthPx,
-        heightPx,
-        widthMm,
-        heightMm,
-        format: fmt.format,
-        isFormatowy: fmt.isFormatowy,
-        isStandardWidth: fmt.isStandardWidth,
-        pageCount,
-        isPdf: file.type === "application/pdf",
-        mode,
-        folding: false,
-        scanning: false,
-        printQty: 1,
-        printPrice,
-        foldingPrice: 0,
-        scanPrice: 0,
-        totalPrice: parseFloat(money(printPrice)),
-      };
+    return loadImageDimensions(file).then(({ pages }) => {
+      const groups = groupPagesByFormat(pages);
+      const sourceFileId = nextSourceFileId++;
+
+      return groups.map((group, index) => {
+        const printPrice = calculateCadPrintPriceWithDimensions(
+          group.widthMm,
+          group.heightMm,
+          group.format,
+          group.isFormatowy,
+          mode,
+          group.pageCount
+        );
+        return {
+          id: Date.now() + index,
+          sourceFileId,
+          // Plik rozbity na kilka formatów (mix A3+A4 w jednym PDF) — etykieta
+          // formatu w nazwie, żeby osoba obsługująca zamówienie widziała która
+          // pozycja to który kawałek tego samego pliku.
+          name: groups.length > 1 ? `${file.name} [${group.format}]` : file.name,
+          widthPx: group.widthPx,
+          heightPx: group.heightPx,
+          widthMm: group.widthMm,
+          heightMm: group.heightMm,
+          format: group.format,
+          isFormatowy: group.isFormatowy,
+          isStandardWidth: group.isStandardWidth,
+          pageCount: group.pageCount,
+          isPdf,
+          mode,
+          folding: false,
+          scanning: false,
+          printQty: 1,
+          printPrice,
+          foldingPrice: 0,
+          scanPrice: 0,
+          totalPrice: parseFloat(money(printPrice)),
+        };
+      });
     });
   }
 
@@ -349,6 +385,7 @@ export function updateCadFileEntry(
 
   return {
     id: entry.id || 0,
+    sourceFileId: entry.sourceFileId || 0,
     name: entry.name || "",
     widthPx: entry.widthPx || 0,
     heightPx: entry.heightPx || 0,
@@ -374,9 +411,18 @@ function pxToMm(px: number): number {
   return px * PX_TO_MM_300DPI;
 }
 
-function loadImageDimensions(
-  file: File
-): Promise<{ widthPx: number; heightPx: number; pageCount: number }> {
+interface PageDims {
+  widthPx: number;
+  heightPx: number;
+}
+
+/**
+ * Wymiary KAŻDEJ strony pliku (nie tylko pierwszej). PDF może mieszać
+ * rozmiary stron (np. 10×A3 + 10×A4 w jednym dokumencie) — jeśli zmierzymy
+ * tylko stronę 0 i pomnożymy przez pageCount, reszta stron dostaje format i
+ * cenę pierwszej strony niezależnie od realnego rozmiaru.
+ */
+function loadImageDimensions(file: File): Promise<{ pages: PageDims[] }> {
   return new Promise(async (resolve, reject) => {
     if (file.type === "application/pdf") {
       try {
@@ -387,12 +433,15 @@ function loadImageDimensions(
           reject(new Error("PAGES_LIMIT"));
           return;
         }
-        const page = pdfDoc.getPage(0);
-        const { width, height } = page.getSize();
         const pxPerPoint = 300 / 72;
-        const widthPx = Math.round(width * pxPerPoint);
-        const heightPx = Math.round(height * pxPerPoint);
-        resolve({ widthPx, heightPx, pageCount });
+        const pages: PageDims[] = pdfDoc.getPages().map((page) => {
+          const { width, height } = page.getSize();
+          return {
+            widthPx: Math.round(width * pxPerPoint),
+            heightPx: Math.round(height * pxPerPoint),
+          };
+        });
+        resolve({ pages });
       } catch {
         reject(new Error("READ_ERROR"));
       }
@@ -409,9 +458,12 @@ function loadImageDimensions(
       const img = new Image();
       img.onload = () => {
         resolve({
-          widthPx: img.naturalWidth || img.width,
-          heightPx: img.naturalHeight || img.height,
-          pageCount: 1,
+          pages: [
+            {
+              widthPx: img.naturalWidth || img.width,
+              heightPx: img.naturalHeight || img.height,
+            },
+          ],
         });
       };
       img.onerror = () => reject(new Error("READ_ERROR"));
@@ -420,4 +472,51 @@ function loadImageDimensions(
     reader.onerror = () => reject(new Error("READ_ERROR"));
     reader.readAsDataURL(file);
   });
+}
+
+interface PageFormatGroup {
+  format: string;
+  isFormatowy: boolean;
+  isStandardWidth: boolean;
+  widthMm: number;
+  heightMm: number;
+  widthPx: number;
+  heightPx: number;
+  pageCount: number;
+}
+
+/**
+ * Grupuje strony pliku po wykrytym formacie (A3/A4/...), niezależnie od ich
+ * pozycji w dokumencie. Każda grupa staje się osobną pozycją w tabeli CAD
+ * Upload — jeden plik może więc wyprodukować więcej niż jedną pozycję.
+ */
+function groupPagesByFormat(pages: PageDims[]): PageFormatGroup[] {
+  const groups: PageFormatGroup[] = [];
+  const indexByFormat = new Map<string, number>();
+
+  for (const page of pages) {
+    const widthMm = pxToMm(page.widthPx);
+    const heightMm = pxToMm(page.heightPx);
+    const fmt = detectFormatDetailsFromDimensions(widthMm, heightMm);
+
+    const existingIndex = indexByFormat.get(fmt.format);
+    if (existingIndex !== undefined) {
+      groups[existingIndex].pageCount += 1;
+      continue;
+    }
+
+    indexByFormat.set(fmt.format, groups.length);
+    groups.push({
+      format: fmt.format,
+      isFormatowy: fmt.isFormatowy,
+      isStandardWidth: fmt.isStandardWidth,
+      widthMm,
+      heightMm,
+      widthPx: page.widthPx,
+      heightPx: page.heightPx,
+      pageCount: 1,
+    });
+  }
+
+  return groups;
 }
