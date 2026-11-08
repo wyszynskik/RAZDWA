@@ -498,9 +498,29 @@
     font-size: 0.63rem;
   }
 
+  .cad-size-total-pages {
+    white-space: nowrap;
+    color: var(--text-secondary);
+    line-height: 1.05;
+    font-size: 0.6rem;
+    font-style: italic;
+  }
+
   .cad-price-cell {
     display: grid;
     gap: 2px;
+  }
+
+  .cad-price-cell--excluded {
+    font-size: 0.72rem;
+    line-height: 1.25;
+    color: #92400e;
+    text-align: right;
+  }
+
+  .cad-price-cell--excluded .cad-price-excluded-pages {
+    color: inherit;
+    font-size: inherit;
   }
 
   .cad-price-header {
@@ -621,6 +641,9 @@
   }
   .summary-item strong {
     font-weight: 700;
+  }
+  .summary-item--warn {
+    color: #92400e;
   }
   #summaryGrid {
     display: flex;

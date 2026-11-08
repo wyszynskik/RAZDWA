@@ -5,6 +5,7 @@ import { formatPLN } from "../../core/money";
 import { getPrice } from "../../services/priceService";
 import { resolveStoredPrice } from "../../core/compat";
 import { getCombinedMaterials } from "../../core/dynamicMaterials";
+import { escapeHtml } from "../../core/validation";
 import {
   setFieldHint,
   flashFieldHints,
@@ -83,7 +84,7 @@ export const BannerView: View = {
       const materials = getCombinedMaterials("banner");
       const previousValue = materialSelect.value;
       materialSelect.innerHTML = materials
-        .map((m) => `<option value="${m.id}">${m.name}</option>`)
+        .map((m) => `<option value="${escapeHtml(m.id)}">${escapeHtml(m.name)}</option>`)
         .join("");
       if (previousValue && materials.some((m) => m.id === previousValue)) {
         materialSelect.value = previousValue;
@@ -110,7 +111,7 @@ export const BannerView: View = {
               return `<tr><td>${label}</td><td>${formatPLN(value)}</td></tr>`;
             })
             .join("");
-          return `<h4 style="margin:10px 0 6px;">${material.name}</h4><table><tr><th>Próg</th><th>Cena za m²</th></tr>${tiers}</table>`;
+          return `<h4 style="margin:10px 0 6px;">${escapeHtml(material.name)}</h4><table><tr><th>Próg</th><th>Cena za m²</th></tr>${tiers}</table>`;
         })
         .join("");
 

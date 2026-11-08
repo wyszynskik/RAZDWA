@@ -15,6 +15,18 @@ import { fileURLToPath } from "node:url";
 const rootDir = resolve(fileURLToPath(import.meta.url), "..", "..");
 const devDomainPrefix = "https://wyszynskik.github.io/RAZDWA/";
 
+const envFile = join(rootDir, ".env");
+if (existsSync(envFile)) {
+  readFileSync(envFile, "utf8")
+    .split("\n")
+    .forEach((line) => {
+      const m = line.match(/^([A-Z_][A-Z0-9_]*)=(.*)$/);
+      if (m && !process.env[m[1]]) {
+        process.env[m[1]] = m[2].trim().replace(/^["']|["']$/g, "");
+      }
+    });
+}
+
 function parseArgs(argv) {
   const args = { clientId: "raz-dwa", includeHandover: false, allowIndexing: false };
   for (const raw of argv) {
@@ -59,19 +71,20 @@ if (!args.siteUrl) {
   process.exit(1);
 }
 
+if (!process.env.GOOGLE_APPS_SCRIPT_URL?.startsWith("https://script.google.com/")) {
+  console.error(
+    "Brak lub błędny GOOGLE_APPS_SCRIPT_URL (musi zaczynać się od https://script.google.com/)."
+  );
+  console.error("Ustaw zmienną środowiskową albo wpis w .env przed pakowaniem.");
+  process.exit(1);
+}
+
 const siteUrl = args.siteUrl.endsWith("/") ? args.siteUrl : `${args.siteUrl}/`;
 const outDir = args.out
   ? resolve(rootDir, args.out)
   : resolve(rootDir, "dist-client", `${args.clientId}-${timestamp()}`);
 
-console.log(`\n[1/4] Build klienta (RAZDWA_ENV=client, RAZDWA_CLIENT_ID=${args.clientId})`);
-execSync("npm run build", {
-  cwd: rootDir,
-  stdio: "inherit",
-  env: { ...process.env, RAZDWA_ENV: "client", RAZDWA_CLIENT_ID: args.clientId },
-});
-
-console.log(`\n[2/4] Kopiowanie docs/ → ${outDir}`);
+console.log(`\n[1/4] Kopiowanie docs/ → ${outDir}`);
 if (existsSync(outDir)) rmSync(outDir, { recursive: true, force: true });
 mkdirSync(outDir, { recursive: true });
 cpSync(join(rootDir, "docs"), outDir, {
@@ -79,6 +92,19 @@ cpSync(join(rootDir, "docs"), outDir, {
   filter: (src) => {
     if (args.includeHandover) return true;
     return !src.endsWith("DOKUMENT_ODBIOROWY_KARTA.html");
+  },
+});
+
+console.log(`\n[2/4] Build klienta (RAZDWA_ENV=client, RAZDWA_CLIENT_ID=${args.clientId})`);
+execSync("npm run build", {
+  cwd: rootDir,
+  stdio: "inherit",
+  env: {
+    ...process.env,
+    RAZDWA_ENV: "client",
+    RAZDWA_CLIENT_ID: args.clientId,
+    RAZDWA_BUILD_OUTFILE: join(outDir, "assets", "app.js"),
+    RAZDWA_DOCS_DIR: outDir,
   },
 });
 

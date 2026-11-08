@@ -96,9 +96,10 @@ function injectCacheBusterVersion(filePath) {
 }
 
 const rootDir = path.join(__dirname, "..");
-const swFiles = [path.join(rootDir, "docs", "sw.js")];
-const htmlFile = path.join(rootDir, "docs", "index.html");
-const cacheBusterFile = path.join(rootDir, "docs", "cache-buster.js");
+const docsDir = process.env.RAZDWA_DOCS_DIR ?? path.join(rootDir, "docs");
+const swFiles = [path.join(docsDir, "sw.js")];
+const htmlFile = path.join(docsDir, "index.html");
+const cacheBusterFile = path.join(docsDir, "cache-buster.js");
 
 console.log("Injecting cache version...");
 swFiles.forEach(injectVersion);

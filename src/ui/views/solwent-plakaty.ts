@@ -7,6 +7,7 @@ import {
 import { formatPLN } from "../../core/money";
 import { resolveStoredPrice } from "../../core/compat";
 import { getCombinedMaterials } from "../../core/dynamicMaterials";
+import { escapeHtml } from "../../core/validation";
 import {
   setFieldHint,
   flashFieldHints,
@@ -20,7 +21,7 @@ function populateMaterialSelect(container: HTMLElement): void {
   const previousValue = materialSelect.value;
   materialSelect.innerHTML =
     '<option value="" disabled selected>— wybierz materiał —</option>' +
-    materials.map((m) => `<option value="${m.name}">${m.name}</option>`).join("");
+    materials.map((m) => `<option value="${escapeHtml(m.name)}">${escapeHtml(m.name)}</option>`).join("");
   if (previousValue && materials.some((m) => m.name === previousValue)) {
     materialSelect.value = previousValue;
   }
@@ -100,7 +101,7 @@ export const SolwentPlakatyView: View = {
 
             return `
             <div class="legend-block" style="margin-top:12px;${isActive ? "border:1px solid rgba(59,130,246,0.35);" : ""}">
-              <h5 style="margin:0 0 8px;">${material.name}</h5>
+              <h5 style="margin:0 0 8px;">${escapeHtml(material.name)}</h5>
               <table class="results-table">
                 <thead><tr><th>Zakres</th><th>Cena / m²</th></tr></thead>
                 <tbody>${rows}</tbody>

@@ -177,6 +177,26 @@ export function calculatePlakatyM2(input: PlakatyM2Input): PlakatyM2Result {
 // Full Plakaty calculator – per-format szt materials
 // ---------------------------------------------------------------------------
 
+export interface PlakatyFormatMaterial {
+  id: string;
+  name: string;
+  discountGroup: string;
+  prices: Record<string, number>;
+}
+
+export interface PlakatyDiscountTier {
+  min: number;
+  max: number | null;
+  factor: number;
+}
+
+export interface PlakatyFormatowe {
+  unit: string;
+  formats: string[];
+  materials: PlakatyFormatMaterial[];
+  discounts: Record<string, PlakatyDiscountTier[]>;
+}
+
 export interface PlakatyFormatInput {
   materialId: string;
   formatKey: string;
