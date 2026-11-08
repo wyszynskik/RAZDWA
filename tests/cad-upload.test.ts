@@ -363,10 +363,7 @@ describe("H — A4 w CAD Upload", () => {
   });
 
   it("PDF mieszany 10×A3 + 10×A4 w jednym pliku → 2 pozycje, każda z poprawnym formatem i licznikiem", async () => {
-    const pages: Array<[number, number]> = [
-      ...Array(10).fill(A3_PT),
-      ...Array(10).fill(A4_PT),
-    ];
+    const pages: Array<[number, number]> = [...Array(10).fill(A3_PT), ...Array(10).fill(A4_PT)];
     const file = await makeMixedPdfFile(pages);
     const entries = await updateCadFileEntry(file, true);
 

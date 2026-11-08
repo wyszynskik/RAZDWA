@@ -200,9 +200,7 @@ export const PlakatyWFView: View = {
     };
 
     const updateFormatOptions = (matId: string) => {
-      const mat = tableData.formatowe.materials.find(
-        (m: PlakatyFormatMaterial) => m.id === matId
-      );
+      const mat = tableData.formatowe.materials.find((m: PlakatyFormatMaterial) => m.id === matId);
       if (!mat) return;
       const keys = Object.keys(mat.prices);
       formatSelect.innerHTML = keys

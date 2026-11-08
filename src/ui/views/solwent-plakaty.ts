@@ -21,7 +21,9 @@ function populateMaterialSelect(container: HTMLElement): void {
   const previousValue = materialSelect.value;
   materialSelect.innerHTML =
     '<option value="" disabled selected>— wybierz materiał —</option>' +
-    materials.map((m) => `<option value="${escapeHtml(m.name)}">${escapeHtml(m.name)}</option>`).join("");
+    materials
+      .map((m) => `<option value="${escapeHtml(m.name)}">${escapeHtml(m.name)}</option>`)
+      .join("");
   if (previousValue && materials.some((m) => m.name === previousValue)) {
     materialSelect.value = previousValue;
   }
