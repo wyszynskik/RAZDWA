@@ -64,34 +64,33 @@ test.describe("CAD Upload — A4 wykryty i wyceniony progami Druk A4/A3 przy mix
     await expect(a4Row).toHaveCount(1);
     await expect(a3Row).toHaveCount(1);
 
-    // A4: wliczone zbiorczo (nie "osobna cena wiersza", bo próg ilościowy
-    // zależy od SUMY stron A4 w całej tabeli), fold/scan nadal wyłączone
+    // A4: realna cena w wierszu, TAK SAMO jak dla innych formatów (🎨/⚫),
+    // nie tekst odsyłający do podsumowania. 3 str. × 2,40 zł/str (próg 1-10
+    // kolor z drukA4A3.print.color.A4) = 7,20 zł. Fold/scan nadal wyłączone
     // (model cenowy Druk A4/A3 ich nie zna).
-    await expect(a4Row.locator(".cad-price-cell--excluded")).toContainText("Wliczone w sumę A4");
+    await expect(a4Row.locator(".cad-price-line", { hasText: "Kolor" })).toContainText("7,20");
     await expect(a4Row.locator(".fold-check")).toBeDisabled();
     await expect(a4Row.locator(".scan-check")).toBeDisabled();
 
-    // A3: osobna, zwykła cena wiersza (CAD-owa, nie Druk A4/A3).
-    await expect(a3Row.locator(".cad-price-cell--excluded")).toHaveCount(0);
+    // A3: osobna, zwykła cena wiersza (CAD-owa, nie Druk A4/A3) — niezerowa.
+    const a3ColorText = await a3Row.locator(".cad-price-line", { hasText: "Kolor" }).textContent();
+    expect(Number((a3ColorText || "0").replace(/[^\d,.-]/g, "").replace(",", "."))).toBeGreaterThan(
+      0
+    );
 
     // Obie pozycje pochodzą z 1 wgranego pliku — rozwijana (domyślnie
     // otwarta) lista <details> przy każdej pokazuje łączną liczbę stron
-    // CAŁEGO pliku (3+3=6) i rozbicie po formacie.
+    // CAŁEGO pliku (3+3=6) i rozbicie po formacie Z CENĄ, nie tylko liczbą stron.
     const a4Breakdown = a4Row.locator(".cad-source-breakdown");
     const a3Breakdown = a3Row.locator(".cad-source-breakdown");
     await expect(a4Breakdown.locator("summary")).toContainText("Plik łącznie: 6 str.");
     await expect(a3Breakdown.locator("summary")).toContainText("Plik łącznie: 6 str.");
     await expect(a4Breakdown).toHaveJSProperty("open", true);
-    await expect(a4Breakdown.locator(".cad-source-breakdown-row")).toContainText([
-      "A3: 3 str.",
-      "A4: 3 str.",
-    ]);
+    const a4BreakdownRows = a4Breakdown.locator(".cad-source-breakdown-row");
+    await expect(a4BreakdownRows.filter({ hasText: "A3:" })).toContainText("zł");
+    await expect(a4BreakdownRows.filter({ hasText: "A4:" })).toContainText("7,20 zł");
     await expect(a4Row.locator(".cad-size-pages")).toContainText("Stron: 3");
     await expect(a3Row.locator(".cad-size-pages")).toContainText("Stron: 3");
-
-    // Podsumowanie: info (nie ostrzeżenie) że A4 jest wliczone, cennikiem Druk A4/A3.
-    await expect(page.locator("#summaryGrid")).toContainText("W tym strony A4");
-    await expect(page.locator("#summaryGrid")).toContainText("3 str., wliczone powyżej");
 
     // Suma kolor MUSI zawierać cenę A4 (3 str. × 2,40 zł/str, próg 1-10 z
     // drukA4A3.print.color.A4) — nie tylko CAD-ową cenę za A3.
