@@ -99,8 +99,6 @@ export interface CartItem {
   baseTotalPrice?: number;
   totalPrice: number;
   optionsHint: string;
-  /** Pozycja zawiera elementy wyłączone z wyliczonej ceny (np. strony A4 w CAD Upload) — osoba obsługująca zamówienie musi dopisać tę kwotę ręcznie. */
-  hasPricingWarning?: boolean;
   payload: unknown;
 }
 
