@@ -8,6 +8,7 @@ import {
 } from "../../categories/cad-upload";
 import { formatPLN } from "../../core/money";
 import { resolveStoredPrice } from "../../core/compat";
+import { calculateSimplePrint } from "../../core/compat-logic";
 import { getPrice } from "../../services/priceService";
 
 type ParseResult =
@@ -166,6 +167,7 @@ export const CadUploadView: View = {
     const scanAllCheck = container.querySelector<HTMLInputElement>("#scanAllCheck");
     const warningEl = container.querySelector<HTMLElement>("#cadWarning");
     const statusEl = container.querySelector<HTMLElement>("#cadUploadStatus");
+    let statusHideTimer: ReturnType<typeof setTimeout> | null = null;
     const calculationsList = container.querySelector<HTMLElement>("#obliczeniaLista");
     const ekranObliczen = container.querySelector<HTMLElement>("#ekranObliczen");
 
@@ -395,11 +397,27 @@ export const CadUploadView: View = {
 
     function showStatus(message: string, isWarning = false): void {
       if (!statusEl) return;
+      if (statusHideTimer) {
+        clearTimeout(statusHideTimer);
+        statusHideTimer = null;
+      }
       statusEl.textContent = message;
       statusEl.style.display = message ? "block" : "none";
       statusEl.style.background = isWarning ? "#fff3cd" : "#e8f5e9";
       statusEl.style.border = isWarning ? "2px solid #ffc107" : "2px solid #4caf50";
       statusEl.style.color = isWarning ? "#856404" : "#1b5e20";
+
+      // Bez auto-ukrycia komunikat wisi bezterminowo i wygląda jak zawieszony
+      // stan UI, nie jak informacja o zakończonym przetwarzaniu.
+      if (message) {
+        statusHideTimer = setTimeout(
+          () => {
+            if (statusEl) statusEl.style.display = "none";
+            statusHideTimer = null;
+          },
+          isWarning ? 7000 : 5000
+        );
+      }
     }
 
     function syncSequentialIds(): void {
@@ -483,6 +501,30 @@ export const CadUploadView: View = {
       return recalculated.printPrice;
     }
 
+    /**
+     * A4 w CAD Upload używa TEJ SAMEJ tabeli cen co kategoria "Druk A4/A3"
+     * (drukA4A3.print.{bw|color}.A4, progi ilościowe z prices.json) — ten sam
+     * klucz resolveStoredPrice, żeby edycja ceny w jednym miejscu działała
+     * wszędzie. Cena liczona od SUMY stron A4 w całej tabeli (nie per wiersz),
+     * bo próg cenowy zależy od łącznego nakładu — dorzucenie kolejnego pliku
+     * z A4 przelicza cenę WSZYSTKICH stron A4 do nowego, obowiązującego progu.
+     */
+    function calculateA4Total(mode: "color" | "bw"): number {
+      const totalA4Pages = files
+        .filter((f) => f.format === "A4")
+        .reduce((sum, f) => sum + f.pageCount, 0);
+      if (totalA4Pages <= 0) return 0;
+
+      return calculateSimplePrint({
+        mode,
+        format: "A4",
+        pages: totalA4Pages,
+        email: false,
+        ink25: false,
+        ink25Qty: 0,
+      }).grandTotal;
+    }
+
     function calculateRowTotal(
       file: CadUploadFileEntry,
       mode: "color" | "bw",
@@ -517,9 +559,10 @@ export const CadUploadView: View = {
             <div class="obliczenie-item">
               <strong>${file.id}. ${escapeHtml(file.name)}</strong>
               <div class="obliczenie-text">
-                Format: A4 (${Math.round(file.widthMm)}mm×${Math.round(file.heightMm)}mm), ${file.pageCount} str.<br/>
-                Nie wliczone do ceny — dolicz ręcznie z cennika A4.
+                Format: A4 (${Math.round(file.widthMm)}x${Math.round(file.heightMm)}mm), ${file.pageCount} str.<br/>
+                Cena liczona z progu ilościowego od sumy wszystkich stron A4 — zobacz podsumowanie.
               </div>
+              ${buildSourceFileBreakdownHtml(file)}
             </div>
           `;
           }
@@ -559,7 +602,7 @@ export const CadUploadView: View = {
             <div class="obliczenie-item">
               <strong>${file.id}. ${escapeHtml(file.name)}</strong>
               <div class="obliczenie-text">
-                Format: ${escapeHtml(formatLabel(file.format))} (${Math.round(file.widthMm)}mm×${Math.round(file.heightMm)}mm), ${file.pageCount} str.<br/>
+                Format: ${escapeHtml(formatLabel(file.format))} (${Math.round(file.widthMm)}x${Math.round(file.heightMm)}mm), ${file.pageCount} str.<br/>
                 Metoda: ${methodText}${surchargeText}
               </div>
               <div class="obliczenie-text">
@@ -574,17 +617,43 @@ export const CadUploadView: View = {
               <div class="obliczenie-cena">
                 🎨 ${formatPLN(rowColor)} &nbsp;|&nbsp; ⚫ ${formatPLN(rowBw)}
               </div>
+              ${buildSourceFileBreakdownHtml(file)}
             </div>
           `;
         })
         .join("");
     }
 
+    /**
+     * Rozwijana (domyślnie otwarta, zwijalna <summary>/<details>) lista
+     * formatów składających się na jeden wgrany plik — pusty string gdy
+     * plik nie został rozbity (1 wiersz = brak sensu pokazywać breakdown).
+     */
+    function buildSourceFileBreakdownHtml(file: CadUploadFileEntry): string {
+      const sameSourceRows = files.filter((f) => f.sourceFileId === file.sourceFileId);
+      if (sameSourceRows.length <= 1) return "";
+
+      const totalPages = sameSourceRows.reduce((sum, f) => sum + f.pageCount, 0);
+      const rows = sameSourceRows
+        .map(
+          (f) =>
+            `<div class="cad-source-breakdown-row">${escapeHtml(formatLabel(f.format))}: ${f.pageCount} str.</div>`
+        )
+        .join("");
+
+      return `
+        <details class="cad-source-breakdown" open>
+          <summary>Plik łącznie: ${totalPages} str.</summary>
+          ${rows}
+        </details>
+      `;
+    }
+
     function formatSizeLabel(file: CadUploadFileEntry): string {
       const w = Number.isFinite(file.widthMm) ? Math.round(file.widthMm) : 0;
       const h = Number.isFinite(file.heightMm) ? Math.round(file.heightMm) : 0;
       const pages = Math.max(1, file.pageCount || 1);
-      return `${formatLabel(file.format)}|${w}mm×${h}mm|${pages}`;
+      return `${formatLabel(file.format)}|${w}x${h}mm|${pages}`;
     }
 
     function recalculateFile(file: CadUploadFileEntry): CadUploadFileEntry {
@@ -653,12 +722,7 @@ export const CadUploadView: View = {
           // Jeden wgrany plik rozbity na kilka wierszy (mix formatów) — przy
           // każdym z nich pokazujemy łączną liczbę stron CAŁEGO pliku, nie
           // tylko stron w tym jednym wierszu/formacie.
-          const sameSourceRows = files.filter((f) => f.sourceFileId === file.sourceFileId);
-          const totalPagesInSourceFile = sameSourceRows.reduce((sum, f) => sum + f.pageCount, 0);
-          const sourceFileNote =
-            sameSourceRows.length > 1
-              ? `<div class="cad-size-total-pages">Plik łącznie: ${totalPagesInSourceFile} str.</div>`
-              : "";
+          const sourceFileNote = buildSourceFileBreakdownHtml(file);
 
           return `
         <tr data-file-id="${file.id}">
@@ -668,8 +732,8 @@ export const CadUploadView: View = {
           </td>
           <td class="col-size">
             <div class="cad-size-main">${escapeHtml(paperFormat || "—")}</div>
-            <div class="cad-size-dims">${escapeHtml(dims || "0mm×0mm")}</div>
-            <div class="cad-size-pages">Ilość stron: ${Number.isFinite(pages) ? pages : 1}</div>
+            <div class="cad-size-dims">${escapeHtml(dims || "0x0mm")}</div>
+            <div class="cad-size-pages">Stron: ${Number.isFinite(pages) ? pages : 1}</div>
             ${sourceFileNote}
           </td>
           <td class="col-fold">
@@ -684,7 +748,7 @@ export const CadUploadView: View = {
           <td class="col-price">
             ${
               isA4
-                ? `<div class="cad-price-cell cad-price-cell--excluded">Nie wliczone do ceny<br/><span class="cad-price-excluded-pages">(${pages} str. A4)</span></div>`
+                ? `<div class="cad-price-cell cad-price-cell--excluded">Wliczone w sumę A4<br/><span class="cad-price-excluded-pages">(${pages} str. — zobacz podsumowanie)</span></div>`
                 : `<div class="cad-price-cell">
               <div class="cad-price-line"><span>🎨 Kolor</span><strong>${formatPLN(rowColor)}</strong></div>
               <div class="cad-price-line"><span>⚫ Cz-B</span><strong>${formatPLN(rowBw)}</strong></div>
@@ -730,6 +794,14 @@ export const CadUploadView: View = {
         totalFoldingBwVariant += file.foldingPrice * printQty;
       }
       totalPrintBwVariant *= surcharge;
+
+      // A4 liczone progami z kategorii "Druk A4/A3", nie przez surcharge CAD
+      // (ten mnożnik dotyczy tylko opcji CAD typu zapełnienie/powiększenie)
+      // — dlatego dodawane PO pomnożeniu przez surcharge powyżej.
+      const a4ColorSubtotal = calculateA4Total("color");
+      const a4BwSubtotal = calculateA4Total("bw");
+      totalPrintColorVariant += a4ColorSubtotal;
+      totalPrintBwVariant += a4BwSubtotal;
 
       const emailFee = optEmail?.checked ? resolveStoredPrice("druk-email", 1) : 0;
       const extraServicesTotal = getExtraServicesTotal();
@@ -825,9 +897,9 @@ export const CadUploadView: View = {
           ${
             totalA4Pages > 0
               ? `
-          <div class="summary-item summary-item--warn">
-            <span>⚠️ Strony A4 nie wliczone do ceny:</span>
-            <span><strong>${totalA4Pages} str.</strong></span>
+          <div class="summary-item summary-item--note">
+            <span>ℹ️ W tym strony A4 (cennik Druk A4/A3):</span>
+            <span><strong>${totalA4Pages} str., wliczone powyżej</strong></span>
           </div>`
               : ""
           }
@@ -1270,20 +1342,21 @@ export const CadUploadView: View = {
         const totalScan = files.reduce((sum, f) => sum + f.scanPrice, 0);
 
         // Rozbicie stron po formacie — pokazuje osobie obsługującej zamówienie
-        // ile stron wyceniono (A3/A2/...) i ile stron A4 zostało poza ceną,
-        // nie tylko "X plików" (co po mixie A3+A4 w jednym pliku jest
-        // niejednoznaczne — jeden upload może dać 2 pozycje).
+        // ile stron jakiego formatu wyceniono, nie tylko "X plików" (co po
+        // mixie A3+A4 w jednym pliku jest niejednoznaczne — jeden upload
+        // może dać 2 pozycje). A4 liczone progami "Druk A4/A3" od sumy stron,
+        // już wliczone w totalPrice — nie jest to wykluczone z ceny.
         const pagesByFormat = new Map<string, number>();
         for (const f of files) {
           pagesByFormat.set(f.format, (pagesByFormat.get(f.format) || 0) + f.pageCount);
         }
         const a4Pages = pagesByFormat.get("A4") || 0;
-        const pricedBreakdown = [...pagesByFormat.entries()]
+        const otherBreakdown = [...pagesByFormat.entries()]
           .filter(([fmt]) => fmt !== "A4")
           .map(([fmt, count]) => `${count} str. ${formatLabel(fmt)}`)
           .join(", ");
-        const a4Note = a4Pages > 0 ? `${a4Pages} str. A4 (nie wliczone do ceny)` : "";
-        const pagesBreakdown = [pricedBreakdown, a4Note].filter(Boolean).join(" + ");
+        const a4Note = a4Pages > 0 ? `${a4Pages} str. A4 (cennik Druk A4/A3)` : "";
+        const pagesBreakdown = [otherBreakdown, a4Note].filter(Boolean).join(" + ");
 
         const modeLabel = mode === "color" ? "KOLOR" : "CZ-B";
         const opts = [
@@ -1308,7 +1381,6 @@ export const CadUploadView: View = {
           isExpress: ctx.expressMode,
           totalPrice: grandTotalPrice,
           optionsHint: opts,
-          hasPricingWarning: a4Pages > 0,
           payload: { files: snapshotFiles, mode, price: grandTotalPrice },
         });
 

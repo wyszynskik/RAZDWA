@@ -422,10 +422,10 @@
 
   .results-table .col-lp     { width: 35px; min-width: 35px; }
   .results-table .col-name   { width: 20%; }
-  .results-table .col-size   { width: 12%; white-space: nowrap; }
-  .results-table .col-fold   { width: 12%; }
-  .results-table .col-scan   { width: 8%; }
-  .results-table .col-qty    { width: 12%; text-align: center; }
+  .results-table .col-size   { width: 20%; white-space: nowrap; }
+  .results-table .col-fold   { width: 9%; }
+  .results-table .col-scan   { width: 6%; }
+  .results-table .col-qty    { width: 9%; text-align: center; }
   .results-table .col-price  { width: 23%; }
   .results-table .col-remove { width: 6%; min-width: 34px; }
 
@@ -498,12 +498,25 @@
     font-size: 0.63rem;
   }
 
-  .cad-size-total-pages {
-    white-space: nowrap;
+  .cad-source-breakdown {
+    margin-top: 2px;
+  }
+
+  .cad-source-breakdown summary {
+    cursor: pointer;
     color: var(--text-secondary);
     line-height: 1.05;
     font-size: 0.6rem;
     font-style: italic;
+    white-space: nowrap;
+  }
+
+  .cad-source-breakdown-row {
+    color: var(--text-secondary);
+    line-height: 1.3;
+    font-size: 0.6rem;
+    padding: 1px 0 1px 14px;
+    white-space: nowrap;
   }
 
   .cad-price-cell {
@@ -642,8 +655,10 @@
   .summary-item strong {
     font-weight: 700;
   }
-  .summary-item--warn {
-    color: #92400e;
+  .summary-item--note {
+    color: var(--text-secondary);
+    font-size: 0.85em;
+    font-style: italic;
   }
   #summaryGrid {
     display: flex;
@@ -886,20 +901,20 @@
         <tr>
           <th class="col-lp" style="width:35px;min-width:35px;">NR.</th>
           <th class="col-name" style="width:20%;min-width:93px;">Nazwa</th>
-          <th class="col-size" style="width:12%;min-width:65px;">Rozmiar</th>
-          <th class="col-fold" style="width:12%;min-width:65px;">
+          <th class="col-size" style="width:20%;min-width:85px;">Rozmiar</th>
+          <th class="col-fold" style="width:9%;min-width:55px;">
             <div class="header-toggle">
               <span>Składanie</span>
               <input type="checkbox" id="foldAllCheck" aria-label="Zaznacz składanie dla wszystkich plików" title="Zaznacz wszystkie: składanie">
             </div>
           </th>
-          <th class="col-scan" style="width:8%;min-width:50px;">
+          <th class="col-scan" style="width:6%;min-width:42px;">
             <div class="header-toggle">
               <span>Skan</span>
               <input type="checkbox" id="scanAllCheck" aria-label="Zaznacz skanowanie dla wszystkich plików" title="Zaznacz wszystkie: skanowanie">
             </div>
           </th>
-          <th class="col-qty" style="width:12%;min-width:50px;">Ilość</th>
+          <th class="col-qty" style="width:9%;min-width:42px;">Ilość</th>
           <th class="col-price" style="width:23%;min-width:100px;">
             <div class="cad-price-header">
               <span>Rodzaj</span>
