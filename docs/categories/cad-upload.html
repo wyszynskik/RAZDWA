@@ -370,11 +370,11 @@
     white-space: nowrap;
   }
 
-  .results-table td.col-qty {
-    overflow: visible;
-  }
   .results-table td.col-qty input[type="number"] {
-    width: 60px;
+    box-sizing: border-box;
+    width: 100%;
+    max-width: 60px;
+    min-width: 36px;
     height: 28px;
     padding: 2px 2px 2px 4px;
     border: 1px solid var(--border);
@@ -437,11 +437,11 @@
   }
 
   .results-table .col-lp     { width: 35px; min-width: 35px; }
-  .results-table .col-name   { width: 17%; }
-  .results-table .col-size   { width: 19%; white-space: nowrap; }
-  .results-table .col-fold   { width: 12%; }
-  .results-table .col-scan   { width: 11%; }
-  .results-table .col-qty    { width: 8%; text-align: center; }
+  .results-table .col-name   { width: 15%; }
+  .results-table .col-size   { width: 17%; white-space: nowrap; }
+  .results-table .col-fold   { width: 10%; }
+  .results-table .col-scan   { width: 9%; }
+  .results-table .col-qty    { width: 16%; text-align: center; }
   .results-table .col-price  { width: 19%; }
   .results-table .col-remove { width: 6%; min-width: 34px; }
 
@@ -900,21 +900,21 @@
       <thead>
         <tr>
           <th class="col-lp" style="width:35px;min-width:35px;">NR.</th>
-          <th class="col-name" style="width:17%;min-width:80px;">Nazwa</th>
-          <th class="col-size" style="width:19%;min-width:80px;">Rozmiar</th>
-          <th class="col-fold" style="width:12%;min-width:66px;">
+          <th class="col-name" style="width:15%;min-width:70px;">Nazwa</th>
+          <th class="col-size" style="width:17%;min-width:75px;">Rozmiar</th>
+          <th class="col-fold" style="width:10%;min-width:58px;">
             <div class="header-toggle">
               <span>Składanie</span>
               <input type="checkbox" id="foldAllCheck" aria-label="Zaznacz składanie dla wszystkich plików" title="Zaznacz wszystkie: składanie">
             </div>
           </th>
-          <th class="col-scan" style="width:11%;min-width:52px;">
+          <th class="col-scan" style="width:9%;min-width:46px;">
             <div class="header-toggle">
               <span>Skan</span>
               <input type="checkbox" id="scanAllCheck" aria-label="Zaznacz skanowanie dla wszystkich plików" title="Zaznacz wszystkie: skanowanie">
             </div>
           </th>
-          <th class="col-qty" style="width:8%;min-width:42px;">Ilość</th>
+          <th class="col-qty" style="width:16%;min-width:56px;">Ilość</th>
           <th class="col-price" style="width:19%;min-width:95px;">
             <div class="cad-price-header">
               <span>Rodzaj</span>

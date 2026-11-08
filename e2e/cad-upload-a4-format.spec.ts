@@ -109,4 +109,44 @@ test.describe("CAD Upload — A4 wykryty i wyceniony progami Druk A4/A3 przy mix
     await expect(basketItem.locator(".basketMeta")).toContainText("3 str. A3");
     await expect(basketItem.locator(".basketMeta")).toContainText("3 str. A4 (cennik Druk A4/A3)");
   });
+
+  test("input Ilość nie nachodzi na kolumnę Cena (blokowało klik)", async ({ page }, testInfo) => {
+    // Layout aplikacji to app-grid (left-col = ten widok, prawa kolumna =
+    // koszyk) — nawet na zwykłym desktopie left-col ma tylko ~400px, nie
+    // pełną szerokość okna. Fixed 60px input w wąskiej kolumnie Ilość (z
+    // overflow:visible) nachodził na sąsiednią kolumnę Cena, blokując klik.
+    // 1200px okna → ~406px left-col, realistyczny desktop z otwartym koszykiem.
+    await page.setViewportSize({ width: 1200, height: 800 });
+
+    const { PDFDocument } = await import("pdf-lib");
+    const doc = await PDFDocument.create();
+    doc.addPage([842, 1191]);
+    const bytes = await doc.save();
+    const dir = testInfo.outputPath("cad-a4-fixtures-narrow");
+    const fs = await import("node:fs");
+    fs.mkdirSync(dir, { recursive: true });
+    const filePath = join(dir, "a3.pdf");
+    fs.writeFileSync(filePath, bytes);
+
+    await page.goto("/#/cad-upload");
+    await page.waitForSelector("#cadFileInput", { state: "attached", timeout: 10000 });
+    await page.setInputFiles("#cadFileInput", [filePath]);
+    await page.waitForSelector("#results-body tr[data-file-id]");
+
+    const row = page.locator("#results-body tr[data-file-id]").first();
+    const qtyInput = row.locator('input[data-action="qty"]');
+    const priceCell = row.locator(".col-price");
+
+    const qtyBox = await qtyInput.boundingBox();
+    const priceBox = await priceCell.boundingBox();
+
+    expect(qtyBox).not.toBeNull();
+    expect(priceBox).not.toBeNull();
+    // Prawa krawędź inputu musi być po LEWEJ od lewej krawędzi komórki Cena.
+    expect(qtyBox!.x + qtyBox!.width).toBeLessThanOrEqual(priceBox!.x + 1);
+
+    // Input musi też być realnie klikalny (nic nie przykrywa go z wierzchu).
+    await qtyInput.click();
+    await expect(qtyInput).toBeFocused();
+  });
 });
