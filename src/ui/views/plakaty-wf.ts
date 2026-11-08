@@ -1,10 +1,17 @@
 ﻿import { View, ViewContext } from "../types";
 import { autoCalc } from "../autoCalc";
-import { calculatePlakatyFormat } from "../../categories/plakaty";
+import {
+  calculatePlakatyFormat,
+  PlakatyFormatMaterial,
+  PlakatyDiscountTier,
+  PlakatyFormatowe,
+  PlakatyFormatResult,
+} from "../../categories/plakaty";
 import { formatPLN } from "../../core/money";
 import { parseNumericInput } from "../../core/numericInput";
 import { getPrice } from "../../services/priceService";
 import { resolveStoredPrice } from "../../core/compat";
+import { escapeHtml } from "../../core/validation";
 import {
   setFieldHint,
   flashFieldHints,
@@ -21,7 +28,7 @@ function renderHintContent(target: HTMLElement, lines: string[]): void {
   });
 }
 
-const data: any = getPrice("plakaty");
+const data: { formatowe: PlakatyFormatowe } = getPrice("plakaty");
 
 const FORMAT_LABELS: Record<string, string> = {
   "297x420": "A3 (297×420 mm)",
@@ -32,6 +39,14 @@ const FORMAT_LABELS: Record<string, string> = {
   "914x1292": "A0+ (914×1292 mm)",
   rolka1067: "Rolka 1067 mm",
 };
+
+interface PlakatyWfCalcOptions {
+  matId: string;
+  fmt: string;
+  qty: number;
+  customLengthMm: number | undefined;
+  trimSurcharge: number;
+}
 
 export const PlakatyWFView: View = {
   id: "plakaty",
@@ -48,7 +63,7 @@ export const PlakatyWFView: View = {
   },
 
   initLogic(container: HTMLElement, ctx: ViewContext) {
-    const tableData = data as any;
+    const tableData = data;
 
     const materialSelect = container.querySelector("#p-material") as HTMLSelectElement;
     const formatGroup = container.querySelector("#p-format-group") as HTMLElement;
@@ -90,7 +105,7 @@ export const PlakatyWFView: View = {
       }
 
       const selectedMaterial = (tableData.formatowe?.materials ?? []).find(
-        (m: any) => m.id === materialSelect.value
+        (m: PlakatyFormatMaterial) => m.id === materialSelect.value
       );
       if (!selectedMaterial) return;
 
@@ -103,7 +118,7 @@ export const PlakatyWFView: View = {
         .join("");
 
       const discountRows = (tableData.formatowe?.discounts?.[selectedMaterial.discountGroup] ?? [])
-        .map((tier: any) => {
+        .map((tier: PlakatyDiscountTier) => {
           const pct = Math.round((1 - Number(tier.factor)) * 100);
           const label = tier.max == null ? `${tier.min}+ szt` : `${tier.min}-${tier.max} szt`;
           return `<tr><td>${label}</td><td>${pct > 0 ? `-${pct}%` : "brak"}</td></tr>`;
@@ -111,7 +126,7 @@ export const PlakatyWFView: View = {
         .join("");
 
       legend.innerHTML = `
-        <h4 style="margin:10px 0 6px;">${selectedMaterial.name}</h4>
+        <h4 style="margin:10px 0 6px;">${escapeHtml(selectedMaterial.name)}</h4>
         <table><tr><th>Format</th><th>Cena bazowa / szt.</th></tr>${priceRows}</table>
         ${discountRows ? `<h4 style="margin:10px 0 6px;">Rabaty ilościowe</h4><table><tr><th>Zakres</th><th>Rabat</th></tr>${discountRows}</table>` : ""}
       `;
@@ -119,7 +134,10 @@ export const PlakatyWFView: View = {
 
     const allMaterials = [...tableData.formatowe.materials];
     materialSelect.innerHTML = allMaterials
-      .map((m: any) => `<option value="${m.id}">${m.name}</option>`)
+      .map(
+        (m: PlakatyFormatMaterial) =>
+          `<option value="${escapeHtml(m.id)}">${escapeHtml(m.name)}</option>`
+      )
       .join("");
 
     const parsePositiveInt = (value: string): number | null => {
@@ -160,13 +178,13 @@ export const PlakatyWFView: View = {
       if (optionLabel.includes("nieformat")) return true;
 
       const selectedMaterial = (tableData.formatowe?.materials ?? []).find(
-        (m: any) => m.id === matId
+        (m: PlakatyFormatMaterial) => m.id === matId
       );
       const materialName = String(selectedMaterial?.name ?? "").toLowerCase();
       return materialName.includes("nieformat");
     };
 
-    const buildNieformatCalcHint = (res: any): string[] => {
+    const buildNieformatCalcHint = (res: PlakatyFormatResult | null): string[] => {
       const isNieformat = isNieformatMaterial(materialSelect.value);
       if (!isNieformat || !res || !res.baseLengthMm || !res.customLengthMm) return [];
 
@@ -182,7 +200,9 @@ export const PlakatyWFView: View = {
     };
 
     const updateFormatOptions = (matId: string) => {
-      const mat = tableData.formatowe.materials.find((m: any) => m.id === matId);
+      const mat = tableData.formatowe.materials.find(
+        (m: PlakatyFormatMaterial) => m.id === matId
+      );
       if (!mat) return;
       const keys = Object.keys(mat.prices);
       formatSelect.innerHTML = keys
@@ -223,8 +243,8 @@ export const PlakatyWFView: View = {
     updateVisibility();
     ensureLegend();
 
-    let currentResult: any = null;
-    let currentOptions: any = null;
+    let currentResult: PlakatyFormatResult | null = null;
+    let currentOptions: PlakatyWfCalcOptions | null = null;
     let blockedHints: (HTMLElement | null)[] = [];
 
     const getTrimSurcharge = (): number => {

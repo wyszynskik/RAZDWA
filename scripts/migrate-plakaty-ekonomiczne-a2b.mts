@@ -23,6 +23,7 @@
  * Ustawień, jak ustalono.
  */
 import { readFileSync, writeFileSync, existsSync } from "node:fs";
+import { pathToFileURL } from "node:url";
 import {
   planMigration,
   assertScope,
@@ -226,7 +227,7 @@ export function run(argv: string[]): number {
   return EXIT_OK;
 }
 
-const isMainModule = process.argv[1] && import.meta.url === `file://${process.argv[1]}`;
+const isMainModule = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
 if (isMainModule) {
   process.exit(run(process.argv.slice(2)));
 }
