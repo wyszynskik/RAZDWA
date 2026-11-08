@@ -70,12 +70,17 @@ test.describe("CAD Upload — A4 wykryty i wykluczony z ceny przy mixie z A3", (
     // A3: realna cena (nie "nie wliczone").
     await expect(a3Row.locator(".cad-price-cell--excluded")).toHaveCount(0);
 
-    // Obie pozycje pochodzą z 1 wgranego pliku — przy każdej widoczna
-    // łączna liczba stron CAŁEGO pliku (3+3=6), nie tylko tego formatu.
-    await expect(a4Row.locator(".cad-size-total-pages")).toContainText("Plik łącznie: 6 str.");
-    await expect(a3Row.locator(".cad-size-total-pages")).toContainText("Plik łącznie: 6 str.");
-    await expect(a4Row.locator(".cad-size-pages")).toContainText("Ilość stron: 3");
-    await expect(a3Row.locator(".cad-size-pages")).toContainText("Ilość stron: 3");
+    // Obie pozycje pochodzą z 1 wgranego pliku — rozwijana (domyślnie
+    // otwarta) lista <details> przy każdej pokazuje łączną liczbę stron
+    // CAŁEGO pliku (3+3=6) i rozbicie po formacie.
+    const a4Breakdown = a4Row.locator(".cad-source-breakdown");
+    const a3Breakdown = a3Row.locator(".cad-source-breakdown");
+    await expect(a4Breakdown.locator("summary")).toContainText("Plik łącznie: 6 str.");
+    await expect(a3Breakdown.locator("summary")).toContainText("Plik łącznie: 6 str.");
+    await expect(a4Breakdown).toHaveJSProperty("open", true);
+    await expect(a4Breakdown.locator(".cad-source-breakdown-row")).toContainText(["A3: 3 str.", "A4: 3 str."]);
+    await expect(a4Row.locator(".cad-size-pages")).toContainText("Stron: 3");
+    await expect(a3Row.locator(".cad-size-pages")).toContainText("Stron: 3");
 
     // Podsumowanie: komunikat o stronach A4 poza ceną.
     await expect(page.locator("#summaryGrid")).toContainText("Strony A4 nie wliczone do ceny");

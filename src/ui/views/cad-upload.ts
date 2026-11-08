@@ -166,6 +166,7 @@ export const CadUploadView: View = {
     const scanAllCheck = container.querySelector<HTMLInputElement>("#scanAllCheck");
     const warningEl = container.querySelector<HTMLElement>("#cadWarning");
     const statusEl = container.querySelector<HTMLElement>("#cadUploadStatus");
+    let statusHideTimer: ReturnType<typeof setTimeout> | null = null;
     const calculationsList = container.querySelector<HTMLElement>("#obliczeniaLista");
     const ekranObliczen = container.querySelector<HTMLElement>("#ekranObliczen");
 
@@ -395,11 +396,27 @@ export const CadUploadView: View = {
 
     function showStatus(message: string, isWarning = false): void {
       if (!statusEl) return;
+      if (statusHideTimer) {
+        clearTimeout(statusHideTimer);
+        statusHideTimer = null;
+      }
       statusEl.textContent = message;
       statusEl.style.display = message ? "block" : "none";
       statusEl.style.background = isWarning ? "#fff3cd" : "#e8f5e9";
       statusEl.style.border = isWarning ? "2px solid #ffc107" : "2px solid #4caf50";
       statusEl.style.color = isWarning ? "#856404" : "#1b5e20";
+
+      // Bez auto-ukrycia komunikat wisi bezterminowo i wygląda jak zawieszony
+      // stan UI, nie jak informacja o zakończonym przetwarzaniu.
+      if (message) {
+        statusHideTimer = setTimeout(
+          () => {
+            if (statusEl) statusEl.style.display = "none";
+            statusHideTimer = null;
+          },
+          isWarning ? 7000 : 5000
+        );
+      }
     }
 
     function syncSequentialIds(): void {
@@ -517,9 +534,10 @@ export const CadUploadView: View = {
             <div class="obliczenie-item">
               <strong>${file.id}. ${escapeHtml(file.name)}</strong>
               <div class="obliczenie-text">
-                Format: A4 (${Math.round(file.widthMm)}mm×${Math.round(file.heightMm)}mm), ${file.pageCount} str.<br/>
+                Format: A4 (${Math.round(file.widthMm)}x${Math.round(file.heightMm)}mm), ${file.pageCount} str.<br/>
                 Nie wliczone do ceny — dolicz ręcznie z cennika A4.
               </div>
+              ${buildSourceFileBreakdownHtml(file)}
             </div>
           `;
           }
@@ -559,7 +577,7 @@ export const CadUploadView: View = {
             <div class="obliczenie-item">
               <strong>${file.id}. ${escapeHtml(file.name)}</strong>
               <div class="obliczenie-text">
-                Format: ${escapeHtml(formatLabel(file.format))} (${Math.round(file.widthMm)}mm×${Math.round(file.heightMm)}mm), ${file.pageCount} str.<br/>
+                Format: ${escapeHtml(formatLabel(file.format))} (${Math.round(file.widthMm)}x${Math.round(file.heightMm)}mm), ${file.pageCount} str.<br/>
                 Metoda: ${methodText}${surchargeText}
               </div>
               <div class="obliczenie-text">
@@ -574,17 +592,43 @@ export const CadUploadView: View = {
               <div class="obliczenie-cena">
                 🎨 ${formatPLN(rowColor)} &nbsp;|&nbsp; ⚫ ${formatPLN(rowBw)}
               </div>
+              ${buildSourceFileBreakdownHtml(file)}
             </div>
           `;
         })
         .join("");
     }
 
+    /**
+     * Rozwijana (domyślnie otwarta, zwijalna <summary>/<details>) lista
+     * formatów składających się na jeden wgrany plik — pusty string gdy
+     * plik nie został rozbity (1 wiersz = brak sensu pokazywać breakdown).
+     */
+    function buildSourceFileBreakdownHtml(file: CadUploadFileEntry): string {
+      const sameSourceRows = files.filter((f) => f.sourceFileId === file.sourceFileId);
+      if (sameSourceRows.length <= 1) return "";
+
+      const totalPages = sameSourceRows.reduce((sum, f) => sum + f.pageCount, 0);
+      const rows = sameSourceRows
+        .map(
+          (f) =>
+            `<div class="cad-source-breakdown-row">${escapeHtml(formatLabel(f.format))}: ${f.pageCount} str.</div>`
+        )
+        .join("");
+
+      return `
+        <details class="cad-source-breakdown" open>
+          <summary>Plik łącznie: ${totalPages} str.</summary>
+          ${rows}
+        </details>
+      `;
+    }
+
     function formatSizeLabel(file: CadUploadFileEntry): string {
       const w = Number.isFinite(file.widthMm) ? Math.round(file.widthMm) : 0;
       const h = Number.isFinite(file.heightMm) ? Math.round(file.heightMm) : 0;
       const pages = Math.max(1, file.pageCount || 1);
-      return `${formatLabel(file.format)}|${w}mm×${h}mm|${pages}`;
+      return `${formatLabel(file.format)}|${w}x${h}mm|${pages}`;
     }
 
     function recalculateFile(file: CadUploadFileEntry): CadUploadFileEntry {
@@ -653,12 +697,7 @@ export const CadUploadView: View = {
           // Jeden wgrany plik rozbity na kilka wierszy (mix formatów) — przy
           // każdym z nich pokazujemy łączną liczbę stron CAŁEGO pliku, nie
           // tylko stron w tym jednym wierszu/formacie.
-          const sameSourceRows = files.filter((f) => f.sourceFileId === file.sourceFileId);
-          const totalPagesInSourceFile = sameSourceRows.reduce((sum, f) => sum + f.pageCount, 0);
-          const sourceFileNote =
-            sameSourceRows.length > 1
-              ? `<div class="cad-size-total-pages">Plik łącznie: ${totalPagesInSourceFile} str.</div>`
-              : "";
+          const sourceFileNote = buildSourceFileBreakdownHtml(file);
 
           return `
         <tr data-file-id="${file.id}">
@@ -668,8 +707,8 @@ export const CadUploadView: View = {
           </td>
           <td class="col-size">
             <div class="cad-size-main">${escapeHtml(paperFormat || "—")}</div>
-            <div class="cad-size-dims">${escapeHtml(dims || "0mm×0mm")}</div>
-            <div class="cad-size-pages">Ilość stron: ${Number.isFinite(pages) ? pages : 1}</div>
+            <div class="cad-size-dims">${escapeHtml(dims || "0x0mm")}</div>
+            <div class="cad-size-pages">Stron: ${Number.isFinite(pages) ? pages : 1}</div>
             ${sourceFileNote}
           </td>
           <td class="col-fold">
