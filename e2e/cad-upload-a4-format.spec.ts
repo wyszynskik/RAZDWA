@@ -153,4 +153,41 @@ test.describe("CAD Upload — A4 wykryty i wyceniony progami Druk A4/A3 przy mix
     await qtyInput.click();
     await expect(qtyInput).toBeFocused();
   });
+
+  test("A4: zmiana Ilości mnoży cenę wiersza (regresja: qty>1 dawało 0,00)", async ({
+    page,
+  }, testInfo) => {
+    const { PDFDocument } = await import("pdf-lib");
+    const mm = (v: number) => (v / 25.4) * 72;
+    const doc = await PDFDocument.create();
+    doc.addPage([mm(101), mm(170)]); // A4 (wycinek < A4) 1 str.
+    const bytes = await doc.save();
+    const dir = testInfo.outputPath("cad-a4-qty");
+    const fs = await import("node:fs");
+    fs.mkdirSync(dir, { recursive: true });
+    const filePath = join(dir, "a4.pdf");
+    fs.writeFileSync(filePath, bytes);
+
+    await page.goto("/#/cad-upload");
+    await page.waitForSelector("#cadFileInput", { state: "attached", timeout: 10000 });
+    await page.setInputFiles("#cadFileInput", [filePath]);
+    await page.waitForSelector("#results-body tr[data-file-id]");
+
+    const row = page.locator("#results-body tr[data-file-id]").first();
+    const colorLine = row.locator(".cad-price-line", { hasText: "Kolor" });
+    // qty=1 → 1 str. × 2,40 zł (próg 1-10 kolor Druk A4/A3)
+    await expect(colorLine).toContainText("2,40");
+
+    // qty=2 → cena wiersza MUSI się podwoić (4,80), nie wyzerować.
+    const qtyInput = row.locator('input[data-action="qty"]');
+    await qtyInput.fill("2");
+    await qtyInput.dispatchEvent("input");
+    await expect(colorLine).toContainText("4,80");
+    await expect(colorLine).not.toContainText("0,00");
+
+    // Suma kolor skaluje się z ilością: 2 str. × 2,40 = 4,80.
+    const totalColor = await page.locator("#selectColorPrice").textContent();
+    const totalValue = Number((totalColor || "0").replace(/[^\d,.-]/g, "").replace(",", "."));
+    expect(totalValue).toBeGreaterThan(4.8 - 0.01);
+  });
 });

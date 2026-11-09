@@ -507,12 +507,14 @@ export const CadUploadView: View = {
      * klucz resolveStoredPrice, żeby edycja ceny w jednym miejscu działała
      * wszędzie. Cena liczona od SUMY stron A4 w całej tabeli (nie per wiersz),
      * bo próg cenowy zależy od łącznego nakładu — dorzucenie kolejnego pliku
-     * z A4 przelicza cenę WSZYSTKICH stron A4 do nowego, obowiązującego progu.
+     * z A4 lub zwiększenie Ilości przelicza cenę WSZYSTKICH stron A4 do nowego,
+     * obowiązującego progu. Nakład = Σ (strony × Ilość), więc kopie też liczą
+     * się do progu i do sumy.
      */
     function calculateA4Total(mode: "color" | "bw"): number {
       const totalA4Pages = files
         .filter((f) => f.format === "A4")
-        .reduce((sum, f) => sum + f.pageCount, 0);
+        .reduce((sum, f) => sum + f.pageCount * (f.printQty || 1), 0);
       if (totalA4Pages <= 0) return 0;
 
       return calculateSimplePrint({
@@ -533,7 +535,7 @@ export const CadUploadView: View = {
     function calculateA4UnitPrice(mode: "color" | "bw"): number {
       const totalA4Pages = files
         .filter((f) => f.format === "A4")
-        .reduce((sum, f) => sum + f.pageCount, 0);
+        .reduce((sum, f) => sum + f.pageCount * (f.printQty || 1), 0);
       if (totalA4Pages <= 0) return 0;
 
       return calculateSimplePrint({
@@ -1153,15 +1155,33 @@ export const CadUploadView: View = {
       const newQty = parseInt(target.value, 10);
       files[index].printQty = !isNaN(newQty) && newQty >= 1 ? newQty : 1;
 
+      // Przeliczamy ceny WSZYSTKICH wierszy, nie tylko edytowanego: dla A4 cena
+      // jednostkowa zależy od łącznego nakładu A4 (Σ strony × Ilość), więc
+      // zmiana Ilości w jednym wierszu może przeskoczyć próg i zmienić cenę
+      // pozostałych wierszy A4. Aktualizujemy tylko .cad-price-cell (nie cały
+      // wiersz), więc input Ilości nie jest przebudowywany i nie traci focusu.
+      // A4 idzie ścieżką Druk A4/A3 (calculateA4RowPrice); reszta — CAD
+      // (calculateRowTotal). Wcześniej A4 liczono tu ścieżką CAD → 0,00 zł.
       const surcharge = calcSurchargeMultiplier();
-      const rowColor = calculateRowTotal(files[index], "color", surcharge);
-      const rowBw = calculateRowTotal(files[index], "bw", surcharge);
-      const priceCell = row.querySelector<HTMLElement>(".cad-price-cell");
-      if (priceCell) {
-        priceCell.innerHTML =
-          `<div class="cad-price-line"><span>🎨 Kolor</span><strong>${formatPLN(rowColor)}</strong></div>` +
-          `<div class="cad-price-line"><span>⚫ Cz-B</span><strong>${formatPLN(rowBw)}</strong></div>`;
-      }
+      tableBody.querySelectorAll<HTMLElement>("tr[data-file-id]").forEach((rowEl) => {
+        const rowId = Number(rowEl.dataset.fileId || "0");
+        const file = files.find((f) => f.id === rowId);
+        if (!file) return;
+        const rowColor =
+          file.format === "A4"
+            ? calculateA4RowPrice(file, "color")
+            : calculateRowTotal(file, "color", surcharge);
+        const rowBw =
+          file.format === "A4"
+            ? calculateA4RowPrice(file, "bw")
+            : calculateRowTotal(file, "bw", surcharge);
+        const priceCell = rowEl.querySelector<HTMLElement>(".cad-price-cell");
+        if (priceCell) {
+          priceCell.innerHTML =
+            `<div class="cad-price-line"><span>🎨 Kolor</span><strong>${formatPLN(rowColor)}</strong></div>` +
+            `<div class="cad-price-line"><span>⚫ Cz-B</span><strong>${formatPLN(rowBw)}</strong></div>`;
+        }
+      });
 
       renderSummary();
     });
