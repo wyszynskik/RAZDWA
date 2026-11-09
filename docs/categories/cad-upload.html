@@ -428,18 +428,24 @@
     line-height: 1.05;
   }
 
-  /* Etykieta nagłówka (Składanie/Skan) musi mieć własny ellipsis — th ma
-     overflow:hidden/text-overflow:ellipsis, ale nie klipuje w ten sposób
-     zagnieżdżonego flex-dziecka; bez tego tekst wylewał się na sąsiednią
-     kolumnę zamiast się przycinać. */
+  /* Etykieta nagłówka (Składanie/Skanowanie) pokazuje PEŁNE słowo — kolumny
+     poszerzone do 12% (min 52px), a label dostaje mniejszy font i może zawinąć
+     do 2 linii zamiast ucinać się do "Skła..."/"Sk...". Brak ellipsis: pełna
+     nazwa jest ważniejsza niż jedna linia, bo obcięty nagłówek nie mówi, co
+     zaznacza checkbox. */
   .results-table .header-toggle span {
     display: block;
     width: 100%;
     max-width: 100%;
     min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    overflow: visible;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    hyphens: auto;
+    font-size: 0.55rem;
+    letter-spacing: -0.2px;
+    line-height: 1.05;
+    text-align: center;
   }
 
   .results-table .header-toggle input[type="checkbox"] {
@@ -450,12 +456,12 @@
   }
 
   .results-table .col-lp     { width: 35px; min-width: 35px; }
-  .results-table .col-name   { width: 13%; }
-  .results-table .col-size   { width: 14%; white-space: nowrap; }
-  .results-table .col-fold   { width: 7%; }
-  .results-table .col-scan   { width: 6%; }
-  .results-table .col-qty    { width: 24%; }
-  .results-table .col-price  { width: 18%; }
+  .results-table .col-name   { width: 16%; }
+  .results-table .col-size   { width: 15%; white-space: nowrap; }
+  .results-table .col-fold   { width: 12%; min-width: 52px; }
+  .results-table .col-scan   { width: 12%; min-width: 52px; }
+  .results-table .col-qty    { width: 9%; }
+  .results-table .col-price  { width: 21%; }
   .results-table .col-remove { width: 5%; min-width: 30px; }
 
   /* NR — lekki odstęp od lewej krawędzi */
@@ -475,15 +481,16 @@
     padding-left: 10px !important;
   }
 
-  /* Składanie + Skan — wyśrodkowane (header-toggle + checkbox margin:auto),
-     bez dodatkowego przesunięcia — kolumny zwężone (9%/6%) pod Rozmiar, +20px
-     obcinało nagłówek "Skan" i checkbox poza widoczną szerokość. */
+  /* Składanie + Skanowanie — wyśrodkowane (header-toggle + checkbox
+     margin:auto). Kolumny poszerzone do 12% (min 52px), żeby pełne słowo
+     nagłówka mieściło się bez ucinania; wolną przestrzeń odzyskano z kolumny
+     Ilość (była 24% → 9%), która trzymała tylko wąski input. */
   #viewContainer .results-table th.col-fold,
   #viewContainer .results-table td.col-fold,
   #viewContainer .results-table th.col-scan,
   #viewContainer .results-table td.col-scan {
-    padding-left: 4px !important;
-    padding-right: 4px !important;
+    padding-left: 2px !important;
+    padding-right: 2px !important;
   }
 
   #viewContainer .results-table th.col-qty,
@@ -556,7 +563,7 @@
 
   .cad-price-header {
     display: flex;
-    justify-content: flex-end;
+    justify-content: flex-start;
     gap: 8px;
     align-items: center;
     width: 100%;
@@ -566,7 +573,7 @@
 
   .cad-price-line {
     display: flex;
-    justify-content: flex-end;
+    justify-content: flex-start;
     align-items: center;
     gap: 6px;
     white-space: nowrap;
@@ -913,22 +920,22 @@
       <thead>
         <tr>
           <th class="col-lp" style="width:35px;min-width:35px;">NR.</th>
-          <th class="col-name" style="width:13%;min-width:50px;">Nazwa</th>
-          <th class="col-size" style="width:14%;min-width:58px;">Rozmiar</th>
-          <th class="col-fold" style="width:7%;min-width:34px;">
+          <th class="col-name" style="width:16%;min-width:50px;">Nazwa</th>
+          <th class="col-size" style="width:15%;min-width:58px;">Rozmiar</th>
+          <th class="col-fold" style="width:12%;min-width:52px;">
             <div class="header-toggle">
-              <span>Składanie</span>
+              <span title="Składanie">Składanie</span>
               <input type="checkbox" id="foldAllCheck" aria-label="Zaznacz składanie dla wszystkich plików" title="Zaznacz wszystkie: składanie">
             </div>
           </th>
-          <th class="col-scan" style="width:6%;min-width:28px;">
+          <th class="col-scan" style="width:12%;min-width:52px;">
             <div class="header-toggle">
-              <span>Skan</span>
+              <span title="Skanowanie">Skanowanie</span>
               <input type="checkbox" id="scanAllCheck" aria-label="Zaznacz skanowanie dla wszystkich plików" title="Zaznacz wszystkie: skanowanie">
             </div>
           </th>
-          <th class="col-qty" style="width:24%;min-width:52px;">Ilość</th>
-          <th class="col-price" style="width:18%;min-width:70px;">
+          <th class="col-qty" style="width:9%;min-width:44px;">Ilość</th>
+          <th class="col-price" style="width:21%;min-width:70px;">
             <div class="cad-price-header">
               <span>Rodzaj</span>
               <span>Cena</span>

@@ -82,6 +82,27 @@ describe("detectFormatFromDimensions", () => {
     expect(detectFormatFromDimensions(214, 297)).toBe("nieformatowy"));
   it("realny A3 297×420 → A3, NIE A4 (krótsza strona 297mm daleko od 210mm A4)", () =>
     expect(detectFormatFromDimensions(297, 420)).toBe("A3"));
+
+  // ─── sub-A4 → A4 (wszystko, co mieści się w obrysie A4) ─────────────────────
+  // Reguła biznesowa: format = A4 dla każdego wycinka ≤ A4; dopiero dłuższy bok
+  // > 297mm wchodzi na ladder rolkowy A3+. Widok/cena patrzą na .format.
+  it("115×153 (etykieta < A4) → format A4", () =>
+    expect(detectFormatFromDimensions(115, 153, true).format).toBe("A4"));
+  it("197×105 (pasek < A4) → format A4", () =>
+    expect(detectFormatFromDimensions(197, 105, true).format).toBe("A4"));
+  it("148×210 (A5 mieści się w A4) → format A4", () =>
+    expect(detectFormatFromDimensions(148, 210, true).format).toBe("A4"));
+  it("210×297 → format A4, isFormatowy=true (kanoniczny arkusz)", () => {
+    const d = detectFormatFromDimensions(210, 297, true);
+    expect(d.format).toBe("A4");
+    expect(d.isFormatowy).toBe(true);
+  });
+  it("115×153 → format A4, ale isFormatowy=false (wycinek, nie kanoniczny A4)", () =>
+    expect(detectFormatFromDimensions(115, 153, true).isFormatowy).toBe(false));
+  it("393×115 (dłuższy bok 393 > 297) → format A3, NIE A4", () =>
+    expect(detectFormatFromDimensions(393, 115, true).format).toBe("A3"));
+  it("sub-A4 legacy API (bez details) nadal 'nieformatowy' dla niekanonicznego", () =>
+    expect(detectFormatFromDimensions(115, 153)).toBe("nieformatowy"));
 });
 
 // ─── calculatePriceFromDimensions ─────────────────────────────────────────────
