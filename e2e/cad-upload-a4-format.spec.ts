@@ -112,11 +112,13 @@ test.describe("CAD Upload — A4 wykryty i wyceniony progami Druk A4/A3 przy mix
 
   test("input Ilość nie nachodzi na kolumnę Cena (blokowało klik)", async ({ page }, testInfo) => {
     // Layout aplikacji to app-grid (left-col = ten widok, prawa kolumna =
-    // koszyk) — nawet na zwykłym desktopie left-col ma tylko ~400px, nie
-    // pełną szerokość okna. Fixed 60px input w wąskiej kolumnie Ilość (z
-    // overflow:visible) nachodził na sąsiednią kolumnę Cena, blokując klik.
-    // 1200px okna → ~406px left-col, realistyczny desktop z otwartym koszykiem.
-    await page.setViewportSize({ width: 1200, height: 800 });
+    // koszyk na stałe widoczny) — nawet na zwykłym desktopie left-col ma
+    // tylko ~250-400px, nie pełną szerokość okna. Input (32px, bez
+    // natywnego spinnera — usunięty bo sam spinner nie mieścił się w ogóle)
+    // nachodził na sąsiednią kolumnę Cena przez zbyt wąską kolumnę Ilość,
+    // blokując klik. 1000px okna → ~241px tabeli, celowo ciaśniej niż
+    // zmierzone minimum, z 10px marginesem w asercji niżej.
+    await page.setViewportSize({ width: 1000, height: 800 });
 
     const { PDFDocument } = await import("pdf-lib");
     const doc = await PDFDocument.create();
@@ -143,7 +145,9 @@ test.describe("CAD Upload — A4 wykryty i wyceniony progami Druk A4/A3 przy mix
     expect(qtyBox).not.toBeNull();
     expect(priceBox).not.toBeNull();
     // Prawa krawędź inputu musi być po LEWEJ od lewej krawędzi komórki Cena.
-    expect(qtyBox!.x + qtyBox!.width).toBeLessThanOrEqual(priceBox!.x + 1);
+    // Margines 10px, nie tylko "nie zachodzi dokładnie" — bufor na różnice
+    // renderowania natywnego spinnera number-input między przeglądarkami.
+    expect(qtyBox!.x + qtyBox!.width).toBeLessThanOrEqual(priceBox!.x - 10);
 
     // Input musi też być realnie klikalny (nic nie przykrywa go z wierzchu).
     await qtyInput.click();

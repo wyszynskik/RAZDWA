@@ -364,29 +364,42 @@
   .results-table .col-lp,
   .results-table .col-fold,
   .results-table .col-scan,
-  .results-table .col-qty,
   .results-table .col-remove {
     text-align: center;
     white-space: nowrap;
   }
 
+  .results-table .col-qty {
+    white-space: nowrap;
+  }
+
+  /* Input wyrównany do LEWEJ krawędzi komórki, nie wyśrodkowany — przy
+     wyśrodkowaniu poszerzenie kolumny Ilość tylko dokładało puste miejsce
+     po OBU stronach stałego 60px inputu, przesuwając jego prawą krawędź
+     w prawo (na kolumnę Cena) zamiast dawać mu realnie więcej miejsca. */
+  .results-table td.col-qty {
+    text-align: left;
+  }
+  /* Bez natywnych strzałek spinnera — przy lewej kolumnie ~250-400px (obok
+     koszyka na stałe widocznego w app-grid) 60px z widocznym spinnerem nie
+     mieściło się razem z pozostałymi 6 kolumnami. Zwykłe pole liczbowe,
+     wpisywalne ręcznie lub strzałkami klawiatury. */
   .results-table td.col-qty input[type="number"] {
     box-sizing: border-box;
-    width: 100%;
-    max-width: 60px;
-    min-width: 36px;
-    height: 28px;
+    display: block;
+    width: 32px;
+    height: 26px;
     padding: 2px 2px 2px 4px;
     border: 1px solid var(--border);
     border-radius: 4px;
     font-size: 0.78rem;
     text-align: left;
+    -moz-appearance: textfield;
   }
   .results-table td.col-qty input[type="number"]::-webkit-outer-spin-button,
   .results-table td.col-qty input[type="number"]::-webkit-inner-spin-button {
-    -webkit-appearance: auto;
-    opacity: 1;
-    height: 26px;
+    -webkit-appearance: none;
+    margin: 0;
   }
 
   .results-table th.col-fold,
@@ -437,13 +450,13 @@
   }
 
   .results-table .col-lp     { width: 35px; min-width: 35px; }
-  .results-table .col-name   { width: 15%; }
-  .results-table .col-size   { width: 17%; white-space: nowrap; }
-  .results-table .col-fold   { width: 10%; }
-  .results-table .col-scan   { width: 9%; }
-  .results-table .col-qty    { width: 16%; text-align: center; }
-  .results-table .col-price  { width: 19%; }
-  .results-table .col-remove { width: 6%; min-width: 34px; }
+  .results-table .col-name   { width: 13%; }
+  .results-table .col-size   { width: 14%; white-space: nowrap; }
+  .results-table .col-fold   { width: 7%; }
+  .results-table .col-scan   { width: 6%; }
+  .results-table .col-qty    { width: 24%; }
+  .results-table .col-price  { width: 18%; }
+  .results-table .col-remove { width: 5%; min-width: 30px; }
 
   /* NR — lekki odstęp od lewej krawędzi */
   #viewContainer .results-table th.col-lp,
@@ -900,28 +913,28 @@
       <thead>
         <tr>
           <th class="col-lp" style="width:35px;min-width:35px;">NR.</th>
-          <th class="col-name" style="width:15%;min-width:70px;">Nazwa</th>
-          <th class="col-size" style="width:17%;min-width:75px;">Rozmiar</th>
-          <th class="col-fold" style="width:10%;min-width:58px;">
+          <th class="col-name" style="width:13%;min-width:50px;">Nazwa</th>
+          <th class="col-size" style="width:14%;min-width:58px;">Rozmiar</th>
+          <th class="col-fold" style="width:7%;min-width:34px;">
             <div class="header-toggle">
               <span>Składanie</span>
               <input type="checkbox" id="foldAllCheck" aria-label="Zaznacz składanie dla wszystkich plików" title="Zaznacz wszystkie: składanie">
             </div>
           </th>
-          <th class="col-scan" style="width:9%;min-width:46px;">
+          <th class="col-scan" style="width:6%;min-width:28px;">
             <div class="header-toggle">
               <span>Skan</span>
               <input type="checkbox" id="scanAllCheck" aria-label="Zaznacz skanowanie dla wszystkich plików" title="Zaznacz wszystkie: skanowanie">
             </div>
           </th>
-          <th class="col-qty" style="width:16%;min-width:56px;">Ilość</th>
-          <th class="col-price" style="width:19%;min-width:95px;">
+          <th class="col-qty" style="width:24%;min-width:52px;">Ilość</th>
+          <th class="col-price" style="width:18%;min-width:70px;">
             <div class="cad-price-header">
               <span>Rodzaj</span>
               <span>Cena</span>
             </div>
           </th>
-          <th class="col-remove" style="width:6%;min-width:34px;"></th>
+          <th class="col-remove" style="width:5%;min-width:26px;"></th>
         </tr>
       </thead>
       <tbody id="results-body"></tbody>
