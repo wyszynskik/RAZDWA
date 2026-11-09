@@ -34,10 +34,6 @@ async function neutralizeReloadTriggers(page: Page): Promise<void> {
   });
 }
 
-// 1x1 px czerwony PNG — wystarczający, żeby przeglądarka poprawnie zdekodowała wymiary.
-const TINY_PNG_BASE64 =
-  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
-
 test.describe("CAD upload — checkboxy 'zaznacz wszystkie' z wieloma plikami", () => {
   test.beforeEach(async ({ page }) => {
     await neutralizeReloadTriggers(page);
@@ -49,10 +45,17 @@ test.describe("CAD upload — checkboxy 'zaznacz wszystkie' z wieloma plikami", 
     const dir = testInfo.outputPath("cad-fixtures");
     const fs = await import("node:fs");
     fs.mkdirSync(dir, { recursive: true });
-    const pngBuffer = Buffer.from(TINY_PNG_BASE64, "base64");
+    // Pliki MUSZĄ być składalne, więc większe niż A4: od chwili gdy każdy
+    // wycinek ≤ A4 (210×297) klasyfikuje się jako A4, a A4 ma wyłączone
+    // checkboxy składania/skanowania (bez ceny CAD). A3 (842×1191pt) daje
+    // format A3 → fold-check aktywny, czyli realnie testuje "zaznacz wszystkie".
+    const { PDFDocument } = await import("pdf-lib");
+    const a3Doc = await PDFDocument.create();
+    a3Doc.addPage([842, 1191]);
+    const a3Bytes = await a3Doc.save();
     const files = Array.from({ length: 6 }, (_, i) => {
-      const filePath = join(dir, `test-${i + 1}.png`);
-      fs.writeFileSync(filePath, pngBuffer);
+      const filePath = join(dir, `test-${i + 1}.pdf`);
+      fs.writeFileSync(filePath, a3Bytes);
       return filePath;
     });
 

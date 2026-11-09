@@ -460,7 +460,7 @@
   .results-table .col-size   { width: 15%; white-space: nowrap; }
   .results-table .col-fold   { width: 12%; min-width: 52px; }
   .results-table .col-scan   { width: 12%; min-width: 52px; }
-  .results-table .col-qty    { width: 9%; }
+  .results-table .col-qty    { width: 50px; min-width: 50px; }
   .results-table .col-price  { width: 21%; }
   .results-table .col-remove { width: 5%; min-width: 30px; }
 
@@ -484,7 +484,8 @@
   /* Składanie + Skanowanie — wyśrodkowane (header-toggle + checkbox
      margin:auto). Kolumny poszerzone do 12% (min 52px), żeby pełne słowo
      nagłówka mieściło się bez ucinania; wolną przestrzeń odzyskano z kolumny
-     Ilość (była 24% → 9%), która trzymała tylko wąski input. */
+     Ilość: była 24% (procent → na szerokim ekranie pusta dziura), teraz stałe
+     50px — mieści input 32px + ~10px bufor przed kolumną Cena i nie puchnie. */
   #viewContainer .results-table th.col-fold,
   #viewContainer .results-table td.col-fold,
   #viewContainer .results-table th.col-scan,
@@ -934,7 +935,7 @@
               <input type="checkbox" id="scanAllCheck" aria-label="Zaznacz skanowanie dla wszystkich plików" title="Zaznacz wszystkie: skanowanie">
             </div>
           </th>
-          <th class="col-qty" style="width:9%;min-width:44px;">Ilość</th>
+          <th class="col-qty" style="width:50px;min-width:50px;">Ilość</th>
           <th class="col-price" style="width:21%;min-width:70px;">
             <div class="cad-price-header">
               <span>Rodzaj</span>
