@@ -62,18 +62,27 @@ function detectFormatDetailsFromDimensions(widthMm: number, heightMm: number): C
   const shorter = Math.min(widthMm, heightMm);
   const longer = Math.max(widthMm, heightMm);
 
-  // A4 nie jest szerokością rolki (jak A3+) — to jedyny arkusz o dwóch
-  // ustalonych wymiarach w tej kategorii, więc wymaga dopasowania 2D
-  // (oba wymiary blisko 210×297), a nie tylko sprawdzenia krótszej strony.
-  // Musi być sprawdzone PRZED ladder'em A3+ poniżej: 210mm < 297mm, więc bez
-  // tego trafiałoby w pierwszy branch ladder'a (shorter<=300 → A3).
+  // A4 to najmniejszy arkusz w tej kategorii i jednocześnie jej dolna granica:
+  // wszystko, co MIEŚCI SIĘ w obrysie A4 (210×297) — zarówno dokładnie A4, jak
+  // i każdy mniejszy wycinek (np. etykieta 115×153) — klasyfikujemy jako A4.
+  // Dopiero przekroczenie obrysu A4 (dłuższy bok > 297) wchodzi na ladder
+  // rolkowy A3+. A4 nie jest szerokością rolki (jak A3+), więc wymaga porównania
+  // 2D, a nie tylko krótszej strony. Musi być sprawdzone PRZED ladder'em A3+
+  // poniżej: 210mm < 297mm, więc bez tego sub-A4 trafiałoby w pierwszy branch
+  // ladder'a (shorter<=300 → A3).
   // A4 nie ma ceny (ani w formatowe, ani w mb) — patrz guard "A4" w
   // calculateCadPrintPriceWithDimensions / calculateCadFoldingPrice poniżej.
-  if (
+  //
+  // isFormatowy (kontrakt legacy detectFormatFromDimensions → "nieformatowy")
+  // pozostaje zarezerwowane dla kanonicznego A4 (blisko 210×297); mniejszy
+  // wycinek dostaje format "A4", ale isFormatowy=false.
+  const fitsWithinA4 =
+    shorter <= 210 + FORMAT_TOLERANCE_CLASSIFY && longer <= 297 + FORMAT_TOLERANCE_CLASSIFY;
+  const isCanonicalA4 =
     Math.abs(shorter - 210) <= FORMAT_TOLERANCE_CLASSIFY &&
-    Math.abs(longer - 297) <= FORMAT_TOLERANCE_CLASSIFY
-  ) {
-    return { format: "A4", isFormatowy: true, isStandardWidth: true };
+    Math.abs(longer - 297) <= FORMAT_TOLERANCE_CLASSIFY;
+  if (fitsWithinA4) {
+    return { format: "A4", isFormatowy: isCanonicalA4, isStandardWidth: true };
   }
 
   function inRange(value: number, target: number): boolean {
