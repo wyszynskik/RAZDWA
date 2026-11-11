@@ -697,18 +697,47 @@ function getAddablePrefixOptions(category: PriceCategory): PrefixOption[] {
         { value: "plakaty-format-180g-pp-nieformatowe-", label: "Plakaty 180g PP nieformatowe" }
       );
       break;
-    case "plakaty-a4-a3":
+    case "plakaty-a4-a3": {
+      // Canon ma SZTYWNĄ, zakodowaną listę progów ilościowych (plakaty.ts) —
+      // bez dynamicznego scalania jak Dyplomy/Broszury. Wpisanie tu ilości,
+      // która już istnieje w kodzie, nadpisuje jej cenę (działa). Wpisanie
+      // NOWEJ ilości zapisuje martwy klucz, którego kalkulator nigdy nie
+      // odczyta — etykieta ostrzega, żeby nie dawać fałszywego wrażenia, że
+      // to dodaje nowy próg.
+      const canonSuffix = " — tylko nadpisanie istniejącej ceny progu, NIE dodaje nowej ilości";
       options.push(
-        { value: "plakaty-maly-canon-margin-170-", label: "Mały Canon z marginesem 130/170g" },
-        { value: "plakaty-maly-canon-no-margin-170-", label: "Mały Canon bez marginesu 130/170g" },
-        { value: "plakaty-maly-canon-margin-200-", label: "Mały Canon z marginesem 200g" },
-        { value: "plakaty-maly-canon-no-margin-200-", label: "Mały Canon bez marginesu 200g" },
-        { value: "plakaty-duzy-canon-a4-170-kreda-130-170-", label: "Duży Canon A4 130/170g" },
-        { value: "plakaty-duzy-canon-a3-170-kreda-130-170-", label: "Duży Canon A3 130/170g" },
-        { value: "plakaty-duzy-canon-a4-200-kreda-200-", label: "Duży Canon A4 200g" },
-        { value: "plakaty-duzy-canon-a3-200-kreda-200-", label: "Duży Canon A3 200g" }
+        {
+          value: "plakaty-maly-canon-margin-170-",
+          label: `Mały Canon z marginesem 130/170g${canonSuffix}`,
+        },
+        {
+          value: "plakaty-maly-canon-no-margin-170-",
+          label: `Mały Canon bez marginesu 130/170g${canonSuffix}`,
+        },
+        {
+          value: "plakaty-maly-canon-margin-200-",
+          label: `Mały Canon z marginesem 200g${canonSuffix}`,
+        },
+        {
+          value: "plakaty-maly-canon-no-margin-200-",
+          label: `Mały Canon bez marginesu 200g${canonSuffix}`,
+        },
+        {
+          value: "plakaty-duzy-canon-a4-170-kreda-130-170-",
+          label: `Duży Canon A4 130/170g${canonSuffix}`,
+        },
+        {
+          value: "plakaty-duzy-canon-a3-170-kreda-130-170-",
+          label: `Duży Canon A3 130/170g${canonSuffix}`,
+        },
+        {
+          value: "plakaty-duzy-canon-a4-200-kreda-200-",
+          label: `Duży Canon A4 200g${canonSuffix}`,
+        },
+        { value: "plakaty-duzy-canon-a3-200-kreda-200-", label: `Duży Canon A3 200g${canonSuffix}` }
       );
       break;
+    }
     case "artykuly":
       options.push(
         { value: "artykuly-teczka-", label: "Teczki" },
@@ -917,9 +946,6 @@ function getAddablePrefixOptions(category: PriceCategory): PrefixOption[] {
         { value: "koperty-", label: "Koperta (typ A–G, etykieta = litera)" },
         { value: "artykuly-koperta-", label: "Koperta – pozycja artykułu biurowego" }
       );
-      break;
-    case "modifiers":
-      options.push({ value: "modifier-", label: "Nowa dopłata globalna (mnożnik procentowy)" });
       break;
   }
 
@@ -1933,7 +1959,15 @@ export function getRenderedCategories(prices: PriceMap): PriceCategory[] {
 }
 
 function getAddableCategories(): PriceCategory[] {
-  return BASE_PRICE_CATEGORIES.filter((category) => category.id !== "inne");
+  // "modifiers" (Dopłaty globalne) wyłączone celowo: generyczny "Dodaj
+  // wariant" potrafi zapisać nowy klucz modifier-xxx, ale żaden kalkulator
+  // nie czyta dynamicznie nazwanych kluczy modifier-* (każda dopłata jest
+  // na stałe wpisana w kodzie kategorii, która jej używa) — dodany tu wiersz
+  // byłby martwą liczbą bez żadnego efektu. Istniejące dopłaty (express/
+  // satyna/modigliani) nadal edytowalne na zwykłej liście cen tej kategorii.
+  return BASE_PRICE_CATEGORIES.filter(
+    (category) => category.id !== "inne" && category.id !== "modifiers"
+  );
 }
 
 const CAD_SETTINGS_ORDER: string[] = [
@@ -3957,6 +3991,13 @@ export const UstawieniaView: View = {
                   <span class="settings-wizard-title">Nowy wariant / produkt</span>
                   <span id="pending-count-badge" class="settings-pending-badge" style="display:none"></span>
                 </summary>
+
+                <div class="hint" style="margin-bottom:8px;">
+                  Tu dodajesz nowy próg ilościowy do istniejącego produktu albo całkiem nową,
+                  niezależną podkategorię (opcja "Nowa, niezależna podkategoria…" w punkcie 2).
+                  Nowy papier/materiał widoczny w kilku kategoriach naraz → sekcja "Dodaj
+                  materiał" niżej. Nowy format w druku CAD → sekcja "Dodaj format CAD" niżej.
+                </div>
 
                 <label class="settings-field">
                   <span class="settings-action-label">1. Kategoria</span>
