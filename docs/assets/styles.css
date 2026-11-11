@@ -3788,6 +3788,26 @@ a.employee-mode-btn {
   color: #64748b;
 }
 
+.settings-wizard-header--collapsible {
+  cursor: pointer;
+  list-style: none;
+}
+
+.settings-wizard-header--collapsible::-webkit-details-marker {
+  display: none;
+}
+
+.settings-wizard-header--collapsible::after {
+  content: "▸";
+  margin-left: auto;
+  color: #64748b;
+  transition: transform 0.15s ease;
+}
+
+details[open] > .settings-wizard-header--collapsible::after {
+  transform: rotate(90deg);
+}
+
 .settings-pending-badge {
   display: inline-flex;
   align-items: center;

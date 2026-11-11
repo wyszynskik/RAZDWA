@@ -56,6 +56,25 @@ describe("Ustawienia category mapping", () => {
     expect(canvasCategory?.label).toBe("Canvas / Płótno");
   });
 
+  it("assigns a new dynamic laminowanie material (Dodaj materiał) to Introligatornia, not Pozostałe", () => {
+    // Regresja: PRICE_KEY_PREFIX.laminowanieFormat = "laminowanie" (bare),
+    // ale productCat.ts miał tylko wąskie prefiksy a3/a4/a5/a6/intro/oprawa/
+    // bindowanie — nowy materiał (np. nowa gramatura) nie trafiał w żaden z
+    // nich i lądował w "Pozostałe". Klucz poniżej symuluje dokładnie taki
+    // nowy materiał dodany przez "Dodaj materiał" (nie jeden z 7 znanych
+    // rozmiarów/usług).
+    const prices = {
+      "laminowanie-kreda250mat-1-50": 12,
+    };
+
+    const categories = getRenderedCategories(prices);
+    const hasFallback = categories.some((category) => category.id === "inne");
+    expect(hasFallback).toBe(false);
+
+    const laminowanieCategory = categories.find((category) => category.id === "laminowanie");
+    expect(laminowanieCategory).toBeDefined();
+  });
+
   it("emphasizes A3 and A5 rows in laminowanie", () => {
     expect(isLaminowanieEmphasizedRow("laminowanie-a3-1-50")).toBe(true);
     expect(isLaminowanieEmphasizedRow("laminowanie-a5-1-50")).toBe(true);
