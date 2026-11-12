@@ -8,6 +8,7 @@ import {
   resetPrices,
   PRICES_STORAGE_KEY,
 } from "../src/services/priceService";
+import { buildSurchargeVariant, surchargeRateKey } from "../src/core/dynamicSurcharges";
 
 describe("Banner pricing", () => {
   it("should calculate Powlekany 10m2 correctly (53 PLN/m2)", () => {
@@ -156,5 +157,30 @@ describe("Banner pricing — materiał dodany dynamicznie (dynamicMaterials.ts)"
     const result = calculateBanner({ material: derivedId, areaM2: 1, oczkowanie: false });
 
     expect(result.tierPrice).toBe(Math.round(999 * 1.1 * 100) / 100);
+  });
+
+  it("dopłata globalna (Dwustronne +40%) dolicza się do totalPrice", () => {
+    let storage: Record<string, string> = {};
+    vi.stubGlobal("localStorage", {
+      getItem: (k: string) => storage[k] ?? null,
+      setItem: (k: string, v: string) => {
+        storage[k] = String(v);
+      },
+      removeItem: (k: string) => {
+        delete storage[k];
+      },
+    });
+
+    setVariantDefinitions([buildSurchargeVariant("dwustronne", "Dwustronne", ["banner"])]);
+    setPrice("defaultPrices." + surchargeRateKey("dwustronne"), 0.4);
+
+    const base = calculateBanner({ material: "powlekany", areaM2: 10, oczkowanie: false });
+    const withSurcharge = calculateBanner({
+      material: "powlekany",
+      areaM2: 10,
+      oczkowanie: false,
+      checkedSurchargeIds: ["dwustronne"],
+    });
+    expect(withSurcharge.totalPrice).toBeCloseTo(base.totalPrice * 1.4, 2);
   });
 });
