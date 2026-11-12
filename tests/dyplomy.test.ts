@@ -5,7 +5,13 @@ import {
   calculateDyplomyEko,
   getResolvedDyplomyEkoTiers,
 } from "../src/categories/dyplomy";
-import { getPrice, resetPrices, setPrice } from "../src/services/priceService";
+import {
+  getPrice,
+  resetPrices,
+  setPrice,
+  setVariantDefinitions,
+} from "../src/services/priceService";
+import { buildSurchargeVariant, surchargeRateKey } from "../src/core/dynamicSurcharges";
 
 let storageData: Record<string, string> = {};
 
@@ -27,6 +33,7 @@ beforeEach(() => {
 
 afterEach(() => {
   resetPrices();
+  setVariantDefinitions([]);
 });
 
 describe("Dyplomy logic", () => {
@@ -381,5 +388,71 @@ describe("Dyplomy Ekonomiczny", () => {
     setPrice("defaultPrices", { ...prices, "dyplomy-eko-A4-qty-777": 321 });
     const tiersA5 = getResolvedDyplomyEkoTiers("A5");
     expect(tiersA5.find((t) => t.qty === 777)).toBeUndefined();
+  });
+
+  it("dopłata globalna (Dwustronne +40%) dolicza się do Dyplomów standard, gdy zaznaczona", () => {
+    setVariantDefinitions([buildSurchargeVariant("dwustronne", "Dwustronne", ["dyplomy"])]);
+    setPrice("defaultPrices." + surchargeRateKey("dwustronne"), 0.4);
+
+    const withoutSurcharge = calculateDyplomy({
+      qty: 10,
+      format: "A4",
+      sides: 1,
+      isSatin: false,
+      express: false,
+    });
+    const withSurcharge = calculateDyplomy({
+      qty: 10,
+      format: "A4",
+      sides: 1,
+      isSatin: false,
+      express: false,
+      checkedSurchargeIds: ["dwustronne"],
+    });
+
+    expect(withSurcharge.totalPrice).toBeCloseTo(withoutSurcharge.totalPrice * 1.4, 2);
+  });
+
+  it("dopłata globalna przypisana do innej kategorii nie wpływa na Dyplomy", () => {
+    setVariantDefinitions([buildSurchargeVariant("inna", "Inna", ["wlepki"])]);
+    setPrice("defaultPrices." + surchargeRateKey("inna"), 0.5);
+
+    const result = calculateDyplomy({
+      qty: 10,
+      format: "A4",
+      sides: 1,
+      isSatin: false,
+      express: false,
+      checkedSurchargeIds: ["inna"],
+    });
+    const baseline = calculateDyplomy({
+      qty: 10,
+      format: "A4",
+      sides: 1,
+      isSatin: false,
+      express: false,
+    });
+    expect(result.totalPrice).toBe(baseline.totalPrice);
+  });
+
+  it("dopłata globalna dolicza się do Dyplomów Ekonomiczny z własnym categoryId", () => {
+    setVariantDefinitions([buildSurchargeVariant("dwustronne-eko", "Dwustronne", ["dyplomy-eko"])]);
+    setPrice("defaultPrices." + surchargeRateKey("dwustronne-eko"), 0.4);
+
+    const withoutSurcharge = calculateDyplomyEko({
+      format: "A4",
+      qty: 50,
+      isSatin: false,
+      express: false,
+    });
+    const withSurcharge = calculateDyplomyEko({
+      format: "A4",
+      qty: 50,
+      isSatin: false,
+      express: false,
+      checkedSurchargeIds: ["dwustronne-eko"],
+    });
+
+    expect(withSurcharge.totalPrice).toBeCloseTo(withoutSurcharge.totalPrice * 1.4, 2);
   });
 });
