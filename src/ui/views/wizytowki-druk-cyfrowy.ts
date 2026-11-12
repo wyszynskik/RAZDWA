@@ -156,12 +156,11 @@ export const WizytowkiView: View = {
 
     const isExternal = () => {
       const family = familySelect?.value;
-      return family === "foliowane" || family === "softtouch" || family === "deluxe";
+      return family === "softtouch" || family === "deluxe";
     };
 
     const getExternalTypeValue = () => {
       const family = familySelect?.value;
-      if (family === "foliowane") return "foliowane";
       if (family === "softtouch") return "softtouch_350";
       return extTypeSelect?.value || "deluxe_uv3d_softtouch";
     };
@@ -172,7 +171,12 @@ export const WizytowkiView: View = {
       if (standardOpts) standardOpts.style.display = external ? "none" : "block";
       if (paperGroup) paperGroup.style.display = external ? "none" : "";
       if (qtyGroup) qtyGroup.style.display = external ? "none" : "";
-      if (legendStandardEl) legendStandardEl.style.display = external ? "none" : "";
+      // Legenda pokazuje tylko tabelę "bez laminatu" — przy Foliowane byłaby
+      // myląca (inne, osobne ceny pod wizytowki-*-matt_gloss-*), więc chowamy
+      // ją też tutaj, nie tylko dla faktycznie zewnętrznych rodzajów.
+      if (legendStandardEl) {
+        legendStandardEl.style.display = external || family === "foliowane" ? "none" : "";
+      }
       if (externalTopInfo) externalTopInfo.style.display = external ? "block" : "none";
       if (externalForm) externalForm.style.display = external ? "block" : "none";
       if (extTypeGroup) extTypeGroup.style.display = family === "deluxe" ? "block" : "none";
@@ -331,10 +335,11 @@ export const WizytowkiView: View = {
       const paperVal = paperSelect.value;
       const isSatin = paperVal.startsWith("satyna");
 
+      const isFoliowane = familySelect.value === "foliowane";
       currentOptions = {
         family: "standard",
         format: sizeSelect.value,
-        folia: "none",
+        folia: isFoliowane ? "matt_gloss" : "none",
         qty,
         express: ctx.expressMode,
         checkedSurchargeIds: collectCheckedSurchargeIds(surchargesBox),
@@ -400,7 +405,8 @@ export const WizytowkiView: View = {
           ctx.cart.addItem({
             id: `wizytowki-${Date.now()}`,
             category: "Wizytówki",
-            name: "Wizytówki Standard",
+            name:
+              familySelect.value === "foliowane" ? "Wizytówki Foliowane" : "Wizytówki Standard",
             quantity: currentOptions.qty,
             unit: "szt",
             unitPrice: parseFloat((currentResult.totalPrice / currentOptions.qty).toFixed(2)),
