@@ -1,5 +1,6 @@
 import { getPrice } from "../services/priceService";
 import { resolveStoredPrice, getDefaultPricesMap } from "../core/compat";
+import { applySurcharges } from "../core/dynamicSurcharges";
 
 const pricingData: any = getPrice("zaproszeniaKreda");
 
@@ -11,6 +12,7 @@ export interface ZaproszeniaKredaOptions {
   isSatin: boolean;
   isModigliani: boolean;
   express: boolean;
+  checkedSurchargeIds?: string[];
 }
 
 export interface ZaproszeniaKredaResult {
@@ -104,6 +106,13 @@ export function calculateZaproszeniaKreda(
   if (options.isModigliani) multiplier += modiglianiRate;
   if (options.express) multiplier += expressRate;
 
-  const totalPrice = parseFloat((basePrice * multiplier).toFixed(2));
+  const totalPriceBeforeSurcharges = parseFloat((basePrice * multiplier).toFixed(2));
+  const totalPrice = parseFloat(
+    applySurcharges(
+      "zaproszenia",
+      totalPriceBeforeSurcharges,
+      options.checkedSurchargeIds ?? []
+    ).toFixed(2)
+  );
   return { basePrice, totalPrice, interpolated };
 }

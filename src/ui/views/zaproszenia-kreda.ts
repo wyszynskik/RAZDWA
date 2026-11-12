@@ -6,6 +6,10 @@ import {
 } from "../../categories/zaproszenia-kreda";
 import { formatPLN } from "../../core/money";
 import { resolveStoredPrice, getDefaultPricesMap } from "../../core/compat";
+import {
+  renderSurchargeCheckboxesHtml,
+  collectCheckedSurchargeIds,
+} from "../../core/dynamicSurcharges";
 import { getPrice } from "../../services/priceService";
 import { setFieldHint, flashFieldHints, setButtonGuarded } from "../viewHelpers";
 
@@ -28,6 +32,13 @@ export const ZaproszeniaKredaView: View = {
       const envelopeTypeSel = container.querySelector("#zapEnvelopeType") as HTMLSelectElement;
       const envelopeQtyInput = container.querySelector("#zapEnvelopeQty") as HTMLInputElement;
       const addToCartBtn = container.querySelector("#addToCartBtn") as HTMLButtonElement;
+      const surchargesBox = document.createElement("div");
+      surchargesBox.id = "zap-surcharges";
+      addToCartBtn.insertAdjacentElement("beforebegin", surchargesBox);
+      const renderSurcharges = (): void => {
+        surchargesBox.innerHTML = renderSurchargeCheckboxesHtml("zaproszenia");
+      };
+      renderSurcharges();
       const formatHint = container.querySelector("#zapFormat-hint") as HTMLElement | null;
       const qtyHint = container.querySelector("#zapQty-hint") as HTMLElement | null;
       const fallbackHint = container.querySelector(
@@ -186,6 +197,7 @@ export const ZaproszeniaKredaView: View = {
           isSatin,
           isModigliani,
           express: ctx.expressMode,
+          checkedSurchargeIds: collectCheckedSurchargeIds(surchargesBox),
         };
 
         const modiglianiRate = resolveStoredPrice("modifier-modigliani", 0.2);
@@ -301,6 +313,7 @@ export const ZaproszeniaKredaView: View = {
       updateLegend();
       ctx?.on?.("prices-updated", () => {
         updateLegend();
+        renderSurcharges();
         calculate();
       });
 
