@@ -422,6 +422,24 @@ describe("Plakaty A4-A3 — dopłaty globalne (core/dynamicSurcharges.ts)", () =
     expect(withSurcharge.totalPrice).toBeCloseTo(base.totalPrice * 1.4, 2);
   });
 
+  it("calculatePlakatyFormat (Solwent/plakaty-wf): dopłata +40% dolicza się do totalPrice", () => {
+    setVariantDefinitions([buildSurchargeVariant("dwustronne", "Dwustronne", ["solwent"])]);
+    setPrice("defaultPrices." + surchargeRateKey("dwustronne"), 0.4);
+
+    const base = calculatePlakatyFormat({
+      materialId: "120g-formatowe",
+      formatKey: "841x1189",
+      qty: 1,
+    });
+    const withSurcharge = calculatePlakatyFormat({
+      materialId: "120g-formatowe",
+      formatKey: "841x1189",
+      qty: 1,
+      checkedSurchargeIds: ["dwustronne"],
+    });
+    expect(withSurcharge.totalPrice).toBeCloseTo(base.totalPrice * 1.4, 2);
+  });
+
   it("dopłata nieprzypisana do plakaty-a4-a3 jest ignorowana", () => {
     setVariantDefinitions([buildSurchargeVariant("inna", "Inna", ["wlepki"])]);
     setPrice("defaultPrices." + surchargeRateKey("inna"), 0.5);

@@ -8,6 +8,7 @@ import {
   resetPrices,
   PRICES_STORAGE_KEY,
 } from "../src/services/priceService";
+import { buildSurchargeVariant, surchargeRateKey } from "../src/core/dynamicSurcharges";
 
 describe("Solwent Plakaty Category E2E", () => {
   const material = "Papier 150g półmat";
@@ -126,5 +127,30 @@ describe("Solwent Plakaty — materiał dodany dynamicznie (dynamicMaterials.ts)
     const result = calculateSolwentPlakaty({ areaM2: 1, material: derivedId });
 
     expect(result.tierPrice).toBe(Math.round(999 * 1.1 * 100) / 100);
+  });
+
+  it("dopłata globalna (Dwustronne +40%) dolicza się do totalPrice", () => {
+    storage = {};
+    vi.stubGlobal("localStorage", {
+      getItem: (k: string) => storage[k] ?? null,
+      setItem: (k: string, v: string) => {
+        storage[k] = String(v);
+      },
+      removeItem: (k: string) => {
+        delete storage[k];
+      },
+    });
+
+    setVariantDefinitions([buildSurchargeVariant("dwustronne", "Dwustronne", ["solwent"])]);
+    setPrice("defaultPrices." + surchargeRateKey("dwustronne"), 0.4);
+
+    const material = "Papier 150g półmat";
+    const base = calculateSolwentPlakaty({ areaM2: 1, material });
+    const withSurcharge = calculateSolwentPlakaty({
+      areaM2: 1,
+      material,
+      checkedSurchargeIds: ["dwustronne"],
+    });
+    expect(withSurcharge.totalPrice).toBeCloseTo(base.totalPrice * 1.4, 2);
   });
 });

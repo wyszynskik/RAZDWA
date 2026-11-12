@@ -11,6 +11,10 @@ import { formatPLN } from "../../core/money";
 import { parseNumericInput } from "../../core/numericInput";
 import { getPrice } from "../../services/priceService";
 import { resolveStoredPrice } from "../../core/compat";
+import {
+  renderSurchargeCheckboxesHtml,
+  collectCheckedSurchargeIds,
+} from "../../core/dynamicSurcharges";
 import { escapeHtml } from "../../core/validation";
 import {
   setFieldHint,
@@ -79,6 +83,13 @@ export const PlakatyWFView: View = {
     const trim2QtyInput = container.querySelector("#p-trim-2-qty") as HTMLInputElement | null;
     const trim4QtyInput = container.querySelector("#p-trim-4-qty") as HTMLInputElement | null;
     const addBtn = container.querySelector("#p-add-to-cart") as HTMLButtonElement;
+    const surchargesBox = document.createElement("div");
+    surchargesBox.id = "p-surcharges";
+    addBtn.insertAdjacentElement("beforebegin", surchargesBox);
+    const renderSurcharges = (): void => {
+      surchargesBox.innerHTML = renderSurchargeCheckboxesHtml("solwent");
+    };
+    renderSurcharges();
     const materialHint = container.querySelector("#p-material-hint") as HTMLElement | null;
     const qtyHint = container.querySelector("#p-qty-hint") as HTMLElement | null;
     const resultBox = container.querySelector("#p-result-display") as HTMLElement;
@@ -284,6 +295,7 @@ export const PlakatyWFView: View = {
         qty,
         customLengthMm,
         express: ctx.expressMode,
+        checkedSurchargeIds: collectCheckedSurchargeIds(surchargesBox),
       });
       currentResult = res;
       const trimSurcharge = getTrimSurcharge();
@@ -362,6 +374,7 @@ export const PlakatyWFView: View = {
     ctx?.on?.("prices-updated", () => {
       try {
         ensureLegend();
+        renderSurcharges();
         calcWielkoformatowe();
       } catch (_) {
         /* ignore */

@@ -204,6 +204,7 @@ export interface PlakatyFormatInput {
   qty: number;
   customLengthMm?: number;
   express?: boolean;
+  checkedSurchargeIds?: string[];
 }
 
 export interface PlakatyFormatResult {
@@ -283,6 +284,13 @@ export function calculatePlakatyFormat(input: PlakatyFormatInput): PlakatyFormat
     }
   }
 
+  const totalPriceBeforeSurcharges = parseFloat((basePrice + modifiersTotal).toFixed(2));
+  const totalPriceWithSurcharges = parseFloat(
+    applySurcharges("solwent", totalPriceBeforeSurcharges, input.checkedSurchargeIds ?? []).toFixed(
+      2
+    )
+  );
+
   return {
     materialName: selectedMaterial.name,
     formatKey: input.formatKey,
@@ -296,7 +304,7 @@ export function calculatePlakatyFormat(input: PlakatyFormatInput): PlakatyFormat
     pricePerPiece,
     basePrice,
     modifiersTotal,
-    totalPrice: parseFloat((basePrice + modifiersTotal).toFixed(2)),
+    totalPrice: totalPriceWithSurcharges,
     appliedModifiers,
   };
 }
