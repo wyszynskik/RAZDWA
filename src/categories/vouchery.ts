@@ -8,6 +8,7 @@ import {
   getInterpolatedPrice,
   resolveStoredPrice,
 } from "../core/compat";
+import { applySurcharges } from "../core/dynamicSurcharges";
 
 type VoucherSide = "jed" | "dwu";
 
@@ -104,6 +105,7 @@ export interface VoucheryOptions {
   satin: boolean;
   modigliani: boolean;
   express: boolean;
+  checkedSurchargeIds?: string[];
 }
 
 export function quoteVouchery(options: VoucheryOptions): any {
@@ -128,7 +130,12 @@ export function quoteVouchery(options: VoucheryOptions): any {
 
   const expressModifier = options.express ? basePrice * expressRate : 0;
   const modifiersTotal = materialModifiersTotal + expressModifier;
-  const total = basePrice + modifiersTotal;
+  const totalBeforeSurcharges = basePrice + modifiersTotal;
+  const total = applySurcharges(
+    "vouchery",
+    totalBeforeSurcharges,
+    options.checkedSurchargeIds ?? []
+  );
 
   return {
     tierQty: selectedTier.qty,

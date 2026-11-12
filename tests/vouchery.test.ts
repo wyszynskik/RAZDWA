@@ -1,9 +1,17 @@
-import { afterEach, describe, it, expect } from "vitest";
+import { afterEach, describe, it, expect, vi } from "vitest";
 import { quoteVouchery } from "../src/categories/vouchery";
-import { getPrice, resetPrices, setPrice } from "../src/services/priceService";
+import {
+  getPrice,
+  resetPrices,
+  setPrice,
+  setVariantDefinitions,
+} from "../src/services/priceService";
+import { buildSurchargeVariant, surchargeRateKey } from "../src/core/dynamicSurcharges";
 
 afterEach(() => {
   resetPrices();
+  setVariantDefinitions([]);
+  vi.unstubAllGlobals();
 });
 
 describe("Vouchery Category", () => {
@@ -142,5 +150,38 @@ describe("Vouchery Category", () => {
 
     expect(result.tierQty).toBe(50);
     expect(result.totalPrice).toBe(180);
+  });
+
+  it("dopłata globalna (Dwustronne +40%) dolicza się do totalPrice", () => {
+    let storage: Record<string, string> = {};
+    vi.stubGlobal("localStorage", {
+      getItem: (k: string) => storage[k] ?? null,
+      setItem: (k: string, v: string) => {
+        storage[k] = String(v);
+      },
+      removeItem: (k: string) => {
+        delete storage[k];
+      },
+    });
+
+    setVariantDefinitions([buildSurchargeVariant("dwustronne", "Dwustronne", ["vouchery"])]);
+    setPrice("defaultPrices." + surchargeRateKey("dwustronne"), 0.4);
+
+    const base = quoteVouchery({
+      qty: 5,
+      sides: "double",
+      satin: false,
+      modigliani: false,
+      express: false,
+    });
+    const withSurcharge = quoteVouchery({
+      qty: 5,
+      sides: "double",
+      satin: false,
+      modigliani: false,
+      express: false,
+      checkedSurchargeIds: ["dwustronne"],
+    });
+    expect(withSurcharge.totalPrice).toBeCloseTo(base.totalPrice * 1.4, 2);
   });
 });
