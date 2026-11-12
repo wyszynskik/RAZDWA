@@ -5,6 +5,10 @@ import { formatPLN } from "../../core/money";
 import { resolveStoredPrice } from "../../core/compat";
 import { getCombinedMaterials } from "../../core/dynamicMaterials";
 import {
+  renderSurchargeCheckboxesHtml,
+  collectCheckedSurchargeIds,
+} from "../../core/dynamicSurcharges";
+import {
   setFieldHint,
   flashFieldHints,
   setButtonGuarded,
@@ -71,6 +75,13 @@ export const FoliaSzronionaView: View = {
     const widthInput = container.querySelector("#fs-width") as HTMLInputElement;
     const heightInput = container.querySelector("#fs-height") as HTMLInputElement;
     const addToCartBtn = container.querySelector("#fs-add-to-cart") as HTMLButtonElement;
+    const surchargesBox = document.createElement("div");
+    surchargesBox.id = "fs-surcharges";
+    addToCartBtn.insertAdjacentElement("beforebegin", surchargesBox);
+    const renderSurcharges = (): void => {
+      surchargesBox.innerHTML = renderSurchargeCheckboxesHtml("folia");
+    };
+    renderSurcharges();
     const serviceHint = container.querySelector("#fs-service-hint") as HTMLElement | null;
     const dimsHint = container.querySelector("#fs-dims-hint") as HTMLElement | null;
     const resultDisplay = container.querySelector("#fs-result-display") as HTMLElement;
@@ -185,6 +196,7 @@ export const FoliaSzronionaView: View = {
         widthMm,
         heightMm,
         express: ctx.expressMode,
+        checkedSurchargeIds: collectCheckedSurchargeIds(surchargesBox),
       };
 
       const result = calculateFoliaSzroniona(currentOptions);
@@ -244,6 +256,7 @@ export const FoliaSzronionaView: View = {
     ctx?.on?.("prices-updated", () => {
       populateServiceSelect();
       ensureLegend();
+      renderSurcharges();
       performCalculation();
     });
 

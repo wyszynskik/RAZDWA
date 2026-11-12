@@ -7,12 +7,14 @@ import {
   type MaterialDefinition,
   type MaterialTier,
 } from "../core/dynamicMaterials";
+import { applySurcharges } from "../core/dynamicSurcharges";
 
 export interface FoliaSzronionaOptions {
   widthMm: number;
   heightMm: number;
   serviceId: string;
   express: boolean;
+  checkedSurchargeIds?: string[];
 }
 
 /**
@@ -64,6 +66,9 @@ export function calculateFoliaSzroniona(
   }
 
   const result = calculatePrice(priceTable, areaM2, activeModifiers);
+  result.totalPrice = parseFloat(
+    applySurcharges("folia", result.totalPrice, options.checkedSurchargeIds ?? []).toFixed(2)
+  );
   const isCustomService =
     options.serviceId === "full-service" || options.serviceId === "owv-full-service";
   const isCustom = isCustomService && areaM2 > 20;
