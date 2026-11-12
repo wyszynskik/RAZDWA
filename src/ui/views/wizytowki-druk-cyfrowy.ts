@@ -2,6 +2,10 @@ import { View, ViewContext } from "../types";
 import { quoteWizytowki } from "../../categories/wizytowki-druk-cyfrowy";
 import { formatPLN } from "../../core/money";
 import { mergeStoredQuantityTable, resolveStoredPrice } from "../../core/compat";
+import {
+  renderSurchargeCheckboxesHtml,
+  collectCheckedSurchargeIds,
+} from "../../core/dynamicSurcharges";
 import { autoCalc } from "../autoCalc";
 import { getPrice } from "../../services/priceService";
 import { parseNumericInput } from "../../core/numericInput";
@@ -74,6 +78,13 @@ export const WizytowkiView: View = {
     const qtyInput = container.querySelector("#w-qty") as HTMLInputElement;
     const qtyGroup = container.querySelector("#w-qty-group") as HTMLElement | null;
     const addToCartBtn = container.querySelector("#w-add-to-cart") as HTMLButtonElement | null;
+    const surchargesBox = document.createElement("div");
+    surchargesBox.id = "w-surcharges";
+    addToCartBtn?.insertAdjacentElement("beforebegin", surchargesBox);
+    const renderSurcharges = (): void => {
+      surchargesBox.innerHTML = renderSurchargeCheckboxesHtml("wizytowki");
+    };
+    renderSurcharges();
     const familyHint = container.querySelector("#w-family-hint") as HTMLElement | null;
     const qtyHint = container.querySelector("#w-qty-hint") as HTMLElement | null;
     const resultDisplay = container.querySelector("#w-result-display") as HTMLElement;
@@ -326,6 +337,7 @@ export const WizytowkiView: View = {
         folia: "none",
         qty,
         express: ctx.expressMode,
+        checkedSurchargeIds: collectCheckedSurchargeIds(surchargesBox),
       };
 
       try {
@@ -362,6 +374,7 @@ export const WizytowkiView: View = {
     updateLegend();
     ctx?.on?.("prices-updated", () => {
       updateLegend();
+      renderSurcharges();
       calculate();
     });
 

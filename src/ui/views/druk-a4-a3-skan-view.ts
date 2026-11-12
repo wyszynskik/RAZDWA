@@ -5,6 +5,10 @@ import { formatPLN } from "../../core/money";
 import categories from "../../../data/categories.json";
 import { getPRICE, resolveStoredPrice } from "../../core/compat";
 import {
+  renderSurchargeCheckboxesHtml,
+  collectCheckedSurchargeIds,
+} from "../../core/dynamicSurcharges";
+import {
   setFieldHint,
   flashFieldHints,
   setButtonGuarded,
@@ -74,6 +78,13 @@ export const DrukA4A3SkanView: View = {
     const scanQtyRow = container.querySelector("#scan-qty-row") as HTMLElement;
 
     const addToCartBtn = container.querySelector("#d-add-to-cart") as HTMLButtonElement;
+    const surchargesBox = document.createElement("div");
+    surchargesBox.id = "d-surcharges";
+    addToCartBtn.insertAdjacentElement("beforebegin", surchargesBox);
+    const renderSurcharges = (): void => {
+      surchargesBox.innerHTML = renderSurchargeCheckboxesHtml("druk-a4-a3");
+    };
+    renderSurcharges();
     const printQtyHint = container.querySelector("#d-print-qty-hint") as HTMLElement | null;
     const resultDisplay = container.querySelector("#d-result-display") as HTMLElement;
     const breakdownDisplay = container.querySelector("#d-breakdown-display") as HTMLElement | null;
@@ -281,6 +292,7 @@ export const DrukA4A3SkanView: View = {
         scanType: scanTypeSelect.value,
         scanQty,
         express: ctx.expressMode,
+        checkedSurchargeIds: collectCheckedSurchargeIds(surchargesBox),
       };
 
       const result = calculateDrukA4A3Skan(currentOptions, pricing);
@@ -379,6 +391,7 @@ export const DrukA4A3SkanView: View = {
 
     ctx?.on?.("prices-updated", () => {
       renderDynamicLegend();
+      renderSurcharges();
       performCalculation();
     });
 

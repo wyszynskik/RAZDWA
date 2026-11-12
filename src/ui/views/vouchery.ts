@@ -7,6 +7,10 @@ import {
 } from "../../categories/vouchery";
 import { formatPLN } from "../../core/money";
 import { resolveStoredPrice } from "../../core/compat";
+import {
+  renderSurchargeCheckboxesHtml,
+  collectCheckedSurchargeIds,
+} from "../../core/dynamicSurcharges";
 import { setFieldHint, flashFieldHints, setButtonGuarded } from "../viewHelpers";
 
 type BreakdownRow = {
@@ -66,6 +70,13 @@ export const VoucheryView: View = {
     const envelopeTypeSelect = container.querySelector("#v-envelope-type") as HTMLSelectElement;
     const envelopeQtyInput = container.querySelector("#v-envelope-qty") as HTMLInputElement;
     const addToCartBtn = container.querySelector("#v-add-to-cart") as HTMLButtonElement;
+    const surchargesBox = document.createElement("div");
+    surchargesBox.id = "v-surcharges";
+    addToCartBtn.insertAdjacentElement("beforebegin", surchargesBox);
+    const renderSurcharges = (): void => {
+      surchargesBox.innerHTML = renderSurchargeCheckboxesHtml("vouchery");
+    };
+    renderSurcharges();
     const qtyHint = container.querySelector("#v-qty-hint") as HTMLElement | null;
     const fallbackHint = container.querySelector(
       "#v-add-to-cart-fallback-hint"
@@ -245,6 +256,7 @@ export const VoucheryView: View = {
         withEnvelopes: Boolean(envelopeEnabled?.checked),
         envelopeType: (envelopeTypeSelect?.value || "a").toLowerCase(),
         envelopeQty: Math.max(1, parseInt(envelopeQtyInput?.value || "1", 10) || 1),
+        checkedSurchargeIds: collectCheckedSurchargeIds(surchargesBox),
       };
 
       try {
@@ -318,6 +330,7 @@ export const VoucheryView: View = {
     updateLegend();
     ctx?.on?.("prices-updated", () => {
       updateLegend();
+      renderSurcharges();
       performCalculation();
     });
 

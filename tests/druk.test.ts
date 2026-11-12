@@ -1,7 +1,9 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, afterEach, vi } from "vitest";
 import { calculateDrukA4A3Skan } from "../src/categories/druk-a4-a3-skan";
 import { calculateDrukCAD } from "../src/categories/druk-cad";
 import categories from "../data/categories.json";
+import { resetPrices, setPrice, setVariantDefinitions } from "../src/services/priceService";
+import { buildSurchargeVariant, surchargeRateKey } from "../src/core/dynamicSurcharges";
 
 describe("Druk A4/A3 + skan", () => {
   // Historyczny id "druk-a4-a3-skan" nie istnieje w data/categories.json od
@@ -215,6 +217,71 @@ describe("Druk A4/A3 + skan", () => {
   });
 });
 
+describe("Druk A4/A3 + skan — dopłaty globalne (core/dynamicSurcharges.ts)", () => {
+  let storage: Record<string, string> = {};
+
+  function stubStorage(): void {
+    storage = {};
+    vi.stubGlobal("localStorage", {
+      getItem: (k: string) => storage[k] ?? null,
+      setItem: (k: string, v: string) => {
+        storage[k] = String(v);
+      },
+      removeItem: (k: string) => {
+        delete storage[k];
+      },
+      clear: () => {
+        storage = {};
+      },
+    });
+  }
+
+  afterEach(() => {
+    resetPrices();
+    setVariantDefinitions([]);
+    vi.unstubAllGlobals();
+  });
+
+  const pricing = categories.find((c) => c.id === "druk-a4-a3")?.pricing;
+
+  it("dopłata +40% dolicza się do totalPrice", () => {
+    stubStorage();
+    setVariantDefinitions([buildSurchargeVariant("dwustronne", "Dwustronne", ["druk-a4-a3"])]);
+    setPrice("defaultPrices." + surchargeRateKey("dwustronne"), 0.4);
+
+    const base = calculateDrukA4A3Skan(
+      {
+        mode: "bw",
+        format: "a4",
+        printQty: 10,
+        email: false,
+        surcharge: false,
+        surchargeQty: 0,
+        scanType: "none",
+        scanQty: 0,
+        express: false,
+      },
+      pricing
+    );
+    const withSurcharge = calculateDrukA4A3Skan(
+      {
+        mode: "bw",
+        format: "a4",
+        printQty: 10,
+        email: false,
+        surcharge: false,
+        surchargeQty: 0,
+        scanType: "none",
+        scanQty: 0,
+        express: false,
+        checkedSurchargeIds: ["dwustronne"],
+      },
+      pricing
+    );
+    expect(withSurcharge.totalPrice).toBeCloseTo(base.totalPrice * 1.4, 2);
+  });
+});
+
 describe("Druk CAD", () => {
   const pricing = categories.find((c) => c.id === "druk-cad") as any;
 
@@ -273,5 +340,55 @@ describe("Druk CAD", () => {
     );
     // 8.00 * 1.2 = 9.60
     expect(result.totalPrice).toBe(9.6);
+  });
+});
+
+describe("Druk CAD — dopłaty globalne (core/dynamicSurcharges.ts)", () => {
+  let storage: Record<string, string> = {};
+
+  function stubStorage(): void {
+    storage = {};
+    vi.stubGlobal("localStorage", {
+      getItem: (k: string) => storage[k] ?? null,
+      setItem: (k: string, v: string) => {
+        storage[k] = String(v);
+      },
+      removeItem: (k: string) => {
+        delete storage[k];
+      },
+      clear: () => {
+        storage = {};
+      },
+    });
+  }
+
+  afterEach(() => {
+    resetPrices();
+    setVariantDefinitions([]);
+    vi.unstubAllGlobals();
+  });
+
+  const pricing = categories.find((c) => c.id === "druk-cad") as any;
+
+  it("dopłata +40% dolicza się do totalPrice", () => {
+    stubStorage();
+    setVariantDefinitions([buildSurchargeVariant("dwustronne", "Dwustronne", ["druk-cad"])]);
+    setPrice("defaultPrices." + surchargeRateKey("dwustronne"), 0.4);
+
+    const base = calculateDrukCAD(
+      { mode: "bw", format: "A1", lengthMm: 841, express: false },
+      pricing
+    );
+    const withSurcharge = calculateDrukCAD(
+      {
+        mode: "bw",
+        format: "A1",
+        lengthMm: 841,
+        express: false,
+        checkedSurchargeIds: ["dwustronne"],
+      },
+      pricing
+    );
+    expect(withSurcharge.totalPrice).toBeCloseTo(base.totalPrice * 1.4, 2);
   });
 });

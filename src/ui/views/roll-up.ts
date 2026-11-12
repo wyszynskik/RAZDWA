@@ -9,6 +9,10 @@ import {
 import { formatPLN } from "../../core/money";
 import { getPrice } from "../../services/priceService";
 import { resolveStoredPrice } from "../../core/compat";
+import {
+  renderSurchargeCheckboxesHtml,
+  collectCheckedSurchargeIds,
+} from "../../core/dynamicSurcharges";
 import { parseNumericInput } from "../../core/numericInput";
 import { escapeHtml } from "../../core/validation";
 import {
@@ -71,6 +75,13 @@ export const RollUpView: View = {
       const formatSel = container.querySelector("#rollUpFormat") as HTMLSelectElement;
       const qtyInput = container.querySelector("#rollUpQty") as HTMLInputElement;
       const addToCartBtn = container.querySelector("#addToCartBtn") as HTMLButtonElement;
+      const surchargesBox = document.createElement("div");
+      surchargesBox.id = "rollup-surcharges";
+      addToCartBtn.insertAdjacentElement("beforebegin", surchargesBox);
+      const renderSurcharges = (): void => {
+        surchargesBox.innerHTML = renderSurchargeCheckboxesHtml("rollup");
+      };
+      renderSurcharges();
       const typeHint = container.querySelector("#rollUpType-hint") as HTMLElement | null;
       const formatHint = container.querySelector("#rollUpFormat-hint") as HTMLElement | null;
       const qtyHint = container.querySelector("#rollUpQty-hint") as HTMLElement | null;
@@ -197,6 +208,7 @@ export const RollUpView: View = {
           qty,
           isReplacement: typeSel.value === "replacement",
           express: ctx.expressMode,
+          checkedSurchargeIds: collectCheckedSurchargeIds(surchargesBox),
         };
 
         const result = calculateRollUp(options);
@@ -265,6 +277,7 @@ export const RollUpView: View = {
       ctx?.on?.("prices-updated", () => {
         populateFormatSelect();
         updateLegend();
+        renderSurcharges();
         calculate();
       });
 

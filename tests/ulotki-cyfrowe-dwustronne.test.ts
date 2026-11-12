@@ -1,5 +1,7 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { quoteUlotkiDwustronne } from "../src/categories/ulotki-cyfrowe-dwustronne";
+import { resetPrices, setPrice, setVariantDefinitions } from "../src/services/priceService";
+import { buildSurchargeVariant, surchargeRateKey } from "../src/core/dynamicSurcharges";
 
 describe("Ulotki - Cyfrowe Dwustronne", () => {
   it("calculates A5 100szt correctly (140 PLN)", () => {
@@ -46,5 +48,36 @@ describe("Ulotki - Cyfrowe Dwustronne", () => {
       express: false,
     });
     expect(result.totalPrice).toBe(70.0);
+  });
+
+  it("dopłata globalna (Dwustronne +40%) dolicza się do totalPrice", () => {
+    const storage: Record<string, string> = {};
+    vi.stubGlobal("localStorage", {
+      getItem: (k: string) => storage[k] ?? null,
+      setItem: (k: string, v: string) => {
+        storage[k] = String(v);
+      },
+      removeItem: (k: string) => {
+        delete storage[k];
+      },
+    });
+
+    try {
+      setVariantDefinitions([buildSurchargeVariant("dwustronne40", "Dwustronne40", ["ulotki"])]);
+      setPrice("defaultPrices." + surchargeRateKey("dwustronne40"), 0.4);
+
+      const base = quoteUlotkiDwustronne({ format: "A5", qty: 100, express: false });
+      const withSurcharge = quoteUlotkiDwustronne({
+        format: "A5",
+        qty: 100,
+        express: false,
+        checkedSurchargeIds: ["dwustronne40"],
+      });
+      expect(withSurcharge.totalPrice).toBeCloseTo(base.totalPrice * 1.4, 2);
+    } finally {
+      vi.unstubAllGlobals();
+      resetPrices();
+      setVariantDefinitions([]);
+    }
   });
 });

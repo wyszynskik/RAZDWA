@@ -10,6 +10,10 @@ import {
 } from "../../categories/dyplomy";
 import { formatPLN } from "../../core/money";
 import { resolveStoredPrice } from "../../core/compat";
+import {
+  renderSurchargeCheckboxesHtml,
+  collectCheckedSurchargeIds,
+} from "../../core/dynamicSurcharges";
 import { escapeHtml } from "../../core/validation";
 import { mountDynamicSubgroupContainers } from "../dynamicSubgroups";
 import { setFieldHint, flashFieldHints, setButtonGuarded } from "../viewHelpers";
@@ -55,6 +59,13 @@ export const DyplomyView: View = {
       const qtyInput = container.querySelector("#dypQty") as HTMLInputElement;
       const paperSel = container.querySelector("#dypPaper") as HTMLSelectElement;
       const addToCartBtn = container.querySelector("#addToCartBtn") as HTMLButtonElement;
+      const surchargesBox = document.createElement("div");
+      surchargesBox.id = "dyp-surcharges-standard";
+      addToCartBtn.insertAdjacentElement("beforebegin", surchargesBox);
+      const renderSurcharges = (): void => {
+        surchargesBox.innerHTML = renderSurchargeCheckboxesHtml("dyplomy", "std-");
+      };
+      renderSurcharges();
       const qtyHint = container.querySelector("#dypQty-hint") as HTMLElement | null;
       const resultArea = container.querySelector("#dypResult") as HTMLElement;
       const breakdownBox = container.querySelector("#dypBreakdown") as HTMLElement;
@@ -90,6 +101,7 @@ export const DyplomyView: View = {
           isSatin,
           isModigliani,
           express: ctx.expressMode,
+          checkedSurchargeIds: collectCheckedSurchargeIds(surchargesBox),
         };
 
         const result = calculateDyplomy(options);
@@ -210,6 +222,7 @@ export const DyplomyView: View = {
       ctx?.on?.("prices-updated", () => {
         if (!container.isConnected) return;
         updateLegend();
+        renderSurcharges();
         calculate();
       });
 
@@ -217,6 +230,13 @@ export const DyplomyView: View = {
       const ekoQtyInput = container.querySelector("#ekoQty") as HTMLInputElement;
       const ekoPaperSel = container.querySelector("#ekoPaper") as HTMLSelectElement;
       const ekoAddToCartBtn = container.querySelector("#ekoAddToCartBtn") as HTMLButtonElement;
+      const ekoSurchargesBox = document.createElement("div");
+      ekoSurchargesBox.id = "dyp-surcharges-eko";
+      ekoAddToCartBtn.insertAdjacentElement("beforebegin", ekoSurchargesBox);
+      const renderEkoSurcharges = (): void => {
+        ekoSurchargesBox.innerHTML = renderSurchargeCheckboxesHtml("dyplomy-eko", "eko-");
+      };
+      renderEkoSurcharges();
       const ekoQtyHint = container.querySelector("#ekoQty-hint") as HTMLElement | null;
       const ekoResultArea = container.querySelector("#ekoResult") as HTMLElement;
       const ekoBreakdownBox = container.querySelector("#ekoBreakdown") as HTMLElement;
@@ -250,7 +270,13 @@ export const DyplomyView: View = {
           ? `Satyna ${paperVal.slice(7)}g`
           : `Kreda ${paperVal.slice(6)}g`;
 
-        const result = calculateDyplomyEko({ format, qty, isSatin, express: ctx.expressMode });
+        const result = calculateDyplomyEko({
+          format,
+          qty,
+          isSatin,
+          express: ctx.expressMode,
+          checkedSurchargeIds: collectCheckedSurchargeIds(ekoSurchargesBox),
+        });
 
         const breakdown = [
           `<div><strong>Parametry:</strong> ${qty} szt, ${escapeHtml(format)}, ${escapeHtml(paperLabel)}</div>`,
@@ -351,6 +377,7 @@ export const DyplomyView: View = {
         if (!container.isConnected) return;
         const activeFormat = (ekoFormatSel?.value as DyplomyEkoFormat) ?? "A5";
         updateEkoLegend(activeFormat);
+        renderEkoSurcharges();
         calculateEko();
         mountEkoSubgroups();
       });

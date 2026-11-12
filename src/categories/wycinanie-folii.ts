@@ -6,12 +6,14 @@ import {
   type MaterialTier,
 } from "../core/dynamicMaterials";
 import { resolveStoredPrice } from "../core/compat";
+import { applySurcharges } from "../core/dynamicSurcharges";
 
 export interface WycinanieFoliiOptions {
   variantId: string;
   widthMm: number;
   heightMm: number;
   express: boolean;
+  checkedSurchargeIds?: string[];
 }
 
 /**
@@ -94,5 +96,13 @@ export function calculateWycinanieFolii(options: WycinanieFoliiOptions): Calcula
   const activeModifiers: string[] = [];
   if (options.express) activeModifiers.push("express");
 
-  return calculatePrice(table, areaM2, activeModifiers);
+  const result = calculatePrice(table, areaM2, activeModifiers);
+  result.totalPrice = parseFloat(
+    applySurcharges(
+      "wycinanie-folii",
+      result.totalPrice,
+      options.checkedSurchargeIds ?? []
+    ).toFixed(2)
+  );
+  return result;
 }

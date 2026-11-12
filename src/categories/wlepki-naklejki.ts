@@ -7,18 +7,21 @@ import {
   resolveStoredPrice,
 } from "../core/compat";
 import { getCombinedMaterials, type MaterialDefinition } from "../core/dynamicMaterials";
+import { applySurcharges } from "../core/dynamicSurcharges";
 
 export interface WlepkiCalculation {
   groupId: string;
   area: number;
   modifiers: string[];
   express?: boolean;
+  checkedSurchargeIds?: string[];
 }
 
 export interface WlepkiSztCalculation {
   tableId: string;
   qty: number;
   express?: boolean;
+  checkedSurchargeIds?: string[];
 }
 
 export interface WlepkiSztResult {
@@ -86,7 +89,11 @@ export function calculateWlepki(input: WlepkiCalculation): CalculationResult {
     activeModifiers.push("express");
   }
 
-  return calculatePrice(priceTable, input.area, activeModifiers);
+  const result = calculatePrice(priceTable, input.area, activeModifiers);
+  result.totalPrice = parseFloat(
+    applySurcharges("wlepki", result.totalPrice, input.checkedSurchargeIds ?? []).toFixed(2)
+  );
+  return result;
 }
 
 /**
@@ -185,6 +192,13 @@ export function calculateWlepkiSzt(input: WlepkiSztCalculation): WlepkiSztResult
     }
   }
 
+  const totalPriceBeforeSurcharges = parseFloat((basePrice + modifiersTotal).toFixed(2));
+  const totalPrice = parseFloat(
+    applySurcharges("wlepki", totalPriceBeforeSurcharges, input.checkedSurchargeIds ?? []).toFixed(
+      2
+    )
+  );
+
   return {
     tableTitle: table.name,
     requestedQty,
@@ -192,7 +206,7 @@ export function calculateWlepkiSzt(input: WlepkiSztCalculation): WlepkiSztResult
     unitPrice,
     basePrice,
     modifiersTotal,
-    totalPrice: parseFloat((basePrice + modifiersTotal).toFixed(2)),
+    totalPrice,
     appliedModifiers,
   };
 }

@@ -7,11 +7,13 @@ import {
   type MaterialDefinition,
   type MaterialTier,
 } from "../core/dynamicMaterials";
+import { applySurcharges } from "../core/dynamicSurcharges";
 
 export interface SolwentPlakatyInput {
   areaM2: number;
   material: string;
   express?: boolean;
+  checkedSurchargeIds?: string[];
 }
 
 function repairMojibake(value: string): string {
@@ -91,5 +93,9 @@ export function calculateSolwentPlakaty(input: SolwentPlakatyInput): Calculation
     activeModifiers.push("express");
   }
 
-  return calculatePrice(priceTable, input.areaM2, activeModifiers);
+  const result = calculatePrice(priceTable, input.areaM2, activeModifiers);
+  result.totalPrice = parseFloat(
+    applySurcharges("solwent", result.totalPrice, input.checkedSurchargeIds ?? []).toFixed(2)
+  );
+  return result;
 }

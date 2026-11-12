@@ -3,6 +3,7 @@ import { calculateCad } from "../core/compat-logic";
 import { getPrice } from "../services/priceService";
 import { resolveStoredPrice } from "../core/compat";
 import { formatPLN } from "../core/money";
+import { applySurcharges } from "../core/dynamicSurcharges";
 
 export interface DrukCADOptions {
   mode: "bw" | "color";
@@ -10,6 +11,7 @@ export interface DrukCADOptions {
   lengthMm: number;
   qty?: number;
   express: boolean;
+  checkedSurchargeIds?: string[];
 }
 
 /**
@@ -28,6 +30,7 @@ export function calculateDrukCAD(options: DrukCADOptions, _pricing?: any) {
   if (options.express) {
     totalPrice = res.total * (1 + resolveStoredPrice("modifier-express", 0.2));
   }
+  totalPrice = applySurcharges("druk-cad", totalPrice, options.checkedSurchargeIds ?? []);
 
   return {
     totalPrice: parseFloat(totalPrice.toFixed(2)),

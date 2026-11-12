@@ -5,6 +5,10 @@ import { formatPLN } from "../../core/money";
 import { getPrice } from "../../services/priceService";
 import { resolveStoredPrice } from "../../core/compat";
 import { getCombinedMaterials } from "../../core/dynamicMaterials";
+import {
+  renderSurchargeCheckboxesHtml,
+  collectCheckedSurchargeIds,
+} from "../../core/dynamicSurcharges";
 import { escapeHtml } from "../../core/validation";
 import {
   setFieldHint,
@@ -69,6 +73,13 @@ export const BannerView: View = {
     const areaInput = container.querySelector("#b-area") as HTMLInputElement;
     const oczkowanieCheckbox = container.querySelector("#b-oczkowanie") as HTMLInputElement;
     const addToCartBtn = container.querySelector("#b-add-to-cart") as HTMLButtonElement;
+    const surchargesBox = document.createElement("div");
+    surchargesBox.id = "b-surcharges";
+    addToCartBtn.insertAdjacentElement("beforebegin", surchargesBox);
+    const renderSurcharges = (): void => {
+      surchargesBox.innerHTML = renderSurchargeCheckboxesHtml("banner");
+    };
+    renderSurcharges();
     const materialHint = container.querySelector("#b-material-hint") as HTMLElement | null;
     const resultDisplay = container.querySelector("#b-result-display") as HTMLElement;
     const breakdownDisplay = container.querySelector("#b-breakdown-display") as HTMLElement;
@@ -247,6 +258,7 @@ export const BannerView: View = {
         heightCm,
         oczkowanie: oczkowanieCheckbox.checked,
         express: ctx.expressMode,
+        checkedSurchargeIds: collectCheckedSurchargeIds(surchargesBox),
       };
 
       const result = calculateBanner(currentOptions);
@@ -275,6 +287,7 @@ export const BannerView: View = {
     ctx?.on?.("prices-updated", () => {
       populateMaterialSelect();
       ensureLegend();
+      renderSurcharges();
       performCalculation();
     });
 

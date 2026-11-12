@@ -7,12 +7,14 @@ import {
   type MaterialDefinition,
   type MaterialTier,
 } from "../core/dynamicMaterials";
+import { applySurcharges } from "../core/dynamicSurcharges";
 
 export interface BannerOptions {
   material: string;
   areaM2: number;
   oczkowanie: boolean;
   express?: boolean;
+  checkedSurchargeIds?: string[];
 }
 
 /**
@@ -65,5 +67,9 @@ export function calculateBanner(options: BannerOptions): CalculationResult {
     activeModifiers.push("express");
   }
 
-  return calculatePrice(priceTable, options.areaM2, activeModifiers);
+  const result = calculatePrice(priceTable, options.areaM2, activeModifiers);
+  result.totalPrice = parseFloat(
+    applySurcharges("banner", result.totalPrice, options.checkedSurchargeIds ?? []).toFixed(2)
+  );
+  return result;
 }

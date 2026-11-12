@@ -75,6 +75,24 @@ describe("Ustawienia category mapping", () => {
     expect(laminowanieCategory).toBeDefined();
   });
 
+  it("assigns a new dynamic surcharge price key (modifier-dyn-*) to Dopłaty globalne, not Pozostałe", () => {
+    // Regresja analogiczna do laminowanie: productCat.ts miał tylko 3
+    // konkretne prefiksy modifier-* (express/satyna/modigliani) — nowy klucz
+    // dopłaty tworzonej przez admina (core/dynamicSurcharges.ts) albo
+    // istniejący "modifier-druk-zadruk25" nie trafiał w żaden z nich.
+    const prices = {
+      "modifier-dyn-dwustronne": 0.4,
+      "modifier-druk-zadruk25": 0.1,
+    };
+
+    const categories = getRenderedCategories(prices);
+    const hasFallback = categories.some((category) => category.id === "inne");
+    expect(hasFallback).toBe(false);
+
+    const modifiersCategory = categories.find((category) => category.id === "modifiers");
+    expect(modifiersCategory).toBeDefined();
+  });
+
   it("emphasizes A3 and A5 rows in laminowanie", () => {
     expect(isLaminowanieEmphasizedRow("laminowanie-a3-1-50")).toBe(true);
     expect(isLaminowanieEmphasizedRow("laminowanie-a5-1-50")).toBe(true);

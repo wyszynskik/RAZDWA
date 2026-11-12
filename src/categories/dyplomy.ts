@@ -7,6 +7,7 @@ import {
   getInterpolatedPrice,
   resolveStoredPrice,
 } from "../core/compat";
+import { applySurcharges } from "../core/dynamicSurcharges";
 
 type DyplomyTier = { qty: number; price: number };
 
@@ -61,6 +62,8 @@ export interface DyplomyOptions {
   isSatin: boolean;
   isModigliani?: boolean;
   express: boolean;
+  /** Ids of admin-defined dopłaty globalne (core/dynamicSurcharges.ts) checked by the customer. */
+  checkedSurchargeIds?: string[];
 }
 
 export function calculateDyplomy(options: DyplomyOptions) {
@@ -99,7 +102,14 @@ export function calculateDyplomy(options: DyplomyOptions) {
   }
 
   const modifiersTotal = parseFloat((materialModifiersTotal + expressModifier).toFixed(2));
-  const totalPrice = parseFloat((basePrice + modifiersTotal).toFixed(2));
+  const totalPriceBeforeSurcharges = parseFloat((basePrice + modifiersTotal).toFixed(2));
+  const totalPrice = parseFloat(
+    applySurcharges(
+      "dyplomy",
+      totalPriceBeforeSurcharges,
+      options.checkedSurchargeIds ?? []
+    ).toFixed(2)
+  );
 
   return {
     tierPrice,
@@ -119,6 +129,8 @@ export interface DyplomyEkoOptions {
   qty: number;
   isSatin: boolean;
   express: boolean;
+  /** Ids of admin-defined dopłaty globalne (core/dynamicSurcharges.ts) checked by the customer. */
+  checkedSurchargeIds?: string[];
 }
 
 export function getResolvedDyplomyEkoTiers(format: DyplomyEkoFormat): DyplomyTier[] {
@@ -168,7 +180,14 @@ export function calculateDyplomyEko(options: DyplomyEkoOptions) {
     appliedModifiers.push("express");
   }
 
-  const totalPrice = parseFloat((basePrice + modifiersTotal).toFixed(2));
+  const totalPriceBeforeSurcharges = parseFloat((basePrice + modifiersTotal).toFixed(2));
+  const totalPrice = parseFloat(
+    applySurcharges(
+      "dyplomy-eko",
+      totalPriceBeforeSurcharges,
+      options.checkedSurchargeIds ?? []
+    ).toFixed(2)
+  );
 
   return {
     basePrice,

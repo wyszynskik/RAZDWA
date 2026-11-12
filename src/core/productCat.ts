@@ -213,7 +213,7 @@ export const BASE_PRICE_CATEGORIES: PriceCategory[] = [
     id: "modifiers",
     label: "Dopłaty globalne",
     icon: "assets/icons/settings.svg",
-    prefixes: ["modifier-express", "modifier-satyna", "modifier-modigliani"],
+    prefixes: ["modifier-express", "modifier-satyna", "modifier-modigliani", "modifier-"],
     description: "Dopłaty procentowe współdzielone przez wiele kalkulatorów.",
     newKeyPrefix: "modifier-",
   },

@@ -6,6 +6,10 @@ import { formatPLN } from "../../core/money";
 import { getPrice } from "../../services/priceService";
 import { resolveStoredPrice } from "../../core/compat";
 import {
+  renderSurchargeCheckboxesHtml,
+  collectCheckedSurchargeIds,
+} from "../../core/dynamicSurcharges";
+import {
   getCombinedCadBase,
   getCombinedCadPrice,
   getDynamicCadFormats,
@@ -68,6 +72,13 @@ export const DrukCADView: View = {
     const scanStatus = container.querySelector("#cad-scan-status") as HTMLElement | null;
 
     const addToCartBtn = container.querySelector("#cad-add-to-cart") as HTMLButtonElement;
+    const surchargesBox = document.createElement("div");
+    surchargesBox.id = "cad-surcharges";
+    addToCartBtn.insertAdjacentElement("beforebegin", surchargesBox);
+    const renderSurcharges = (): void => {
+      surchargesBox.innerHTML = renderSurchargeCheckboxesHtml("druk-cad");
+    };
+    renderSurcharges();
     const qtySheetsHint = container.querySelector("#qty-sheets-hint") as HTMLElement | null;
     const cadLengthHint = container.querySelector("#cad-length-hint") as HTMLElement | null;
     const resultDisplay = container.querySelector("#cad-result-display") as HTMLElement;
@@ -615,6 +626,7 @@ export const DrukCADView: View = {
         lengthMm: parsedLength,
         qty: parsedQty,
         express: ctx.expressMode,
+        checkedSurchargeIds: collectCheckedSurchargeIds(surchargesBox),
       };
 
       const result = calculateDrukCAD(currentOptions, data);
@@ -656,6 +668,7 @@ export const DrukCADView: View = {
     ctx?.on?.("prices-updated", () => {
       populateDynamicCadFormatOptions();
       ensureLegend();
+      renderSurcharges();
       performCalculation();
     });
 

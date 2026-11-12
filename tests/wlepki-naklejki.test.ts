@@ -5,8 +5,10 @@ import { MATERIAL_ASSIGNMENT_PREFIX } from "../src/core/variantKeys";
 import {
   setVariantDefinitions,
   resetPrices,
+  setPrice,
   PRICES_STORAGE_KEY,
 } from "../src/services/priceService";
+import { buildSurchargeVariant, surchargeRateKey } from "../src/core/dynamicSurcharges";
 
 describe("Wlepki / Naklejki Category", () => {
   it("should calculate Folia biała po obrysie 1-5m2 at 67zł/m2", () => {
@@ -171,5 +173,75 @@ describe("Wlepki/Naklejki — materiał relatywny do bazy STATYCZNEJ z nadpisan�
     const result = calculateWlepkiSzt({ tableId: derivedId, qty: 3 });
 
     expect(result.unitPrice).toBe(Math.round(999 * 1.1 * 100) / 100);
+  });
+});
+
+describe("Wlepki — dopłaty globalne (core/dynamicSurcharges.ts)", () => {
+  let storage: Record<string, string> = {};
+
+  function stubStorage(): void {
+    storage = {};
+    vi.stubGlobal("localStorage", {
+      getItem: (k: string) => storage[k] ?? null,
+      setItem: (k: string, v: string) => {
+        storage[k] = String(v);
+      },
+      removeItem: (k: string) => {
+        delete storage[k];
+      },
+      clear: () => {
+        storage = {};
+      },
+    });
+  }
+
+  afterEach(() => {
+    resetPrices();
+    setVariantDefinitions([]);
+    vi.unstubAllGlobals();
+  });
+
+  it("m²: dopłata +40% dolicza się do totalPrice (grupa statyczna)", () => {
+    stubStorage();
+    setVariantDefinitions([buildSurchargeVariant("dwustronne", "Dwustronne", ["wlepki"])]);
+    setPrice("defaultPrices." + surchargeRateKey("dwustronne"), 0.4);
+
+    const base = calculateWlepki({ groupId: "wlepki_obrys_folia", area: 2, modifiers: [] });
+    const withSurcharge = calculateWlepki({
+      groupId: "wlepki_obrys_folia",
+      area: 2,
+      modifiers: [],
+      checkedSurchargeIds: ["dwustronne"],
+    });
+    expect(withSurcharge.totalPrice).toBeCloseTo(base.totalPrice * 1.4, 2);
+  });
+
+  it("szt: dopłata +10% (Łatwo usuwalny klej, przykładowa) dolicza się do totalPrice", () => {
+    stubStorage();
+    setVariantDefinitions([buildSurchargeVariant("latwy-klej", "Łatwo usuwalny klej", ["wlepki"])]);
+    setPrice("defaultPrices." + surchargeRateKey("latwy-klej"), 0.1);
+
+    const base = calculateWlepkiSzt({ tableId: "papier-sra3", qty: 3 });
+    const withSurcharge = calculateWlepkiSzt({
+      tableId: "papier-sra3",
+      qty: 3,
+      checkedSurchargeIds: ["latwy-klej"],
+    });
+    expect(withSurcharge.totalPrice).toBeCloseTo(base.totalPrice * 1.1, 2);
+  });
+
+  it("dopłata nieprzypisana do wlepki jest ignorowana", () => {
+    stubStorage();
+    setVariantDefinitions([buildSurchargeVariant("inna", "Inna", ["dyplomy"])]);
+    setPrice("defaultPrices." + surchargeRateKey("inna"), 0.5);
+
+    const base = calculateWlepki({ groupId: "wlepki_obrys_folia", area: 2, modifiers: [] });
+    const result = calculateWlepki({
+      groupId: "wlepki_obrys_folia",
+      area: 2,
+      modifiers: [],
+      checkedSurchargeIds: ["inna"],
+    });
+    expect(result.totalPrice).toBe(base.totalPrice);
   });
 });

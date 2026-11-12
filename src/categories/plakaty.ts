@@ -4,6 +4,7 @@ import { formatPLN } from "../core/money";
 import { getPrice } from "../services/priceService";
 import { PriceTable } from "../core/types";
 import { resolveStoredPrice } from "../core/compat";
+import { applySurcharges } from "../core/dynamicSurcharges";
 
 const fullData: any = getPrice("plakaty") as any;
 
@@ -203,6 +204,7 @@ export interface PlakatyFormatInput {
   qty: number;
   customLengthMm?: number;
   express?: boolean;
+  checkedSurchargeIds?: string[];
 }
 
 export interface PlakatyFormatResult {
@@ -282,6 +284,13 @@ export function calculatePlakatyFormat(input: PlakatyFormatInput): PlakatyFormat
     }
   }
 
+  const totalPriceBeforeSurcharges = parseFloat((basePrice + modifiersTotal).toFixed(2));
+  const totalPriceWithSurcharges = parseFloat(
+    applySurcharges("solwent", totalPriceBeforeSurcharges, input.checkedSurchargeIds ?? []).toFixed(
+      2
+    )
+  );
+
   return {
     materialName: selectedMaterial.name,
     formatKey: input.formatKey,
@@ -295,7 +304,7 @@ export function calculatePlakatyFormat(input: PlakatyFormatInput): PlakatyFormat
     pricePerPiece,
     basePrice,
     modifiersTotal,
-    totalPrice: parseFloat((basePrice + modifiersTotal).toFixed(2)),
+    totalPrice: totalPriceWithSurcharges,
     appliedModifiers,
   };
 }
@@ -305,6 +314,7 @@ export interface PlakatyMalyCanonInput {
   format: "A4" | "A3";
   qty: number;
   express?: boolean;
+  checkedSurchargeIds?: string[];
 }
 
 export interface PlakatyMalyCanonResult {
@@ -447,6 +457,7 @@ export interface PlakatyDuzyCanonInput {
   variantId: string;
   qty: number;
   express?: boolean;
+  checkedSurchargeIds?: string[];
 }
 
 export interface PlakatyDuzyCanonResult {
@@ -533,6 +544,15 @@ export function calculatePlakatyDuzyCanon(input: PlakatyDuzyCanonInput): Plakaty
     }
   }
 
+  const totalPriceBeforeSurcharges = parseFloat((basePrice + modifiersTotal).toFixed(2));
+  const totalPrice = parseFloat(
+    applySurcharges(
+      "plakaty-a4-a3",
+      totalPriceBeforeSurcharges,
+      input.checkedSurchargeIds ?? []
+    ).toFixed(2)
+  );
+
   return {
     variantName: variant.name,
     qty,
@@ -541,7 +561,7 @@ export function calculatePlakatyDuzyCanon(input: PlakatyDuzyCanonInput): Plakaty
     singleTierPrice,
     basePrice,
     modifiersTotal,
-    totalPrice: parseFloat((basePrice + modifiersTotal).toFixed(2)),
+    totalPrice,
     appliedModifiers,
     isExact,
     lowerTierQty,
@@ -616,6 +636,15 @@ export function calculatePlakatyMalyCanon(input: PlakatyMalyCanonInput): Plakaty
     }
   }
 
+  const totalPriceBeforeSurcharges = parseFloat((basePrice + modifiersTotal).toFixed(2));
+  const totalPrice = parseFloat(
+    applySurcharges(
+      "plakaty-a4-a3",
+      totalPriceBeforeSurcharges,
+      input.checkedSurchargeIds ?? []
+    ).toFixed(2)
+  );
+
   return {
     variantName: variant.name,
     format,
@@ -624,7 +653,7 @@ export function calculatePlakatyMalyCanon(input: PlakatyMalyCanonInput): Plakaty
     singleTierPrice,
     basePrice,
     modifiersTotal,
-    totalPrice: parseFloat((basePrice + modifiersTotal).toFixed(2)),
+    totalPrice,
     appliedModifiers,
   };
 }

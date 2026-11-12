@@ -13,6 +13,10 @@ import { formatPLN } from "../../core/money";
 import { parseNumericInput } from "../../core/numericInput";
 import { getPrice } from "../../services/priceService";
 import { resolveStoredPrice } from "../../core/compat";
+import {
+  renderSurchargeCheckboxesHtml,
+  collectCheckedSurchargeIds,
+} from "../../core/dynamicSurcharges";
 import { escapeHtml } from "../../core/validation";
 import type { MaterialDefinition } from "../../core/dynamicMaterials";
 import {
@@ -129,6 +133,13 @@ export const WlepkiView: View = {
     const modifiersGroup = container.querySelector("#wlepki-modifiers-group") as HTMLElement;
     const areaInput = container.querySelector("#wlepki-area") as HTMLInputElement;
     const addBtn = container.querySelector("#btn-add-to-cart") as HTMLButtonElement;
+    const surchargesBox = document.createElement("div");
+    surchargesBox.id = "wlepki-surcharges";
+    addBtn.insertAdjacentElement("beforebegin", surchargesBox);
+    const renderSurcharges = (): void => {
+      surchargesBox.innerHTML = renderSurchargeCheckboxesHtml("wlepki");
+    };
+    renderSurcharges();
     const fallbackHint = container.querySelector(
       "#btn-add-to-cart-fallback-hint"
     ) as HTMLElement | null;
@@ -384,6 +395,7 @@ export const WlepkiView: View = {
             express: ctx.expressMode,
             paperFinish,
             foilType,
+            checkedSurchargeIds: collectCheckedSurchargeIds(surchargesBox),
           };
           const result = calculateWlepkiSzt(input);
           currentInput = input;
@@ -488,6 +500,7 @@ export const WlepkiView: View = {
             modifiers,
             foilType,
             foilFinish,
+            checkedSurchargeIds: collectCheckedSurchargeIds(surchargesBox),
           };
 
           const result = calculateWlepki(input);
@@ -622,6 +635,7 @@ export const WlepkiView: View = {
       populateGroupSelect();
       populatePieceTableSelect();
       renderDynamicLegend();
+      renderSurcharges();
       calculate();
     });
 

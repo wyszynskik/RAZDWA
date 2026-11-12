@@ -5,8 +5,10 @@ import { MATERIAL_ASSIGNMENT_PREFIX } from "../src/core/variantKeys";
 import {
   setVariantDefinitions,
   resetPrices,
+  setPrice,
   PRICES_STORAGE_KEY,
 } from "../src/services/priceService";
+import { buildSurchargeVariant, surchargeRateKey } from "../src/core/dynamicSurcharges";
 
 describe("Roll-up Calculation", () => {
   it("should calculate price for 85x200 1szt correctly (290 zł)", () => {
@@ -113,5 +115,39 @@ describe("Roll-up — materiał relatywny do formatu STATYCZNEGO z nadpisaną ce
     });
 
     expect(result.totalPrice).toBe(Math.round(999 * 1.1 * 100) / 100);
+  });
+
+  it("dopłata globalna (Dwustronne +40%) dolicza się do totalPrice", () => {
+    const storage: Record<string, string> = {};
+    vi.stubGlobal("localStorage", {
+      getItem: (k: string) => storage[k] ?? null,
+      setItem: (k: string, v: string) => {
+        storage[k] = String(v);
+      },
+      removeItem: (k: string) => {
+        delete storage[k];
+      },
+    });
+
+    setVariantDefinitions([buildSurchargeVariant("dwustronne", "Dwustronne", ["rollup"])]);
+    setPrice("defaultPrices." + surchargeRateKey("dwustronne"), 0.4);
+
+    const base = calculateRollUp({
+      format: "85x200",
+      qty: 1,
+      isReplacement: false,
+      express: false,
+    });
+    const withSurcharge = calculateRollUp({
+      format: "85x200",
+      qty: 1,
+      isReplacement: false,
+      express: false,
+      checkedSurchargeIds: ["dwustronne"],
+    });
+    expect(withSurcharge.totalPrice).toBeCloseTo(base.totalPrice * 1.4, 2);
+    vi.unstubAllGlobals();
+    resetPrices();
+    setVariantDefinitions([]);
   });
 });

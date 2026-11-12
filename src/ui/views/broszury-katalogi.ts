@@ -3,6 +3,11 @@ import { autoCalc } from "../autoCalc";
 import { formatPLN } from "../../core/money";
 import { resolveStoredPrice, mergeStoredNumericTiers } from "../../core/compat";
 import {
+  renderSurchargeCheckboxesHtml,
+  collectCheckedSurchargeIds,
+  applySurcharges,
+} from "../../core/dynamicSurcharges";
+import {
   setFieldHint,
   flashFieldHints,
   setButtonGuarded,
@@ -91,6 +96,13 @@ function initBroszuryKatalogi(container: HTMLElement, ctx: ViewContext): void {
   const pagesSelect = container.querySelector("#bk-pages") as HTMLSelectElement;
   const qtyInput = container.querySelector("#bk-qty") as HTMLInputElement;
   const addToCartBtn = container.querySelector("#bk-add-to-cart") as HTMLButtonElement;
+  const surchargesBox = document.createElement("div");
+  surchargesBox.id = "bk-surcharges";
+  addToCartBtn?.insertAdjacentElement("beforebegin", surchargesBox);
+  const renderSurcharges = (): void => {
+    surchargesBox.innerHTML = renderSurchargeCheckboxesHtml("broszury-katalogi");
+  };
+  renderSurcharges();
   const formatHint = container.querySelector("#bk-format-hint") as HTMLElement | null;
   const qtyHint = container.querySelector("#bk-qty-hint") as HTMLElement | null;
   const resultDisplay = container.querySelector("#bk-result-display") as HTMLElement;
@@ -172,9 +184,15 @@ function initBroszuryKatalogi(container: HTMLElement, ctx: ViewContext): void {
     const unitPrice = resolveTierPrice(format, qty);
     const basePrice = parseFloat((unitPrice * qty).toFixed(2));
     const expressCost = ctx.expressMode ? parseFloat((basePrice * 0.2).toFixed(2)) : 0;
-    const totalPrice = parseFloat((basePrice + expressCost).toFixed(2));
+    const totalPriceBeforeSurcharges = parseFloat((basePrice + expressCost).toFixed(2));
+    const checkedSurchargeIds = collectCheckedSurchargeIds(surchargesBox);
+    const totalPrice = parseFloat(
+      applySurcharges("broszury-katalogi", totalPriceBeforeSurcharges, checkedSurchargeIds).toFixed(
+        2
+      )
+    );
 
-    currentOptions = { format, pages, qty, express: ctx.expressMode };
+    currentOptions = { format, pages, qty, express: ctx.expressMode, checkedSurchargeIds };
     currentResult = { unitPrice, basePrice, expressCost, totalPrice };
 
     unitPriceSpan.innerText = unitPrice > 0 ? formatPLN(unitPrice) : "—";
@@ -229,6 +247,7 @@ function initBroszuryKatalogi(container: HTMLElement, ctx: ViewContext): void {
 
   ctx?.on?.("prices-updated", () => {
     ensureLegend();
+    renderSurcharges();
     performCalculation();
   });
 

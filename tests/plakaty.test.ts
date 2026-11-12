@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, afterEach, beforeEach, vi } from "vitest";
 import {
   calculatePlakatyM2,
   calculatePlakatyFormat,
@@ -7,7 +7,8 @@ import {
   getPlakatyMalyCanonLegendPanels,
 } from "../src/categories/plakaty";
 import { getPlakatyA4A3LegendStyles } from "../src/ui/views/plakaty-a4-a3";
-import { resetPrices, setPrice } from "../src/services/priceService";
+import { resetPrices, setPrice, setVariantDefinitions } from "../src/services/priceService";
+import { buildSurchargeVariant, surchargeRateKey } from "../src/core/dynamicSurcharges";
 
 describe("calculatePlakatyM2 – solwent m² materials", () => {
   it("applies minimalka: 0.5 m² → 1 m²  @ 70 zł (200g Połysk, tier 1-3)", () => {
@@ -366,5 +367,90 @@ describe("calculatePlakatyDuzyCanon – A4/A3, linear interpolation between tier
 
     const above = calculatePlakatyDuzyCanon({ variantId: "a4-170-kreda-130-170", qty: 999 });
     expect(above.qty).toBe(200);
+  });
+});
+
+describe("Plakaty A4-A3 — dopłaty globalne (core/dynamicSurcharges.ts)", () => {
+  let storage: Record<string, string> = {};
+
+  beforeEach(() => {
+    storage = {};
+    vi.stubGlobal("localStorage", {
+      getItem: (k: string) => storage[k] ?? null,
+      setItem: (k: string, v: string) => {
+        storage[k] = String(v);
+      },
+      removeItem: (k: string) => {
+        delete storage[k];
+      },
+      clear: () => {
+        storage = {};
+      },
+    });
+  });
+
+  afterEach(() => {
+    resetPrices();
+    setVariantDefinitions([]);
+    vi.unstubAllGlobals();
+  });
+
+  it("Mały Canon: zaznaczona dopłata +40% dolicza się do totalPrice", () => {
+    setVariantDefinitions([buildSurchargeVariant("dwustronne", "Dwustronne", ["plakaty-a4-a3"])]);
+    setPrice("defaultPrices." + surchargeRateKey("dwustronne"), 0.4);
+
+    const base = calculatePlakatyMalyCanon({ variantId: "margin-170", format: "A4", qty: 3 });
+    const withSurcharge = calculatePlakatyMalyCanon({
+      variantId: "margin-170",
+      format: "A4",
+      qty: 3,
+      checkedSurchargeIds: ["dwustronne"],
+    });
+    expect(withSurcharge.totalPrice).toBeCloseTo(base.totalPrice * 1.4, 2);
+  });
+
+  it("Duży Canon: zaznaczona dopłata +40% dolicza się do totalPrice", () => {
+    setVariantDefinitions([buildSurchargeVariant("dwustronne", "Dwustronne", ["plakaty-a4-a3"])]);
+    setPrice("defaultPrices." + surchargeRateKey("dwustronne"), 0.4);
+
+    const base = calculatePlakatyDuzyCanon({ variantId: "a4-170-kreda-130-170", qty: 10 });
+    const withSurcharge = calculatePlakatyDuzyCanon({
+      variantId: "a4-170-kreda-130-170",
+      qty: 10,
+      checkedSurchargeIds: ["dwustronne"],
+    });
+    expect(withSurcharge.totalPrice).toBeCloseTo(base.totalPrice * 1.4, 2);
+  });
+
+  it("calculatePlakatyFormat (Solwent/plakaty-wf): dopłata +40% dolicza się do totalPrice", () => {
+    setVariantDefinitions([buildSurchargeVariant("dwustronne", "Dwustronne", ["solwent"])]);
+    setPrice("defaultPrices." + surchargeRateKey("dwustronne"), 0.4);
+
+    const base = calculatePlakatyFormat({
+      materialId: "120g-formatowe",
+      formatKey: "841x1189",
+      qty: 1,
+    });
+    const withSurcharge = calculatePlakatyFormat({
+      materialId: "120g-formatowe",
+      formatKey: "841x1189",
+      qty: 1,
+      checkedSurchargeIds: ["dwustronne"],
+    });
+    expect(withSurcharge.totalPrice).toBeCloseTo(base.totalPrice * 1.4, 2);
+  });
+
+  it("dopłata nieprzypisana do plakaty-a4-a3 jest ignorowana", () => {
+    setVariantDefinitions([buildSurchargeVariant("inna", "Inna", ["wlepki"])]);
+    setPrice("defaultPrices." + surchargeRateKey("inna"), 0.5);
+
+    const base = calculatePlakatyMalyCanon({ variantId: "margin-170", format: "A4", qty: 3 });
+    const result = calculatePlakatyMalyCanon({
+      variantId: "margin-170",
+      format: "A4",
+      qty: 3,
+      checkedSurchargeIds: ["inna"],
+    });
+    expect(result.totalPrice).toBe(base.totalPrice);
   });
 });

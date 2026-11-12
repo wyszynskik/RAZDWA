@@ -7,6 +7,10 @@ import {
 import { formatPLN } from "../../core/money";
 import { resolveStoredPrice } from "../../core/compat";
 import { getCombinedMaterials } from "../../core/dynamicMaterials";
+import {
+  renderSurchargeCheckboxesHtml,
+  collectCheckedSurchargeIds,
+} from "../../core/dynamicSurcharges";
 import { escapeHtml } from "../../core/validation";
 import {
   setFieldHint,
@@ -50,6 +54,13 @@ export const SolwentPlakatyView: View = {
     const materialSelect = container.querySelector("#material") as HTMLSelectElement;
     const areaInput = container.querySelector("#area") as HTMLInputElement;
     const addToCartBtn = container.querySelector("#add-to-cart") as HTMLButtonElement;
+    const surchargesBox = document.createElement("div");
+    surchargesBox.id = "solwent-surcharges";
+    addToCartBtn.insertAdjacentElement("beforebegin", surchargesBox);
+    const renderSurcharges = (): void => {
+      surchargesBox.innerHTML = renderSurchargeCheckboxesHtml("solwent");
+    };
+    renderSurcharges();
     const materialHint = container.querySelector("#material-hint") as HTMLElement | null;
     const areaHint = container.querySelector("#area-hint") as HTMLElement | null;
     const resultDisplay = container.querySelector("#result-display") as HTMLElement;
@@ -137,6 +148,7 @@ export const SolwentPlakatyView: View = {
         material: materialSelect.value,
         areaM2,
         express: ctx.expressMode,
+        checkedSurchargeIds: collectCheckedSurchargeIds(surchargesBox),
       };
 
       const result = calculateSolwentPlakaty(input);
@@ -167,6 +179,7 @@ export const SolwentPlakatyView: View = {
     ctx?.on?.("prices-updated", () => {
       populateMaterialSelect(container);
       ensureLegend();
+      renderSurcharges();
       performCalculation();
     });
 

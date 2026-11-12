@@ -636,6 +636,17 @@ export interface VariantDefinition {
    * the two-pass, chain-blocking algorithm.
    */
   materialPriceFormula?: MaterialPriceFormula;
+  /**
+   * Optional: target category ids for a DYNAMIC SURCHARGE sentinel row
+   * (subcategoryPrefix === SURCHARGE_ASSIGNMENT_PREFIX, see
+   * core/dynamicSurcharges.ts). The surcharge's percent value itself lives as
+   * an ordinary flat defaultPrices key (same convention as every other
+   * admin-editable price), same pattern dynamicMaterials.ts/
+   * dynamicCadFormats.ts already use — this field only carries WHICH
+   * categories get the checkbox, since a surcharge has no category of its
+   * own (its sentinel row lives under categoryId "modifiers").
+   */
+  appliesToCategoryIds?: string[];
 }
 
 export type VariantPriceFormulaOp = "percent" | "fixed";
