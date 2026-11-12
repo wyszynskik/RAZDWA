@@ -4123,7 +4123,7 @@ export const UstawieniaView: View = {
                   </button>
                 </div>
 
-              <details class="settings-add-group" id="add-material-group" style="margin-top:12px;">
+              <details class="settings-add-group" id="add-material-group" style="margin-top:12px;" open>
                 <summary class="settings-wizard-header settings-wizard-header--collapsible"><span class="settings-wizard-title">Dodaj materiał</span></summary>
                 <div class="hint" style="margin-bottom:8px;">
                   Dodaje materiał (np. nowy papier) od razu do wybranych kategorii — pojawi się
@@ -4196,7 +4196,7 @@ export const UstawieniaView: View = {
                 </div>
               </details>
 
-              <details class="settings-add-group" id="add-cad-format-group" style="margin-top:12px;">
+              <details class="settings-add-group" id="add-cad-format-group" style="margin-top:12px;" open>
                 <summary class="settings-wizard-header settings-wizard-header--collapsible"><span class="settings-wizard-title">Dodaj format CAD</span></summary>
                 <div class="hint" style="margin-bottom:8px;">
                   Dodaje nowy format CAD (np. inny rozmiar rolki) — pojawi się od razu w
@@ -4297,7 +4297,7 @@ export const UstawieniaView: View = {
                 </div>
               </details>
 
-              <details class="settings-add-group" id="add-bulk-paper-group" style="display:none; margin-top:12px;">
+              <details class="settings-add-group" id="add-bulk-paper-group" style="display:none; margin-top:12px;" open>
                 <summary class="settings-wizard-header settings-wizard-header--collapsible"><span class="settings-wizard-title">Dodaj papier do kilku kategorii naraz</span></summary>
                 <div class="hint" style="margin-bottom:8px;">
                   Tworzy nową, niezależną podkategorię o tej samej nazwie w każdej zaznaczonej
