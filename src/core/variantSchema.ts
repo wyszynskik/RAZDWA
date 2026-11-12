@@ -62,6 +62,7 @@ export const variantSchema = z.object({
   subgroupSortOrder: sortOrderSchema.optional(),
   priceFormula: priceFormulaSchema.optional(),
   materialPriceFormula: materialPriceFormulaSchema.optional(),
+  appliesToCategoryIds: z.array(z.string()).optional(),
 });
 
 export type VariantSchemaShape = z.infer<typeof variantSchema>;

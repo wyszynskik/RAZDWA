@@ -41,6 +41,12 @@ import {
   cadBaseLengthKey,
 } from "../../core/dynamicCadFormats";
 import {
+  getSurchargeDefinitions,
+  buildSurchargeVariant,
+  buildSurchargeAssignmentKey,
+  surchargeRateKey,
+} from "../../core/dynamicSurcharges";
+import {
   getCustomSubgroupDefinitions,
   type PrefixOption,
   type SubgroupRegistry,
@@ -4243,6 +4249,54 @@ export const UstawieniaView: View = {
                 </div>
               </details>
 
+              <details class="settings-add-group" id="add-surcharge-group" style="margin-top:12px;">
+                <summary class="settings-wizard-header settings-wizard-header--collapsible"><span class="settings-wizard-title">Dodaj dopłatę globalną</span></summary>
+                <div class="hint" style="margin-bottom:8px;">
+                  Nowa dopłata procentowa (np. "Dwustronne +40%") — pojawi się jako checkbox w
+                  każdej zaznaczonej kategorii i doliczy się automatycznie po zaznaczeniu.
+                  Zadziała TYLKO w kategoriach, które mają już wpisany w kodzie odczyt dopłat
+                  (sprawdź przy danej kategorii, czy checkbox się pojawia po zapisaniu).
+                </div>
+
+                <label class="settings-field">
+                  <span class="settings-action-label">Nazwa dopłaty</span>
+                  <input id="new-surcharge-name" type="text" class="settings-input" placeholder="np. Dwustronne">
+                </label>
+
+                <label class="settings-field">
+                  <span class="settings-action-label">Wysokość (%)</span>
+                  <input id="new-surcharge-percent" type="number" min="0" step="0.1" class="settings-input" placeholder="np. 40">
+                </label>
+
+                <div class="settings-field">
+                  <span class="settings-action-label">Dotyczy kategorii</span>
+                  <details class="settings-multiselect" id="new-surcharge-category-picker">
+                    <summary id="new-surcharge-category-summary" class="settings-input">Wybierz kategorie (0 zaznaczonych)</summary>
+                    <div class="settings-multiselect-options">
+                      ${getAddableCategories()
+                        .map(
+                          (cat) => `
+                      <label style="display:flex; align-items:center; gap:8px; margin:4px 0;">
+                        <input type="checkbox" class="new-surcharge-category" value="${escapeHtml(cat.id)}"> ${escapeHtml(cat.label)}
+                      </label>`
+                        )
+                        .join("")}
+                    </div>
+                  </details>
+                </div>
+
+                <button id="btn-add-surcharge" type="button" class="btn-success settings-action-btn">+ Dodaj dopłatę</button>
+
+                <hr class="settings-divider" style="margin:10px 0;">
+                <div class="settings-field">
+                  <span class="settings-action-label">Usuń dodaną dopłatę</span>
+                  <select id="delete-surcharge-select" class="settings-input">
+                    <option value="">— wybierz dopłatę —</option>
+                  </select>
+                  <button id="btn-delete-surcharge" type="button" class="btn-secondary settings-action-btn" style="margin-top:6px;" disabled>✕ Usuń dopłatę</button>
+                </div>
+              </details>
+
               <details class="settings-add-group" id="add-bulk-paper-group" style="display:none; margin-top:12px;">
                 <summary class="settings-wizard-header settings-wizard-header--collapsible"><span class="settings-wizard-title">Dodaj papier do kilku kategorii naraz</span></summary>
                 <div class="hint" style="margin-bottom:8px;">
@@ -5598,6 +5652,160 @@ export const UstawieniaView: View = {
       renderTabs();
       renderTable();
       refreshDeleteCadFormatSelect();
+      ctx?.emit?.("prices-updated", { timestamp: Date.now() });
+    });
+
+    // ── Dodaj dopłatę globalną — generyczny silnik (core/dynamicSurcharges.ts).
+    // W przeciwieństwie do materiału/formatu CAD, tutaj sama dopłata nie robi
+    // nic sama z siebie w kalkulatorach, które jeszcze nie wywołują
+    // renderSurchargeCheckboxesHtml()/applySurcharges() — admin dostaje
+    // ostrzeżenie w hincie formularza, nie jest to ukryte.
+    const surchargeNameInput = container.querySelector<HTMLInputElement>("#new-surcharge-name");
+    const surchargePercentInput =
+      container.querySelector<HTMLInputElement>("#new-surcharge-percent");
+    const surchargeCategorySummary = container.querySelector<HTMLElement>(
+      "#new-surcharge-category-summary"
+    );
+
+    function refreshSurchargeCategorySummary(): void {
+      if (!surchargeCategorySummary) return;
+      const checkedCount = container.querySelectorAll<HTMLInputElement>(
+        ".new-surcharge-category:checked"
+      ).length;
+      surchargeCategorySummary.textContent =
+        checkedCount === 0
+          ? "Wybierz kategorie (0 zaznaczonych)"
+          : `Wybrano kategorii: ${checkedCount}`;
+    }
+    container.querySelectorAll<HTMLInputElement>(".new-surcharge-category").forEach((cb) => {
+      cb.addEventListener("change", refreshSurchargeCategorySummary);
+    });
+
+    const deleteSurchargeSelect = container.querySelector<HTMLSelectElement>(
+      "#delete-surcharge-select"
+    );
+    const btnDeleteSurcharge = container.querySelector<HTMLButtonElement>("#btn-delete-surcharge");
+
+    function refreshDeleteSurchargeSelect(): void {
+      if (!deleteSurchargeSelect || !btnDeleteSurcharge) return;
+      const surcharges = getSurchargeDefinitions();
+      if (surcharges.length === 0) {
+        deleteSurchargeSelect.innerHTML = `<option value="">— brak dodanych dopłat —</option>`;
+        deleteSurchargeSelect.disabled = true;
+        btnDeleteSurcharge.disabled = true;
+        return;
+      }
+      deleteSurchargeSelect.innerHTML = surcharges
+        .map(
+          (s) =>
+            `<option value="${escapeHtml(s.id)}">${escapeHtml(s.label)} (+${Math.round(s.percent * 100)}%)</option>`
+        )
+        .join("");
+      deleteSurchargeSelect.disabled = false;
+      btnDeleteSurcharge.disabled = false;
+    }
+
+    refreshDeleteSurchargeSelect();
+
+    container.querySelector("#btn-add-surcharge")?.addEventListener("click", () => {
+      const name = (surchargeNameInput?.value ?? "").trim();
+      if (!name) {
+        showStatus("⚠️ Wpisz nazwę dopłaty.", "error");
+        surchargeNameInput?.focus();
+        return;
+      }
+
+      const surchargeId = slugifyKeySegment(name);
+      if (!surchargeId) {
+        showStatus("⚠️ Nazwa dopłaty musi zawierać przynajmniej jedną literę lub cyfrę.", "error");
+        surchargeNameInput?.focus();
+        return;
+      }
+
+      const percentRaw = (surchargePercentInput?.value ?? "").replace(",", ".");
+      const percentValue = Number.parseFloat(percentRaw);
+      if (!Number.isFinite(percentValue) || percentValue <= 0) {
+        showStatus("⚠️ Podaj poprawną wysokość dopłaty (%) większą od 0.", "error");
+        surchargePercentInput?.focus();
+        return;
+      }
+
+      const checkedCategories = Array.from(
+        container.querySelectorAll<HTMLInputElement>(".new-surcharge-category:checked")
+      ).map((cb) => cb.value);
+      if (checkedCategories.length === 0) {
+        showStatus("⚠️ Zaznacz przynajmniej jedną kategorię.", "error");
+        return;
+      }
+
+      const assignmentKey = buildSurchargeAssignmentKey(surchargeId);
+      const isCollision =
+        getSurchargeDefinitions().some((s) => s.id === surchargeId) ||
+        _draftVariantDefs.some((d) => d.key === assignmentKey);
+      if (isCollision) {
+        showStatus(
+          "⚠️ Dopłata o takiej nazwie już istnieje/jest w niezapisanym drafcie. Wybierz inną nazwę albo najpierw kliknij „Zapisz cennik”.",
+          "error"
+        );
+        return;
+      }
+
+      const variantDef = buildSurchargeVariant(surchargeId, name, checkedCategories);
+      const surchargeValidation = variantSchema.safeParse(variantDef);
+      if (!surchargeValidation.success) {
+        showStatus(
+          `⚠️ Nieprawidłowe dane dopłaty: ${surchargeValidation.error.issues[0]?.message ?? "nieznany błąd"}`,
+          "error"
+        );
+        return;
+      }
+
+      _draftVariantDefs = _draftVariantDefs
+        .filter((d) => d.key !== variantDef.key)
+        .concat(variantDef);
+      prices[surchargeRateKey(surchargeId)] = percentValue / 100;
+
+      showStatus(
+        `✓ Dodano dopłatę (niezapisana): "${name}" w ${checkedCategories.length} ${checkedCategories.length === 1 ? "kategorii" : "kategoriach"}`
+      );
+      updateDraftIndicator();
+      renderTable();
+      ctx?.emit?.("prices-updated", { timestamp: Date.now() });
+
+      if (surchargeNameInput) surchargeNameInput.value = "";
+      if (surchargePercentInput) surchargePercentInput.value = "";
+      container
+        .querySelectorAll<HTMLInputElement>(".new-surcharge-category")
+        .forEach((cb) => (cb.checked = false));
+      refreshSurchargeCategorySummary();
+      refreshDeleteSurchargeSelect();
+    });
+
+    btnDeleteSurcharge?.addEventListener("click", () => {
+      const surchargeId = deleteSurchargeSelect?.value ?? "";
+      if (!surchargeId) return;
+
+      const surchargeLabel = deleteSurchargeSelect?.selectedOptions[0]?.textContent ?? surchargeId;
+      if (
+        !confirm(`Usunąć dopłatę "${surchargeLabel}"? Operacja nieodwracalna po „Zapisz cennik”.`)
+      ) {
+        return;
+      }
+
+      const rateKey = surchargeRateKey(surchargeId);
+      if (rateKey in prices) {
+        delete prices[rateKey];
+        delete customPriceLabels[rateKey];
+      }
+      const assignmentKey = buildSurchargeAssignmentKey(surchargeId);
+      deleteVariantDefinition(assignmentKey);
+      _draftVariantDefs = _draftVariantDefs.filter((d) => d.key !== assignmentKey);
+
+      showStatus(`✓ Usunięto dopłatę "${surchargeLabel}".`);
+      updateDraftIndicator();
+      renderTabs();
+      renderTable();
+      refreshDeleteSurchargeSelect();
       ctx?.emit?.("prices-updated", { timestamp: Date.now() });
     });
 
