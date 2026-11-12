@@ -5,8 +5,10 @@ import { MATERIAL_ASSIGNMENT_PREFIX } from "../src/core/variantKeys";
 import {
   setVariantDefinitions,
   resetPrices,
+  setPrice,
   PRICES_STORAGE_KEY,
 } from "../src/services/priceService";
+import { buildSurchargeVariant, surchargeRateKey } from "../src/core/dynamicSurcharges";
 
 describe("Wycinanie z folii", () => {
   it("should use below-1m2 rate for kolorowa when area < 1m2", () => {
@@ -153,5 +155,36 @@ describe("Wycinanie z folii — materiał relatywny do bazy STATYCZNEJ z nadpisa
     });
 
     expect(result.tierPrice).toBe(Math.round(999 * 1.1 * 100) / 100);
+  });
+
+  it("dopłata globalna (Dwustronne +40%) dolicza się do totalPrice", () => {
+    let storage: Record<string, string> = {};
+    vi.stubGlobal("localStorage", {
+      getItem: (k: string) => storage[k] ?? null,
+      setItem: (k: string, v: string) => {
+        storage[k] = String(v);
+      },
+      removeItem: (k: string) => {
+        delete storage[k];
+      },
+    });
+
+    setVariantDefinitions([buildSurchargeVariant("dwustronne", "Dwustronne", ["wycinanie-folii"])]);
+    setPrice("defaultPrices." + surchargeRateKey("dwustronne"), 0.4);
+
+    const base = calculateWycinanieFolii({
+      variantId: "kolorowa",
+      widthMm: 1000,
+      heightMm: 1000,
+      express: false,
+    });
+    const withSurcharge = calculateWycinanieFolii({
+      variantId: "kolorowa",
+      widthMm: 1000,
+      heightMm: 1000,
+      express: false,
+      checkedSurchargeIds: ["dwustronne"],
+    });
+    expect(withSurcharge.totalPrice).toBeCloseTo(base.totalPrice * 1.4, 2);
   });
 });

@@ -9,6 +9,10 @@ import {
 import { formatPLN } from "../../core/money";
 import { getPrice } from "../../services/priceService";
 import { getCombinedMaterials, type MaterialDefinition } from "../../core/dynamicMaterials";
+import {
+  renderSurchargeCheckboxesHtml,
+  collectCheckedSurchargeIds,
+} from "../../core/dynamicSurcharges";
 import { escapeHtml } from "../../core/validation";
 import {
   setFieldHint,
@@ -36,6 +40,13 @@ export const WycinanieFoliiView: View = {
     const heightInput = container.querySelector("#wf-height") as HTMLInputElement;
     const foilListEl = container.querySelector("#wf-foil-type-list") as HTMLElement | null;
     const addBtn = container.querySelector("#wf-add-to-cart") as HTMLButtonElement;
+    const surchargesBox = document.createElement("div");
+    surchargesBox.id = "wf-surcharges";
+    addBtn.insertAdjacentElement("beforebegin", surchargesBox);
+    const renderSurcharges = (): void => {
+      surchargesBox.innerHTML = renderSurchargeCheckboxesHtml("wycinanie-folii");
+    };
+    renderSurcharges();
     const colorHintEl = container.querySelector("#wf-color-hint") as HTMLElement | null;
 
     const resultEl = container.querySelector("#wfResult") as HTMLElement;
@@ -179,6 +190,7 @@ export const WycinanieFoliiView: View = {
         widthMm,
         heightMm,
         express: ctx.expressMode,
+        checkedSurchargeIds: collectCheckedSurchargeIds(surchargesBox),
       };
 
       const result = calculateWycinanieFolii(options);
@@ -213,6 +225,7 @@ export const WycinanieFoliiView: View = {
     ctx?.on?.("prices-updated", () => {
       renderFoilTypeList();
       updateLegend();
+      renderSurcharges();
       calculate();
     });
 
