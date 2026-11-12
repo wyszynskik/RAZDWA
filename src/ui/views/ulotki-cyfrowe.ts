@@ -10,6 +10,10 @@ import {
 } from "../../categories/ulotki-cyfrowe-jednostronne";
 import { formatPLN } from "../../core/money";
 import {
+  renderSurchargeCheckboxesHtml,
+  collectCheckedSurchargeIds,
+} from "../../core/dynamicSurcharges";
+import {
   setFieldHint,
   flashFieldHints,
   setButtonGuarded,
@@ -72,6 +76,13 @@ export const UlotkiCyfroweView: View = {
     const qtySelect = container.querySelector("#u-qty") as HTMLSelectElement;
     const paperSelect = container.querySelector("#u-paper") as HTMLSelectElement;
     const addToCartBtn = container.querySelector("#u-add-to-cart") as HTMLButtonElement;
+    const surchargesBox = document.createElement("div");
+    surchargesBox.id = "u-surcharges";
+    addToCartBtn?.insertAdjacentElement("beforebegin", surchargesBox);
+    const renderSurcharges = (): void => {
+      surchargesBox.innerHTML = renderSurchargeCheckboxesHtml("ulotki");
+    };
+    renderSurcharges();
     const formatHint = container.querySelector("#u-format-hint") as HTMLElement | null;
     const qtyHint = container.querySelector("#u-qty-hint") as HTMLElement | null;
     const fallbackHint = container.querySelector(
@@ -248,6 +259,7 @@ export const UlotkiCyfroweView: View = {
         qty: parseInt(qtySelect.value, 10),
         express: ctx.expressMode,
         sides,
+        checkedSurchargeIds: collectCheckedSurchargeIds(surchargesBox),
       };
 
       try {
@@ -290,6 +302,7 @@ export const UlotkiCyfroweView: View = {
 
     ctx?.on?.("prices-updated", () => {
       populateTables();
+      renderSurcharges();
       performCalculation();
     });
 

@@ -3,11 +3,13 @@ import { calculatePrice } from "../core/pricing";
 
 import { PriceTable, CalculationResult } from "../core/types";
 import { mergeStoredNumericTiers, resolveStoredPrice } from "../core/compat";
+import { applySurcharges } from "../core/dynamicSurcharges";
 
 export interface UlotkiDwustronneOptions {
   qty: number;
   format: string;
   express: boolean;
+  checkedSurchargeIds?: string[];
 }
 
 export function getUlotkiDwustronneTable(formatKey: string): PriceTable {
@@ -54,5 +56,9 @@ export function quoteUlotkiDwustronne(options: UlotkiDwustronneOptions): Calcula
   const activeModifiers: string[] = [];
   if (options.express) activeModifiers.push("express");
 
-  return calculatePrice(table, options.qty, activeModifiers);
+  const result = calculatePrice(table, options.qty, activeModifiers);
+  result.totalPrice = parseFloat(
+    applySurcharges("ulotki", result.totalPrice, options.checkedSurchargeIds ?? []).toFixed(2)
+  );
+  return result;
 }
