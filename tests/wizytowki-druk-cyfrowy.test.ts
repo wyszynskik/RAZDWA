@@ -35,6 +35,33 @@ describe("Wizytówki - druk cyfrowy", () => {
     expect(result.totalPrice).toBe(78.0);
   });
 
+  it("foliowane (matt_gloss) bez ceny admina rzuca błąd progu, nie crash na pustej tabeli", () => {
+    // Regresja: standardPrices[size] miało tylko "noLam" — folia:"matt_gloss"
+    // trafiało na table===undefined i rzucało "Błąd: brak tabeli cenowej"
+    // nawet PO dodaniu ceny przez admina (sprawdzenie table następowało przed
+    // scaleniem kluczy admina). Teraz standardPrices[size].lam = {} istnieje,
+    // więc bez ceny admina błąd jest poprawny i informacyjny ("Brak progu
+    // cenowego"), nie techniczny crash.
+    expect(() =>
+      quoteWizytowki({ format: "85x55", folia: "matt_gloss", qty: 50, express: false })
+    ).toThrow("Brak progu cenowego");
+  });
+
+  it("foliowane (matt_gloss) z progiem dodanym przez admina liczy poprawnie", () => {
+    try {
+      setPrice("defaultPrices.wizytowki-85x55-matt_gloss-50szt", 85);
+      const result = quoteWizytowki({
+        format: "85x55",
+        folia: "matt_gloss",
+        qty: 50,
+        express: false,
+      });
+      expect(result.totalPrice).toBe(85);
+    } finally {
+      resetPrices();
+    }
+  });
+
   it("dopłata globalna (Dwustronne +40%) dolicza się do totalPrice", () => {
     const storage: Record<string, string> = {};
     vi.stubGlobal("localStorage", {
