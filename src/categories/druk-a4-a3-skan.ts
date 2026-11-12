@@ -2,6 +2,7 @@ import { CategoryModule } from "../ui/router";
 import { calculateSimplePrint, calculateSimpleScan } from "../core/compat-logic";
 import { getPRICE, resolveStoredPrice } from "../core/compat";
 import { getPrice } from "../services/priceService";
+import { applySurcharges } from "../core/dynamicSurcharges";
 
 export interface DrukA4A3SkanOptions {
   mode: "bw" | "color";
@@ -16,6 +17,7 @@ export interface DrukA4A3SkanOptions {
   scanType: "none" | "auto" | "manual";
   scanQty: number;
   express: boolean;
+  checkedSurchargeIds?: string[];
 }
 
 export function calculateDrukA4A3Skan(options: DrukA4A3SkanOptions, pricing?: any) {
@@ -53,6 +55,7 @@ export function calculateDrukA4A3Skan(options: DrukA4A3SkanOptions, pricing?: an
   if (options.express) {
     finalTotal = baseTotal * (1 + resolveStoredPrice("modifier-express", 0.2));
   }
+  finalTotal = applySurcharges("druk-a4-a3", finalTotal, options.checkedSurchargeIds ?? []);
 
   return {
     totalPrice: parseFloat(finalTotal.toFixed(2)),
