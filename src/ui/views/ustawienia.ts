@@ -3992,7 +3992,7 @@ export const UstawieniaView: View = {
 
           <aside class="settings-actions-panel">
             <div class="settings-actions">
-              <details class="settings-add-group">
+              <details class="settings-add-group" open>
                 <summary class="settings-wizard-header settings-wizard-header--collapsible">
                   <span class="settings-wizard-title">Nowy wariant / produkt</span>
                   <span id="pending-count-badge" class="settings-pending-badge" style="display:none"></span>
