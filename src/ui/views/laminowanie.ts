@@ -10,6 +10,10 @@ import {
 } from "../../categories/laminowanie";
 import { formatPLN } from "../../core/money";
 import { resolveStoredPrice } from "../../core/compat";
+import {
+  renderSurchargeCheckboxesHtml,
+  collectCheckedSurchargeIds,
+} from "../../core/dynamicSurcharges";
 import { getPrice, getVariantDefinitions } from "../../services/priceService";
 import {
   setFieldHint,
@@ -758,6 +762,13 @@ export const LaminowanieView: View = {
 
     const qtyInput = container.querySelector("#lam-qty") as HTMLInputElement;
     const addToCartBtn = container.querySelector("#lam-add-to-cart") as HTMLButtonElement;
+    const lamSurchargesBox = document.createElement("div");
+    lamSurchargesBox.id = "lam-surcharges";
+    addToCartBtn.insertAdjacentElement("beforebegin", lamSurchargesBox);
+    const renderLamSurcharges = (): void => {
+      lamSurchargesBox.innerHTML = renderSurchargeCheckboxesHtml("laminowanie", "lam-");
+    };
+    renderLamSurcharges();
     const lamFormatHint = container.querySelector("#lam-format-hint") as HTMLElement | null;
     const lamQtyHint = container.querySelector("#lam-qty-hint") as HTMLElement | null;
     const resultDisplay = container.querySelector("#lamResult") as HTMLElement;
@@ -799,6 +810,7 @@ export const LaminowanieView: View = {
         formatLabel,
         qty: qty,
         express: ctx.expressMode,
+        checkedSurchargeIds: collectCheckedSurchargeIds(lamSurchargesBox),
       };
 
       const result = quoteLaminowanie(currentOptions);
@@ -1658,6 +1670,13 @@ export const LaminowanieView: View = {
     const introService = container.querySelector("#intro-service") as HTMLSelectElement | null;
     const introQty = container.querySelector("#intro-qty") as HTMLInputElement | null;
     const introAddBtn = container.querySelector("#intro-add-to-cart") as HTMLButtonElement | null;
+    const introSurchargesBox = document.createElement("div");
+    introSurchargesBox.id = "intro-surcharges";
+    introAddBtn?.insertAdjacentElement("beforebegin", introSurchargesBox);
+    const renderIntroSurcharges = (): void => {
+      introSurchargesBox.innerHTML = renderSurchargeCheckboxesHtml("laminowanie", "intro-");
+    };
+    renderIntroSurcharges();
     const introServiceHint = container.querySelector("#intro-service-hint") as HTMLElement | null;
     const introQtyHint = container.querySelector("#intro-qty-hint") as HTMLElement | null;
     const introResult = container.querySelector("#introResult") as HTMLElement | null;
@@ -1725,6 +1744,7 @@ export const LaminowanieView: View = {
         serviceId: introService.value,
         qty: parseInt(introQty.value, 10) || 1,
         express: false,
+        checkedSurchargeIds: collectCheckedSurchargeIds(introSurchargesBox),
       });
 
       introState = result;
@@ -1819,6 +1839,8 @@ export const LaminowanieView: View = {
       bindCustomItems.refresh();
       oprCustomItems.refresh();
       ensureLegend(getActiveTab());
+      renderLamSurcharges();
+      renderIntroSurcharges();
       recalcAll();
     });
   },

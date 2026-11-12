@@ -7,17 +7,20 @@ import {
   type MaterialDefinition,
   type MaterialTier,
 } from "../core/dynamicMaterials";
+import { applySurcharges } from "../core/dynamicSurcharges";
 
 export interface LaminowanieOptions {
   qty: number;
   format: string;
   express: boolean;
+  checkedSurchargeIds?: string[];
 }
 
 export interface IntroligatorniaOptions {
   serviceId: string;
   qty: number;
   express: boolean;
+  checkedSurchargeIds?: string[];
 }
 
 export interface IntroligatorniaResult {
@@ -82,7 +85,11 @@ export function quoteLaminowanie(options: LaminowanieOptions): CalculationResult
   const activeModifiers = [];
   if (options.express) activeModifiers.push("express");
 
-  return calculatePrice(table, options.qty, activeModifiers);
+  const result = calculatePrice(table, options.qty, activeModifiers);
+  result.totalPrice = parseFloat(
+    applySurcharges("laminowanie", result.totalPrice, options.checkedSurchargeIds ?? []).toFixed(2)
+  );
+  return result;
 }
 
 /** Statyczne usługi (z prices.json) + dynamicznie dodane z panelu admina. */
@@ -136,7 +143,14 @@ export function quoteIntroligatornia(options: IntroligatorniaOptions): Introliga
   const qty = Math.max(1, Math.floor(options.qty));
   const unitPrice = resolveIntroligatorniaUnitPrice(item);
   const basePrice = unitPrice * qty;
-  const totalPrice = parseFloat(basePrice.toFixed(2));
+  const totalPriceBeforeSurcharges = parseFloat(basePrice.toFixed(2));
+  const totalPrice = parseFloat(
+    applySurcharges(
+      "laminowanie",
+      totalPriceBeforeSurcharges,
+      options.checkedSurchargeIds ?? []
+    ).toFixed(2)
+  );
 
   return {
     serviceId: item.id,

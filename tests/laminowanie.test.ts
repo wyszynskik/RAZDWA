@@ -5,8 +5,10 @@ import { MATERIAL_ASSIGNMENT_PREFIX } from "../src/core/variantKeys";
 import {
   setVariantDefinitions,
   resetPrices,
+  setPrice,
   PRICES_STORAGE_KEY,
 } from "../src/services/priceService";
+import { buildSurchargeVariant, surchargeRateKey } from "../src/core/dynamicSurcharges";
 
 describe("Laminowanie", () => {
   it("should calculate price for A3 (1-50szt) = 7 PLN/szt", () => {
@@ -187,5 +189,62 @@ describe("Laminowanie — materiał relatywny do bazy STATYCZNEJ z nadpisaną ce
     const result = quoteIntroligatornia({ serviceId: derivedId, qty: 1, express: false });
 
     expect(result.unitPrice).toBe(Math.round(999 * 1.1 * 100) / 100);
+  });
+});
+
+describe("Laminowanie — dopłaty globalne (core/dynamicSurcharges.ts)", () => {
+  let storage: Record<string, string> = {};
+
+  function stubStorage(): void {
+    storage = {};
+    vi.stubGlobal("localStorage", {
+      getItem: (k: string) => storage[k] ?? null,
+      setItem: (k: string, v: string) => {
+        storage[k] = String(v);
+      },
+      removeItem: (k: string) => {
+        delete storage[k];
+      },
+      clear: () => {
+        storage = {};
+      },
+    });
+  }
+
+  afterEach(() => {
+    resetPrices();
+    setVariantDefinitions([]);
+    vi.unstubAllGlobals();
+  });
+
+  it("quoteLaminowanie: dopłata +40% dolicza się do totalPrice", () => {
+    stubStorage();
+    setVariantDefinitions([buildSurchargeVariant("dwustronne", "Dwustronne", ["laminowanie"])]);
+    setPrice("defaultPrices." + surchargeRateKey("dwustronne"), 0.4);
+
+    const base = quoteLaminowanie({ format: "A3", qty: 10, express: false });
+    const withSurcharge = quoteLaminowanie({
+      format: "A3",
+      qty: 10,
+      express: false,
+      checkedSurchargeIds: ["dwustronne"],
+    });
+    expect(withSurcharge.totalPrice).toBeCloseTo(base.totalPrice * 1.4, 2);
+  });
+
+  it("quoteIntroligatornia: dopłata +40% dolicza się do totalPrice", () => {
+    stubStorage();
+    setVariantDefinitions([buildSurchargeVariant("dwustronne", "Dwustronne", ["laminowanie"])]);
+    setPrice("defaultPrices." + surchargeRateKey("dwustronne"), 0.4);
+
+    const services = quoteIntroligatornia;
+    const base = services({ serviceId: "gilotyna", qty: 1, express: false });
+    const withSurcharge = services({
+      serviceId: "gilotyna",
+      qty: 1,
+      express: false,
+      checkedSurchargeIds: ["dwustronne"],
+    });
+    expect(withSurcharge.totalPrice).toBeCloseTo(base.totalPrice * 1.4, 2);
   });
 });
