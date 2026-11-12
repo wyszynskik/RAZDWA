@@ -149,7 +149,7 @@ describe("Canvas — materiał relatywny do formatu STATYCZNEGO z nadpisaną cen
   });
 
   it("dopłata globalna (Dwustronne +40%) dolicza się do totalPrice (format standardowy)", () => {
-    let storage: Record<string, string> = {};
+    const storage: Record<string, string> = {};
     vi.stubGlobal("localStorage", {
       getItem: (k: string) => storage[k] ?? null,
       setItem: (k: string, v: string) => {
