@@ -3,6 +3,7 @@ import { CalculationResult, PriceTable } from "../core/types";
 import { getPrice } from "../services/priceService";
 import { resolveStoredPrice } from "../core/compat";
 import { getCombinedMaterials, type MaterialDefinition } from "../core/dynamicMaterials";
+import { applySurcharges } from "../core/dynamicSurcharges";
 
 export interface CanvasOptions {
   modeId: "framed" | "unframed" | "m2-unframed";
@@ -11,6 +12,7 @@ export interface CanvasOptions {
   widthMm?: number;
   heightMm?: number;
   express: boolean;
+  checkedSurchargeIds?: string[];
 }
 
 export type CanvasFormatModeId = "framed" | "unframed";
@@ -179,7 +181,16 @@ export function calculateCanvas(options: CanvasOptions): CanvasResult {
       const unitPrice = parseFloat((printCostUnit + frameCostUnit).toFixed(2));
       const qty = Math.max(1, options.quantity);
       const expressMultiplier = options.express ? 1.2 : 1;
-      const totalPrice = parseFloat((unitPrice * qty * expressMultiplier).toFixed(2));
+      const totalPriceBeforeSurcharges = parseFloat(
+        (unitPrice * qty * expressMultiplier).toFixed(2)
+      );
+      const totalPrice = parseFloat(
+        applySurcharges(
+          "canvas",
+          totalPriceBeforeSurcharges,
+          options.checkedSurchargeIds ?? []
+        ).toFixed(2)
+      );
       formatLabel = "Własny rozmiar (" + width + "x" + height + " mm)";
       return {
         basePrice: unitPrice * qty,
@@ -221,6 +232,9 @@ export function calculateCanvas(options: CanvasOptions): CanvasResult {
   if (options.express && !isCustom) activeModifiers.push("express");
 
   const result = calculatePrice(table, qtyForCalc, activeModifiers);
+  result.totalPrice = parseFloat(
+    applySurcharges("canvas", result.totalPrice, options.checkedSurchargeIds ?? []).toFixed(2)
+  );
 
   return {
     ...result,

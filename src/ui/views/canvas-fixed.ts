@@ -12,6 +12,10 @@ import { formatPLN } from "../../core/money";
 import { getPrice } from "../../services/priceService";
 import { resolveStoredPrice } from "../../core/compat";
 import {
+  renderSurchargeCheckboxesHtml,
+  collectCheckedSurchargeIds,
+} from "../../core/dynamicSurcharges";
+import {
   setFieldHint,
   flashFieldHints,
   setButtonGuarded,
@@ -44,6 +48,13 @@ export const CanvasView: View = {
     const qtyInput = container.querySelector("#cv-qty") as HTMLInputElement;
 
     const addBtn = container.querySelector("#cv-add") as HTMLButtonElement;
+    const surchargesBox = document.createElement("div");
+    surchargesBox.id = "cv-surcharges";
+    addBtn.insertAdjacentElement("beforebegin", surchargesBox);
+    const renderSurcharges = (): void => {
+      surchargesBox.innerHTML = renderSurchargeCheckboxesHtml("canvas");
+    };
+    renderSurcharges();
     const modeHint = container.querySelector("#cv-mode-hint") as HTMLElement | null;
     const formatHint = container.querySelector("#cv-format-hint") as HTMLElement | null;
     const qtyHint = container.querySelector("#cv-qty-hint") as HTMLElement | null;
@@ -209,6 +220,7 @@ export const CanvasView: View = {
         widthMm: parseInt(widthInput.value, 10) || 0,
         heightMm: parseInt(heightInput.value, 10) || 0,
         express: ctx.expressMode,
+        checkedSurchargeIds: collectCheckedSurchargeIds(surchargesBox),
       };
 
       const result = calculateCanvas(options);
@@ -261,6 +273,7 @@ export const CanvasView: View = {
     ctx?.on?.("prices-updated", () => {
       if (modeSel.value && modeSel.value !== "m2-unframed") syncModeUI();
       updateLegend();
+      renderSurcharges();
       calculate();
     });
 
