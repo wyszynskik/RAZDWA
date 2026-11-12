@@ -697,18 +697,47 @@ function getAddablePrefixOptions(category: PriceCategory): PrefixOption[] {
         { value: "plakaty-format-180g-pp-nieformatowe-", label: "Plakaty 180g PP nieformatowe" }
       );
       break;
-    case "plakaty-a4-a3":
+    case "plakaty-a4-a3": {
+      // Canon ma SZTYWNĄ, zakodowaną listę progów ilościowych (plakaty.ts) —
+      // bez dynamicznego scalania jak Dyplomy/Broszury. Wpisanie tu ilości,
+      // która już istnieje w kodzie, nadpisuje jej cenę (działa). Wpisanie
+      // NOWEJ ilości zapisuje martwy klucz, którego kalkulator nigdy nie
+      // odczyta — etykieta ostrzega, żeby nie dawać fałszywego wrażenia, że
+      // to dodaje nowy próg.
+      const canonSuffix = " — tylko nadpisanie istniejącej ceny progu, NIE dodaje nowej ilości";
       options.push(
-        { value: "plakaty-maly-canon-margin-170-", label: "Mały Canon z marginesem 130/170g" },
-        { value: "plakaty-maly-canon-no-margin-170-", label: "Mały Canon bez marginesu 130/170g" },
-        { value: "plakaty-maly-canon-margin-200-", label: "Mały Canon z marginesem 200g" },
-        { value: "plakaty-maly-canon-no-margin-200-", label: "Mały Canon bez marginesu 200g" },
-        { value: "plakaty-duzy-canon-a4-170-kreda-130-170-", label: "Duży Canon A4 130/170g" },
-        { value: "plakaty-duzy-canon-a3-170-kreda-130-170-", label: "Duży Canon A3 130/170g" },
-        { value: "plakaty-duzy-canon-a4-200-kreda-200-", label: "Duży Canon A4 200g" },
-        { value: "plakaty-duzy-canon-a3-200-kreda-200-", label: "Duży Canon A3 200g" }
+        {
+          value: "plakaty-maly-canon-margin-170-",
+          label: `Mały Canon z marginesem 130/170g${canonSuffix}`,
+        },
+        {
+          value: "plakaty-maly-canon-no-margin-170-",
+          label: `Mały Canon bez marginesu 130/170g${canonSuffix}`,
+        },
+        {
+          value: "plakaty-maly-canon-margin-200-",
+          label: `Mały Canon z marginesem 200g${canonSuffix}`,
+        },
+        {
+          value: "plakaty-maly-canon-no-margin-200-",
+          label: `Mały Canon bez marginesu 200g${canonSuffix}`,
+        },
+        {
+          value: "plakaty-duzy-canon-a4-170-kreda-130-170-",
+          label: `Duży Canon A4 130/170g${canonSuffix}`,
+        },
+        {
+          value: "plakaty-duzy-canon-a3-170-kreda-130-170-",
+          label: `Duży Canon A3 130/170g${canonSuffix}`,
+        },
+        {
+          value: "plakaty-duzy-canon-a4-200-kreda-200-",
+          label: `Duży Canon A4 200g${canonSuffix}`,
+        },
+        { value: "plakaty-duzy-canon-a3-200-kreda-200-", label: `Duży Canon A3 200g${canonSuffix}` }
       );
       break;
+    }
     case "artykuly":
       options.push(
         { value: "artykuly-teczka-", label: "Teczki" },
@@ -917,9 +946,6 @@ function getAddablePrefixOptions(category: PriceCategory): PrefixOption[] {
         { value: "koperty-", label: "Koperta (typ A–G, etykieta = litera)" },
         { value: "artykuly-koperta-", label: "Koperta – pozycja artykułu biurowego" }
       );
-      break;
-    case "modifiers":
-      options.push({ value: "modifier-", label: "Nowa dopłata globalna (mnożnik procentowy)" });
       break;
   }
 
@@ -1933,7 +1959,15 @@ export function getRenderedCategories(prices: PriceMap): PriceCategory[] {
 }
 
 function getAddableCategories(): PriceCategory[] {
-  return BASE_PRICE_CATEGORIES.filter((category) => category.id !== "inne");
+  // "modifiers" (Dopłaty globalne) wyłączone celowo: generyczny "Dodaj
+  // wariant" potrafi zapisać nowy klucz modifier-xxx, ale żaden kalkulator
+  // nie czyta dynamicznie nazwanych kluczy modifier-* (każda dopłata jest
+  // na stałe wpisana w kodzie kategorii, która jej używa) — dodany tu wiersz
+  // byłby martwą liczbą bez żadnego efektu. Istniejące dopłaty (express/
+  // satyna/modigliani) nadal edytowalne na zwykłej liście cen tej kategorii.
+  return BASE_PRICE_CATEGORIES.filter(
+    (category) => category.id !== "inne" && category.id !== "modifiers"
+  );
 }
 
 const CAD_SETTINGS_ORDER: string[] = [
@@ -3952,10 +3986,17 @@ export const UstawieniaView: View = {
 
           <aside class="settings-actions-panel">
             <div class="settings-actions">
-              <div class="settings-add-group">
-                <div class="settings-wizard-header">
+              <details class="settings-add-group">
+                <summary class="settings-wizard-header settings-wizard-header--collapsible">
                   <span class="settings-wizard-title">Nowy wariant / produkt</span>
                   <span id="pending-count-badge" class="settings-pending-badge" style="display:none"></span>
+                </summary>
+
+                <div class="hint" style="margin-bottom:8px;">
+                  Tu dodajesz nowy próg ilościowy do istniejącego produktu albo całkiem nową,
+                  niezależną podkategorię (opcja "Nowa, niezależna podkategoria…" w punkcie 2).
+                  Nowy papier/materiał widoczny w kilku kategoriach naraz → sekcja "Dodaj
+                  materiał" niżej. Nowy format w druku CAD → sekcja "Dodaj format CAD" niżej.
                 </div>
 
                 <label class="settings-field">
@@ -4054,7 +4095,7 @@ export const UstawieniaView: View = {
                 </div>
 
                 <button id="btn-add-row" type="button" class="btn-success settings-action-btn">+ Dodaj wariant</button>
-              </div>
+              </details>
 
               <hr class="settings-divider">
 
@@ -4076,7 +4117,8 @@ export const UstawieniaView: View = {
                   </button>
                 </div>
 
-              <div class="settings-add-group" id="add-material-group" style="margin-top:12px;">
+              <details class="settings-add-group" id="add-material-group" style="margin-top:12px;">
+                <summary class="settings-wizard-header settings-wizard-header--collapsible"><span class="settings-wizard-title">Dodaj materiał</span></summary>
                 <div class="hint" style="margin-bottom:8px;">
                   Dodaje materiał (np. nowy papier) od razu do wybranych kategorii — pojawi się
                   w ich formularzach bez ręcznej edycji HTML.
@@ -4131,9 +4173,25 @@ export const UstawieniaView: View = {
                 </div>
 
                 <button id="btn-add-material" type="button" class="btn-success settings-action-btn">+ Dodaj materiał</button>
-              </div>
 
-              <div class="settings-add-group" id="add-cad-format-group" style="margin-top:12px;">
+                <hr class="settings-divider" style="margin:10px 0;">
+                <div class="settings-field">
+                  <span class="settings-action-label">Usuń dodany materiał</span>
+                  <select id="delete-material-category" class="settings-input">
+                    <option value="">— wybierz kategorię —</option>
+                    ${MATERIAL_CATEGORY_OPTIONS.map(
+                      (opt) => `<option value="${opt.value}">${opt.label}</option>`
+                    ).join("")}
+                  </select>
+                  <select id="delete-material-select" class="settings-input" style="margin-top:6px;" disabled>
+                    <option value="">— najpierw wybierz kategorię —</option>
+                  </select>
+                  <button id="btn-delete-material" type="button" class="btn-secondary settings-action-btn" style="margin-top:6px;" disabled>✕ Usuń materiał (wraz z progami cen)</button>
+                </div>
+              </details>
+
+              <details class="settings-add-group" id="add-cad-format-group" style="margin-top:12px;">
+                <summary class="settings-wizard-header settings-wizard-header--collapsible"><span class="settings-wizard-title">Dodaj format CAD</span></summary>
                 <div class="hint" style="margin-bottom:8px;">
                   Dodaje nowy format CAD (np. inny rozmiar rolki) — pojawi się od razu w
                   formularzu druku CAD. Format niesie własną długość bazową (do rozpoznania
@@ -4174,9 +4232,19 @@ export const UstawieniaView: View = {
                 </div>
 
                 <button id="btn-add-cad-format" type="button" class="btn-success settings-action-btn">+ Dodaj format CAD</button>
-              </div>
 
-              <div class="settings-add-group" id="add-bulk-paper-group" style="display:none; margin-top:12px;">
+                <hr class="settings-divider" style="margin:10px 0;">
+                <div class="settings-field">
+                  <span class="settings-action-label">Usuń dodany format</span>
+                  <select id="delete-cad-format-select" class="settings-input">
+                    <option value="">— wybierz format —</option>
+                  </select>
+                  <button id="btn-delete-cad-format" type="button" class="btn-secondary settings-action-btn" style="margin-top:6px;" disabled>✕ Usuń format</button>
+                </div>
+              </details>
+
+              <details class="settings-add-group" id="add-bulk-paper-group" style="display:none; margin-top:12px;">
+                <summary class="settings-wizard-header settings-wizard-header--collapsible"><span class="settings-wizard-title">Dodaj papier do kilku kategorii naraz</span></summary>
                 <div class="hint" style="margin-bottom:8px;">
                   Tworzy nową, niezależną podkategorię o tej samej nazwie w każdej zaznaczonej
                   kategorii — progi ilość/cena wpisujesz osobno dla każdej (nie są współdzielone).
@@ -4205,7 +4273,7 @@ export const UstawieniaView: View = {
                 <div id="bulk-paper-category-blocks"></div>
 
                 <button id="btn-add-bulk-paper" type="button" class="btn-success settings-action-btn">+ Dodaj papier do zaznaczonych kategorii</button>
-              </div>
+              </details>
               </div>
 
               <hr class="settings-divider">
@@ -5379,6 +5447,158 @@ export const UstawieniaView: View = {
       if (bwMbInput) bwMbInput.value = "";
       if (colorFmtInput) colorFmtInput.value = "";
       if (colorMbInput) colorMbInput.value = "";
+    });
+
+    // ── Usuń materiał (M1) — generyczny wiersz-delete w tabeli cen czyści
+    // jeden klucz ceny, ale sentinel VariantDefinition materiału
+    // (mat__{kategoria}__{id}, patrz dynamicMaterials.ts) nie ma własnego
+    // wiersza w tabeli cen (nie ma przypisanej ceny) — bez tego przycisku
+    // usunięcie wszystkich progów jednego po drugim zostawiało sentinel
+    // osieroconym na stałe (reconstructDynamicMaterial zwraca null przy 0
+    // progów, ale sam sentinel nigdy nie jest kasowany).
+    const deleteMaterialCategorySelect = container.querySelector<HTMLSelectElement>(
+      "#delete-material-category"
+    );
+    const deleteMaterialSelect =
+      container.querySelector<HTMLSelectElement>("#delete-material-select");
+    const btnDeleteMaterial = container.querySelector<HTMLButtonElement>("#btn-delete-material");
+
+    function getDeletableMaterials(
+      categoryId: DynamicMaterialCategoryId
+    ): { id: string; label: string }[] {
+      const assignmentPrefix = buildMaterialAssignmentKey(categoryId, "");
+      const result: { id: string; label: string }[] = [];
+      for (const v of getVariantDefinitions()) {
+        if (v.categoryId !== categoryId || v.subcategoryPrefix !== MATERIAL_ASSIGNMENT_PREFIX) {
+          continue;
+        }
+        const id = v.key.slice(assignmentPrefix.length);
+        if (id) result.push({ id, label: v.label || id });
+      }
+      return result;
+    }
+
+    function refreshDeleteMaterialSelect(): void {
+      if (!deleteMaterialSelect || !btnDeleteMaterial) return;
+      const categoryId = deleteMaterialCategorySelect?.value ?? "";
+      if (!categoryId) {
+        deleteMaterialSelect.innerHTML = `<option value="">— najpierw wybierz kategorię —</option>`;
+        deleteMaterialSelect.disabled = true;
+        btnDeleteMaterial.disabled = true;
+        return;
+      }
+      const materials = getDeletableMaterials(categoryId as DynamicMaterialCategoryId);
+      if (materials.length === 0) {
+        deleteMaterialSelect.innerHTML = `<option value="">— brak dodanych materiałów —</option>`;
+        deleteMaterialSelect.disabled = true;
+        btnDeleteMaterial.disabled = true;
+        return;
+      }
+      deleteMaterialSelect.innerHTML = materials
+        .map((m) => `<option value="${escapeHtml(m.id)}">${escapeHtml(m.label)}</option>`)
+        .join("");
+      deleteMaterialSelect.disabled = false;
+      btnDeleteMaterial.disabled = false;
+    }
+
+    deleteMaterialCategorySelect?.addEventListener("change", refreshDeleteMaterialSelect);
+    refreshDeleteMaterialSelect();
+
+    btnDeleteMaterial?.addEventListener("click", () => {
+      const categoryId = (deleteMaterialCategorySelect?.value ?? "") as
+        | DynamicMaterialCategoryId
+        | "";
+      const materialId = deleteMaterialSelect?.value ?? "";
+      if (!categoryId || !materialId) return;
+
+      const materialLabel = deleteMaterialSelect?.selectedOptions[0]?.textContent ?? materialId;
+      if (
+        !confirm(
+          `Usunąć materiał "${materialLabel}" wraz z wszystkimi progami cen? Operacja nieodwracalna po „Zapisz cennik”.`
+        )
+      ) {
+        return;
+      }
+
+      const assignmentKey = buildMaterialAssignmentKey(categoryId, materialId);
+      const tierPrefix = materialTierKeyPrefix(categoryId, materialId);
+      for (const key of Object.keys(prices)) {
+        if (key.startsWith(tierPrefix)) {
+          delete prices[key];
+          delete customPriceLabels[key];
+        }
+      }
+      deleteVariantDefinition(assignmentKey);
+      _draftVariantDefs = _draftVariantDefs.filter((d) => d.key !== assignmentKey);
+
+      showStatus(`✓ Usunięto materiał "${materialLabel}".`);
+      updateDraftIndicator();
+      renderTabs();
+      renderTable();
+      refreshDeleteMaterialSelect();
+      ctx?.emit?.("prices-updated", { timestamp: Date.now() });
+    });
+
+    // ── Usuń format CAD (M1b) — analogicznie: sentinel __cad_format__{id}
+    // (dynamicCadFormats.ts) nie ma własnego wiersza ceny, usuwamy go razem
+    // z do 5 kluczy stawek/długości bazowej jednym kliknięciem.
+    const deleteCadFormatSelect = container.querySelector<HTMLSelectElement>(
+      "#delete-cad-format-select"
+    );
+    const btnDeleteCadFormat = container.querySelector<HTMLButtonElement>("#btn-delete-cad-format");
+
+    function refreshDeleteCadFormatSelect(): void {
+      if (!deleteCadFormatSelect || !btnDeleteCadFormat) return;
+      const formats = getDynamicCadFormats();
+      if (formats.length === 0) {
+        deleteCadFormatSelect.innerHTML = `<option value="">— brak dodanych formatów —</option>`;
+        deleteCadFormatSelect.disabled = true;
+        btnDeleteCadFormat.disabled = true;
+        return;
+      }
+      deleteCadFormatSelect.innerHTML = formats
+        .map((f) => `<option value="${escapeHtml(f.id)}">${escapeHtml(f.label)}</option>`)
+        .join("");
+      deleteCadFormatSelect.disabled = false;
+      btnDeleteCadFormat.disabled = false;
+    }
+
+    refreshDeleteCadFormatSelect();
+
+    btnDeleteCadFormat?.addEventListener("click", () => {
+      const formatId = deleteCadFormatSelect?.value ?? "";
+      if (!formatId) return;
+
+      const formatLabel = deleteCadFormatSelect?.selectedOptions[0]?.textContent ?? formatId;
+      if (
+        !confirm(`Usunąć format CAD "${formatLabel}"? Operacja nieodwracalna po „Zapisz cennik”.`)
+      ) {
+        return;
+      }
+
+      const keysToDelete = [
+        cadBaseLengthKey(formatId),
+        cadRateKey("bw", "fmt", formatId),
+        cadRateKey("bw", "mb", formatId),
+        cadRateKey("color", "fmt", formatId),
+        cadRateKey("color", "mb", formatId),
+      ];
+      for (const key of keysToDelete) {
+        if (key in prices) {
+          delete prices[key];
+          delete customPriceLabels[key];
+        }
+      }
+      const assignmentKey = buildCadFormatAssignmentKey(formatId);
+      deleteVariantDefinition(assignmentKey);
+      _draftVariantDefs = _draftVariantDefs.filter((d) => d.key !== assignmentKey);
+
+      showStatus(`✓ Usunięto format CAD "${formatLabel}".`);
+      updateDraftIndicator();
+      renderTabs();
+      renderTable();
+      refreshDeleteCadFormatSelect();
+      ctx?.emit?.("prices-updated", { timestamp: Date.now() });
     });
 
     // ── "Dodaj papier do kilku kategorii naraz" — bulk-dodawacz (wersja

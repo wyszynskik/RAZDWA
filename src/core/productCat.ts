@@ -49,6 +49,7 @@ export const BASE_PRICE_CATEGORIES: PriceCategory[] = [
       "laminowanie-intro-",
       "laminowanie-oprawa-",
       "laminowanie-bindowanie-",
+      "laminowanie-",
     ],
     description: "Laminowanie na gorąco, oprawy, bindowanie oraz usługi introligatorskie.",
     newKeyPrefix: "laminowanie-a4-",
