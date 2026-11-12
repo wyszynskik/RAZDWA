@@ -7,12 +7,14 @@ import {
   type MaterialDefinition,
   type MaterialTier,
 } from "../core/dynamicMaterials";
+import { applySurcharges } from "../core/dynamicSurcharges";
 
 export interface RollUpOptions {
   format: string;
   qty: number;
   isReplacement: boolean;
   express: boolean;
+  checkedSurchargeIds?: string[];
 }
 
 /**
@@ -105,5 +107,9 @@ export function calculateRollUp(options: RollUpOptions): CalculationResult {
     activeModifiers.push("express");
   }
 
-  return calculatePrice(priceTable, options.qty, activeModifiers);
+  const result = calculatePrice(priceTable, options.qty, activeModifiers);
+  result.totalPrice = parseFloat(
+    applySurcharges("rollup", result.totalPrice, options.checkedSurchargeIds ?? []).toFixed(2)
+  );
+  return result;
 }
