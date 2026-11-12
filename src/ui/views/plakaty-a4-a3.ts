@@ -6,6 +6,10 @@ import { formatPLN } from "../../core/money";
 import { getPrice } from "../../services/priceService";
 import { resolveStoredPrice } from "../../core/compat";
 import {
+  renderSurchargeCheckboxesHtml,
+  collectCheckedSurchargeIds,
+} from "../../core/dynamicSurcharges";
+import {
   setFieldHint,
   flashFieldHints,
   setButtonGuarded,
@@ -122,6 +126,13 @@ export const PlakatyA4A3View: View = {
     ) as HTMLInputElement | null;
 
     const addBtn = container.querySelector("#pa-add-to-cart") as HTMLButtonElement;
+    const surchargesBox = document.createElement("div");
+    surchargesBox.id = "pa-surcharges";
+    addBtn.insertAdjacentElement("beforebegin", surchargesBox);
+    const renderSurcharges = (): void => {
+      surchargesBox.innerHTML = renderSurchargeCheckboxesHtml("plakaty-a4-a3");
+    };
+    renderSurcharges();
     const malyQtyHint = container.querySelector("#pa-canon-qty-hint") as HTMLElement | null;
     const duzyQtyHint = container.querySelector("#pa-duzy-canon-qty-hint") as HTMLElement | null;
     const resultBox = container.querySelector("#pa-result-area") as HTMLElement;
@@ -413,6 +424,7 @@ export const PlakatyA4A3View: View = {
         format: fmt,
         qty,
         express: ctx.expressMode,
+        checkedSurchargeIds: collectCheckedSurchargeIds(surchargesBox),
       });
       const trimSurcharge = getDuzyCanonTrimSurcharge();
       const totalWithTrim = parseFloat((res.totalPrice + trimSurcharge).toFixed(2));
@@ -480,7 +492,12 @@ export const PlakatyA4A3View: View = {
       const variantId = resolveDuzyCanonVariantId();
       const finish = duzyCanonFinishSelect.value === "blysk" ? "błysk" : "mat";
       const paper = duzyCanonPaperSelect.value;
-      const res = calculatePlakatyDuzyCanon({ variantId, qty, express: ctx.expressMode });
+      const res = calculatePlakatyDuzyCanon({
+        variantId,
+        qty,
+        express: ctx.expressMode,
+        checkedSurchargeIds: collectCheckedSurchargeIds(surchargesBox),
+      });
       const trimSurcharge = getDuzyCanonTrimSurcharge();
       const totalWithTrim = parseFloat((res.totalPrice + trimSurcharge).toFixed(2));
 
@@ -680,6 +697,7 @@ export const PlakatyA4A3View: View = {
     // by the router below every category container — see mountDynamicSubgroupsFor.
     ctx?.on?.("prices-updated", () => {
       ensureLegend();
+      renderSurcharges();
       recalculate();
     });
 
