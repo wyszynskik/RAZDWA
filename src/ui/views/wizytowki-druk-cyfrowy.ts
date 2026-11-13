@@ -405,8 +405,7 @@ export const WizytowkiView: View = {
           ctx.cart.addItem({
             id: `wizytowki-${Date.now()}`,
             category: "Wizytówki",
-            name:
-              familySelect.value === "foliowane" ? "Wizytówki Foliowane" : "Wizytówki Standard",
+            name: familySelect.value === "foliowane" ? "Wizytówki Foliowane" : "Wizytówki Standard",
             quantity: currentOptions.qty,
             unit: "szt",
             unitPrice: parseFloat((currentResult.totalPrice / currentOptions.qty).toFixed(2)),
