@@ -176,6 +176,7 @@ export const CATEGORY_REGISTRY: CategoryRegistryEntry[] = [
     routeIds: ["dyplomy"],
     pricesJsonKeys: ["dyplomy"],
     categoriesJsonId: "dyplomy",
+    materialCategoryIds: ["dyplomyA4", "dyplomyA5"],
   },
   {
     baseId: "dyplomy-eko",

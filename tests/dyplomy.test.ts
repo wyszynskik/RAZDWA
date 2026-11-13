@@ -4,6 +4,8 @@ import {
   getResolvedDyplomyTiers,
   calculateDyplomyEko,
   getResolvedDyplomyEkoTiers,
+  resolveDyplomyKredaPrice,
+  resolveDyplomyKreda350Price,
 } from "../src/categories/dyplomy";
 import {
   getPrice,
@@ -12,6 +14,8 @@ import {
   setVariantDefinitions,
 } from "../src/services/priceService";
 import { buildSurchargeVariant, surchargeRateKey } from "../src/core/dynamicSurcharges";
+import { buildMaterialAssignmentKey, materialTierKeyPrefix } from "../src/core/dynamicMaterials";
+import { MATERIAL_ASSIGNMENT_PREFIX } from "../src/core/variantKeys";
 
 let storageData: Record<string, string> = {};
 
@@ -454,5 +458,188 @@ describe("Dyplomy Ekonomiczny", () => {
     });
 
     expect(withSurcharge.totalPrice).toBeCloseTo(withoutSurcharge.totalPrice * 1.4, 2);
+  });
+});
+
+describe("Dyplomy — papier jako wymiar ceny (dynamicMaterials, kreda per gramatura)", () => {
+  function registerKreda(
+    categoryId: "dyplomyA4" | "dyplomyA5",
+    entries: Array<{ gramatura: number; tiers: Array<{ suffix: string; price: number }> }>
+  ): void {
+    setVariantDefinitions(
+      entries.map(({ gramatura }) => ({
+        key: buildMaterialAssignmentKey(categoryId, `kreda-${gramatura}`),
+        categoryId,
+        subcategoryPrefix: MATERIAL_ASSIGNMENT_PREFIX,
+        subgroupLabel: "",
+        label: `Kreda ${gramatura}g`,
+        legend: "",
+        visibleInSettings: true,
+        visibleInCalculator: true,
+        sortOrder: 0,
+        createdAt: "2026-01-01T00:00:00.000Z",
+        updatedAt: "2026-01-01T00:00:00.000Z",
+      }))
+    );
+    for (const { gramatura, tiers } of entries) {
+      const prefix = materialTierKeyPrefix(categoryId, `kreda-${gramatura}`);
+      for (const { suffix, price } of tiers) {
+        setPrice(`defaultPrices.${prefix}${suffix}`, price);
+      }
+    }
+  }
+
+  it("resolveDyplomyKredaPrice: brak jakiejkolwiek wycenionej gramatury → null (sygnał fallbacku)", () => {
+    expect(resolveDyplomyKredaPrice("A4", 250, 10)).toBeNull();
+  });
+
+  it("resolveDyplomyKredaPrice: tylko jedna gramatura wyceniona → ta sama cena niezależnie od wybranej gramatury", () => {
+    registerKreda("dyplomyA4", [{ gramatura: 250, tiers: [{ suffix: "1+", price: 30 }] }]);
+    expect(resolveDyplomyKredaPrice("A4", 130, 10)).toBe(30);
+    expect(resolveDyplomyKredaPrice("A4", 250, 10)).toBe(30);
+    expect(resolveDyplomyKredaPrice("A4", 350, 10)).toBe(30);
+  });
+
+  it("resolveDyplomyKredaPrice: dwie gramatury — poniżej minimum bierze cenę minimum, powyżej maksimum bierze cenę maksimum, pomiędzy interpoluje liniowo", () => {
+    registerKreda("dyplomyA4", [
+      { gramatura: 250, tiers: [{ suffix: "1+", price: 30 }] },
+      { gramatura: 350, tiers: [{ suffix: "1+", price: 50 }] },
+    ]);
+    expect(resolveDyplomyKredaPrice("A4", 130, 10)).toBe(30);
+    expect(resolveDyplomyKredaPrice("A4", 250, 10)).toBe(30);
+    expect(resolveDyplomyKredaPrice("A4", 300, 10)).toBe(40); // średnia 30 i 50
+    expect(resolveDyplomyKredaPrice("A4", 350, 10)).toBe(50);
+    expect(resolveDyplomyKredaPrice("A4", 500, 10)).toBe(50);
+  });
+
+  it("resolveDyplomyKredaPrice: progi ilościowe WEWNĄTRZ jednej gramatury nadal działają (qty i gramatura to niezależne osie)", () => {
+    registerKreda("dyplomyA4", [
+      {
+        gramatura: 250,
+        tiers: [
+          { suffix: "1-9", price: 30 },
+          { suffix: "10+", price: 25 },
+        ],
+      },
+    ]);
+    expect(resolveDyplomyKredaPrice("A4", 250, 5)).toBe(30);
+    expect(resolveDyplomyKredaPrice("A4", 250, 20)).toBe(25);
+  });
+
+  it("resolveDyplomyKredaPrice: A4 i A5 to niezależne pule — wycena A4 nie wycieka do A5", () => {
+    registerKreda("dyplomyA4", [{ gramatura: 250, tiers: [{ suffix: "1+", price: 30 }] }]);
+    expect(resolveDyplomyKredaPrice("A5", 250, 10)).toBeNull();
+  });
+
+  it("resolveDyplomyKreda350Price: null, dopóki kreda-350 nie jest wyceniona", () => {
+    registerKreda("dyplomyA4", [{ gramatura: 250, tiers: [{ suffix: "1+", price: 30 }] }]);
+    expect(resolveDyplomyKreda350Price("A4", 10)).toBeNull();
+  });
+
+  it("calculateDyplomy: brak wycenionej kredy → identyczny wynik co przed zmianą (pełny fallback, usingNewPaperModel=false)", () => {
+    const result = calculateDyplomy({
+      format: "A4",
+      qty: 10,
+      sides: 1,
+      isSatin: false,
+      express: false,
+      gramatura: 250,
+    });
+    const legacy = calculateDyplomy({
+      format: "A4",
+      qty: 10,
+      sides: 1,
+      isSatin: false,
+      express: false,
+    });
+    expect(result.totalPrice).toBe(legacy.totalPrice);
+    expect((result as any).usingNewPaperModel).toBe(false);
+  });
+
+  it("calculateDyplomy: kreda wyceniona → basePrice = cena kredy zinterpolowana po gramaturze, usingNewPaperModel=true", () => {
+    registerKreda("dyplomyA4", [
+      { gramatura: 250, tiers: [{ suffix: "1+", price: 30 }] },
+      { gramatura: 350, tiers: [{ suffix: "1+", price: 50 }] },
+    ]);
+    const result = calculateDyplomy({
+      format: "A4",
+      qty: 10,
+      sides: 1,
+      isSatin: false,
+      express: false,
+      gramatura: 300,
+    });
+    expect((result as any).usingNewPaperModel).toBe(true);
+    expect(result.basePrice).toBe(40);
+    expect(result.totalPrice).toBe(40);
+  });
+
+  it("calculateDyplomy: satyna w nowym modelu = cena kredy (zinterpolowana) × (1 + modifier-satyna)", () => {
+    registerKreda("dyplomyA4", [{ gramatura: 250, tiers: [{ suffix: "1+", price: 100 }] }]);
+    const result = calculateDyplomy({
+      format: "A4",
+      qty: 10,
+      sides: 1,
+      isSatin: true,
+      express: false,
+      gramatura: 250,
+    });
+    expect((result as any).usingNewPaperModel).toBe(true);
+    expect(result.totalPrice).toBeCloseTo(112, 2); // 100 * 1.12 (modifier-satyna default 0.12)
+  });
+
+  it("calculateDyplomy: Modigliani w nowym modelu liczy się WYŁĄCZNIE od kredy 350g tego formatu, niezależnie od wybranej gramatury", () => {
+    registerKreda("dyplomyA4", [
+      { gramatura: 250, tiers: [{ suffix: "1+", price: 100 }] },
+      { gramatura: 350, tiers: [{ suffix: "1+", price: 150 }] },
+    ]);
+    const result = calculateDyplomy({
+      format: "A4",
+      qty: 10,
+      sides: 1,
+      isSatin: false,
+      isModigliani: true,
+      express: false,
+      gramatura: 250, // celowo "zła" gramatura — Modigliani ma ją ignorować
+    });
+    expect((result as any).usingNewPaperModel).toBe(true);
+    expect(result.basePrice).toBe(150);
+    expect(result.totalPrice).toBeCloseTo(180, 2); // 150 * 1.20 (modifier-modigliani default 0.2)
+  });
+
+  it("calculateDyplomy: Modigliani bez wycenionej kredy-350 → fallback do starego mechanizmu", () => {
+    registerKreda("dyplomyA4", [{ gramatura: 250, tiers: [{ suffix: "1+", price: 100 }] }]);
+    const result = calculateDyplomy({
+      format: "A4",
+      qty: 10,
+      sides: 1,
+      isSatin: false,
+      isModigliani: true,
+      express: false,
+    });
+    expect((result as any).usingNewPaperModel).toBe(false);
+  });
+
+  it("calculateDyplomy A5 używa osobnej puli materiałów niż A4", () => {
+    registerKreda("dyplomyA5", [{ gramatura: 250, tiers: [{ suffix: "1+", price: 77 }] }]);
+    const a5 = calculateDyplomy({
+      format: "A5",
+      qty: 10,
+      sides: 1,
+      isSatin: false,
+      express: false,
+      gramatura: 250,
+    });
+    const a4 = calculateDyplomy({
+      format: "A4",
+      qty: 10,
+      sides: 1,
+      isSatin: false,
+      express: false,
+      gramatura: 250,
+    });
+    expect((a5 as any).usingNewPaperModel).toBe(true);
+    expect(a5.basePrice).toBe(77);
+    expect((a4 as any).usingNewPaperModel).toBe(false);
   });
 });

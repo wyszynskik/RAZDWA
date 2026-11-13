@@ -48,7 +48,9 @@ export type DynamicMaterialCategoryId =
   | "laminowanieIntro"
   | "rollup"
   | "wlepkiM2"
-  | "wlepkiSzt";
+  | "wlepkiSzt"
+  | "dyplomyA4"
+  | "dyplomyA5";
 
 /**
  * getPrice() root key -> text prefix used inside defaultPrices tier keys.
@@ -72,6 +74,11 @@ export const PRICE_KEY_PREFIX: Record<DynamicMaterialCategoryId, string> = {
   // odpowiednio "wlepki-{nazwa}-"/"wlepki-szt-{nazwa}-" bez tego segmentu).
   wlepkiM2: "wlepki-grupa",
   wlepkiSzt: "wlepki-szt-tabela",
+  // Osobny segment ("papier"), żeby klucze progów papieru (np.
+  // "dyplomy-papier-a4-kreda-250-1-50") nigdy nie kolidowały z istniejącymi
+  // płaskimi progami ilościowymi "dyplomy-qty-{N}".
+  dyplomyA4: "dyplomy-papier-a4",
+  dyplomyA5: "dyplomy-papier-a5",
 };
 
 export interface MaterialTier {

@@ -202,6 +202,8 @@ const MATERIAL_CATEGORY_OPTIONS: { value: DynamicMaterialCategoryId; label: stri
   { value: "rollup", label: "Roll-up – format" },
   { value: "wlepkiM2", label: "Wlepki – grupa m²" },
   { value: "wlepkiSzt", label: "Wlepki – tabela szt" },
+  { value: "dyplomyA4", label: "Dyplomy A4 – papier (kreda)" },
+  { value: "dyplomyA5", label: "Dyplomy A5 – papier (kreda)" },
 ];
 
 /**
@@ -662,6 +664,8 @@ function getCategorySectionTitle(category: PriceCategory, key: string): string {
       return getUslugiSectionTitle(key);
     case "broszury-katalogi":
       return getBroszuryKatalogiSectionTitle(key);
+    case "dyplomy":
+      return getDyplomySectionTitle(key);
     default:
       return category.label.toUpperCase();
   }
@@ -1913,6 +1917,12 @@ function getBroszuryKatalogiSectionTitle(key: string): string {
   if (key.startsWith("broszury-katalogi-a5-")) return "FORMAT A5";
   if (key.startsWith("broszury-katalogi-dl-")) return "FORMAT DL";
   return "BROSZURY I KATALOGI";
+}
+
+function getDyplomySectionTitle(key: string): string {
+  if (key.startsWith("dyplomy-papier-a4-")) return "DYPLOMY A4 – PAPIER (KREDA)";
+  if (key.startsWith("dyplomy-papier-a5-")) return "DYPLOMY A5 – PAPIER (KREDA)";
+  return "DYPLOMY";
 }
 
 function getZaproszeniaMaterialTitle(key: string): string {
@@ -5345,6 +5355,23 @@ export const UstawieniaView: View = {
       ).map((cb) => cb.value as DynamicMaterialCategoryId);
       if (checkedCategories.length === 0) {
         showStatus("⚠️ Zaznacz przynajmniej jedną kategorię.", "error");
+        return;
+      }
+
+      // Dyplomy A4/A5: kalkulator rozpoznaje papier po DOKŁADNYM wzorcu
+      // "kreda-{gramatura}" (np. "kreda-250") — bez tego nic nie policzy się
+      // nowym mechanizmem i po cichu wróci do starych, płaskich cen. Blokujemy
+      // tu, zamiast pozwolić powtórzyć incydent z "ulotki-ulotki-..." (zła
+      // nazwa → dane istnieją, ale kalkulator ich nigdy nie znajdzie).
+      const needsKredaPattern = checkedCategories.some(
+        (c) => c === "dyplomyA4" || c === "dyplomyA5"
+      );
+      if (needsKredaPattern && !/^kreda-\d+$/.test(materialId)) {
+        showStatus(
+          `⚠️ Dla Dyplomów A4/A5 nazwa materiału musi być dokładnie w formacie "kreda-250" lub "kreda-350" (sama liczba, bez "g" ani innych znaków). Wpisano: "${name}" → "${materialId}".`,
+          "error"
+        );
+        materialNameInput?.focus();
         return;
       }
 
