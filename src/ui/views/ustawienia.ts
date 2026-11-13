@@ -510,8 +510,17 @@ export function resolveVariantLabel(
   fallbackKeyLabel: string
 ): string {
   if (legendText) return legendText;
+  // Qty-tiered custom subgroups must keep the quantity visible in the label
+  // even when the admin ALSO typed a product name for every tier — otherwise
+  // every row of the same subgroup renders with an identical label (only the
+  // price differs), making rows indistinguishable in the price table. Real
+  // incident: admin typed "Dyplomy (A4) 250g" as the name for two different
+  // quantity tiers; both rows showed as "Dyplomy (A4) 250g" with no way to
+  // tell which price belonged to which quantity.
+  if (isQtyTieredCustomSubgroupTier && qtyValue) {
+    return productLabel ? `${productLabel} – ${qtyValue} szt.` : `${qtyValue} szt.`;
+  }
   if (productLabel) return productLabel;
-  if (isQtyTieredCustomSubgroupTier) return `${qtyValue} szt.`;
   return fallbackKeyLabel;
 }
 
