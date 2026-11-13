@@ -21,6 +21,11 @@ import {
 } from "../services/priceService";
 import { getDefaultPricesMap } from "../core/compat";
 import { getExpressRate } from "../core/modifiers";
+import {
+  renderSurchargeCheckboxesHtml,
+  collectCheckedSurchargeIds,
+  applySurcharges,
+} from "../core/dynamicSurcharges";
 import { interpolatePrice } from "../categories/plakaty";
 import { formatPLN } from "../core/money";
 import { escapeHtml } from "../core/validation";
@@ -437,7 +442,11 @@ export function resolveProductCardTitle(
   return buildProductLabel({ variantLabel: trimmedLabel }, "customer");
 }
 
-function renderProductCard(product: RenderableProduct, cardTitle: string | null): HTMLElement {
+function renderProductCard(
+  product: RenderableProduct,
+  cardTitle: string | null,
+  categoryId: string
+): HTMLElement {
   const card = document.createElement("div");
   card.className = "card";
   card.style.marginTop = "16px";
@@ -468,6 +477,7 @@ function renderProductCard(product: RenderableProduct, cardTitle: string | null)
     <div class="dyn-no-price-message" style="display:none; margin-top:10px; color:#b45309; font-size:13px;">
       Brak zdefiniowanej ceny dla tej ilości. Dodaj kolejny próg w Ustawieniach lub zastosuj wycenę indywidualną.
     </div>
+    <div class="dyn-surcharges">${renderSurchargeCheckboxesHtml(categoryId, `dyn-${product.productId}-`)}</div>
     <div class="form-actions" style="margin-top:10px;">
       <button type="button" class="btn-success dyn-add" ${isFlatRate ? "" : "disabled"}>DODAJ DO KOSZYKA</button>
     </div>
@@ -514,7 +524,7 @@ export function mountDynamicSubgroupContainers(
 
     for (const product of subgroupProducts) {
       const cardTitle = resolveProductCardTitle(product.label, subgroupLabel);
-      const card = renderProductCard(product, cardTitle);
+      const card = renderProductCard(product, cardTitle, categoryId);
       host!.appendChild(card);
 
       const qtyInput = card.querySelector<HTMLInputElement>(".dyn-qty");
@@ -525,6 +535,7 @@ export function mountDynamicSubgroupContainers(
       const noPriceEl = card.querySelector<HTMLElement>(".dyn-no-price-message")!;
       const addBtn = card.querySelector<HTMLButtonElement>(".dyn-add")!;
       const materialSizeSelect = card.querySelector<HTMLSelectElement>(".dyn-material-size-select");
+      const surchargesBox = card.querySelector<HTMLElement>(".dyn-surcharges")!;
 
       const resolveSelectedMaterialSize = (): MaterialSizeOption | undefined => {
         if (materialSizeSelect) {
@@ -563,6 +574,20 @@ export function mountDynamicSubgroupContainers(
           return;
         }
 
+        const checkedSurchargeIds = collectCheckedSurchargeIds(surchargesBox);
+        if (checkedSurchargeIds.length > 0) {
+          const surchargedTotal = applySurcharges(
+            categoryId,
+            currentComputation.totalPrice,
+            checkedSurchargeIds
+          );
+          currentComputation = {
+            ...currentComputation,
+            totalPrice: surchargedTotal,
+            unitPrice: parseFloat((surchargedTotal / currentComputation.quantity).toFixed(2)),
+          };
+        }
+
         unitEl.textContent = formatPLN(currentComputation.unitPrice);
         totalEl.textContent = formatPLN(currentComputation.totalPrice);
         expressHintEl.style.display = ctx.expressMode ? "block" : "none";
@@ -576,6 +601,9 @@ export function mountDynamicSubgroupContainers(
         // flat-rate: nothing to type, price is known immediately.
         recalc();
       }
+      surchargesBox
+        .querySelectorAll<HTMLInputElement>(".dyn-surcharge-check")
+        .forEach((box) => box.addEventListener("change", recalc));
 
       addBtn.addEventListener("click", () => {
         const requestedQty = qtyInput ? Number.parseInt(qtyInput.value, 10) : 1;
@@ -587,6 +615,16 @@ export function mountDynamicSubgroupContainers(
           resolveSelectedMaterialSize()
         );
         if (!cartItem) return;
+
+        const checkedSurchargeIds = collectCheckedSurchargeIds(surchargesBox);
+        if (checkedSurchargeIds.length > 0) {
+          cartItem.totalPrice = applySurcharges(
+            categoryId,
+            cartItem.totalPrice,
+            checkedSurchargeIds
+          );
+          cartItem.unitPrice = parseFloat((cartItem.totalPrice / cartItem.quantity).toFixed(2));
+        }
 
         ctx.cart.addItem(cartItem);
 

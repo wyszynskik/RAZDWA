@@ -109,6 +109,14 @@ export const WizytowkiView: View = {
     const goViperprintBtn = container.querySelector("#w-go-viperprint") as HTMLButtonElement | null;
     const legendRows = container.querySelector("#w-legend-rows") as HTMLElement | null;
     const legendStandardEl = container.querySelector("#w-legend-standard") as HTMLElement | null;
+    const legendFoliowaneRows = container.querySelector(
+      "#w-legend-foliowane-rows"
+    ) as HTMLElement | null;
+    const legendFoliowaneEl = container.querySelector("#w-legend-foliowane") as HTMLElement | null;
+    const legendSoftouchRows = container.querySelector(
+      "#w-legend-softtouch-rows"
+    ) as HTMLElement | null;
+    const legendSoftouchEl = container.querySelector("#w-legend-softtouch") as HTMLElement | null;
     const stdFormActions = (
       container.querySelector("#w-add-to-cart") as HTMLElement | null
     )?.closest(".form-actions") as HTMLElement | null;
@@ -152,16 +160,86 @@ export const WizytowkiView: View = {
           return `<tr><td>${qty}</td><td>${formatPLN(p85none)}</td><td>${formatPLN(p90none)}</td></tr>`;
         })
         .join("");
+
+      if (!legendFoliowaneRows) return;
+      const table85matt = mergeStoredQuantityTable(
+        "wizytowki-85x55-matt_gloss-",
+        biz?.cyfrowe?.standardPrices?.["85x55"]?.lam ?? {},
+        (key) => {
+          const match = key.match(/^(?:.*-)?(\d+)szt$/i);
+          return match ? Number.parseInt(match[1], 10) : null;
+        }
+      );
+      const table90matt = mergeStoredQuantityTable(
+        "wizytowki-90x50-matt_gloss-",
+        biz?.cyfrowe?.standardPrices?.["90x50"]?.lam ?? {},
+        (key) => {
+          const match = key.match(/^(?:.*-)?(\d+)szt$/i);
+          return match ? Number.parseInt(match[1], 10) : null;
+        }
+      );
+      const qtyListMatt = [...new Set([...Object.keys(table85matt), ...Object.keys(table90matt)])]
+        .map((k) => Number(k))
+        .filter((n) => Number.isFinite(n))
+        .sort((a, b) => a - b);
+
+      legendFoliowaneRows.innerHTML = qtyListMatt
+        .map((qty) => {
+          const p85matt = resolveStoredPrice(
+            `wizytowki-85x55-matt_gloss-${qty}szt`,
+            Number(table85matt[qty] ?? 0)
+          );
+          const p90matt = resolveStoredPrice(
+            `wizytowki-90x50-matt_gloss-${qty}szt`,
+            Number(table90matt[qty] ?? 0)
+          );
+          return `<tr><td>${qty}</td><td>${formatPLN(p85matt)}</td><td>${formatPLN(p90matt)}</td></tr>`;
+        })
+        .join("");
+
+      if (!legendSoftouchRows) return;
+      const table85soft = mergeStoredQuantityTable(
+        "wizytowki-85x55-softtouch-",
+        biz?.cyfrowe?.softtouchPrices?.["85x55"]?.lam ?? {},
+        (key) => {
+          const match = key.match(/^(?:.*-)?(\d+)szt$/i);
+          return match ? Number.parseInt(match[1], 10) : null;
+        }
+      );
+      const table90soft = mergeStoredQuantityTable(
+        "wizytowki-90x50-softtouch-",
+        biz?.cyfrowe?.softtouchPrices?.["90x50"]?.lam ?? {},
+        (key) => {
+          const match = key.match(/^(?:.*-)?(\d+)szt$/i);
+          return match ? Number.parseInt(match[1], 10) : null;
+        }
+      );
+      const qtyListSoft = [...new Set([...Object.keys(table85soft), ...Object.keys(table90soft)])]
+        .map((k) => Number(k))
+        .filter((n) => Number.isFinite(n))
+        .sort((a, b) => a - b);
+
+      legendSoftouchRows.innerHTML = qtyListSoft
+        .map((qty) => {
+          const p85soft = resolveStoredPrice(
+            `wizytowki-85x55-softtouch-${qty}szt`,
+            Number(table85soft[qty] ?? 0)
+          );
+          const p90soft = resolveStoredPrice(
+            `wizytowki-90x50-softtouch-${qty}szt`,
+            Number(table90soft[qty] ?? 0)
+          );
+          return `<tr><td>${qty}</td><td>${formatPLN(p85soft)}</td><td>${formatPLN(p90soft)}</td></tr>`;
+        })
+        .join("");
     };
 
     const isExternal = () => {
       const family = familySelect?.value;
-      return family === "softtouch" || family === "deluxe";
+      return family === "deluxe";
     };
 
     const getExternalTypeValue = () => {
-      const family = familySelect?.value;
-      if (family === "softtouch") return "softtouch_350";
       return extTypeSelect?.value || "deluxe_uv3d_softtouch";
     };
 
@@ -171,18 +249,29 @@ export const WizytowkiView: View = {
       if (standardOpts) standardOpts.style.display = external ? "none" : "block";
       if (paperGroup) paperGroup.style.display = external ? "none" : "";
       if (qtyGroup) qtyGroup.style.display = external ? "none" : "";
-      // Legenda pokazuje tylko tabelę "bez laminatu" — przy Foliowane byłaby
-      // myląca (inne, osobne ceny pod wizytowki-*-matt_gloss-*), więc chowamy
-      // ją też tutaj, nie tylko dla faktycznie zewnętrznych rodzajów.
+      // Trzy osobne legendy (ceny "bez laminatu", "z laminatem" i "softtouch"
+      // są pod różnymi kluczami, nie wolno ich mieszać) — pokazujemy
+      // dokładnie tę, która odpowiada aktywnemu rodzajowi.
       if (legendStandardEl) {
-        legendStandardEl.style.display = external || family === "foliowane" ? "none" : "";
+        legendStandardEl.style.display = family === "standard" || !family ? "" : "none";
+      }
+      if (legendFoliowaneEl) {
+        legendFoliowaneEl.style.display = family === "foliowane" ? "" : "none";
+      }
+      if (legendSoftouchEl) {
+        legendSoftouchEl.style.display = family === "softtouch" ? "" : "none";
       }
       if (externalTopInfo) externalTopInfo.style.display = external ? "block" : "none";
       if (externalForm) externalForm.style.display = external ? "block" : "none";
-      if (extTypeGroup) extTypeGroup.style.display = family === "deluxe" ? "block" : "none";
+      // DELUXE jest teraz jedyną zewnętrzną ścieżką, ale nadal ma 2 warianty
+      // (UV 3D+SoftTouch / UV 3D+Gold+SoftTouch) do wyboru w tym samym
+      // dropdownie — zostaje widoczny dla "deluxe"; softtouch_350 jako
+      // option w #w-ext-type jest teraz martwy (SoftTouch już nie trafia do
+      // tego formularza), ale usunięcie go to tylko porządek w HTML, nie
+      // wpływa na logikę.
+      if (extTypeGroup) extTypeGroup.style.display = external ? "block" : "none";
       if (extTypeSelect && external) {
-        if (family === "softtouch") extTypeSelect.value = "softtouch_350";
-        else if (family === "deluxe") extTypeSelect.value = "deluxe_uv3d_softtouch";
+        extTypeSelect.value = "deluxe_uv3d_softtouch";
       }
       if (addToCartBtn) {
         addToCartBtn.style.display = external ? "none" : "";
@@ -336,10 +425,12 @@ export const WizytowkiView: View = {
       const isSatin = paperVal.startsWith("satyna");
 
       const isFoliowane = familySelect.value === "foliowane";
+      const isSofttouch = familySelect.value === "softtouch";
       currentOptions = {
         family: "standard",
         format: sizeSelect.value,
-        folia: isFoliowane ? "matt_gloss" : "none",
+        folia: isFoliowane || isSofttouch ? "matt_gloss" : "none",
+        finish: isSofttouch ? "softtouch" : undefined,
         qty,
         express: ctx.expressMode,
         checkedSurchargeIds: collectCheckedSurchargeIds(surchargesBox),
@@ -405,7 +496,12 @@ export const WizytowkiView: View = {
           ctx.cart.addItem({
             id: `wizytowki-${Date.now()}`,
             category: "Wizytówki",
-            name: familySelect.value === "foliowane" ? "Wizytówki Foliowane" : "Wizytówki Standard",
+            name:
+              familySelect.value === "foliowane"
+                ? "Wizytówki Foliowane"
+                : familySelect.value === "softtouch"
+                  ? "Wizytówki SoftTouch"
+                  : "Wizytówki Standard",
             quantity: currentOptions.qty,
             unit: "szt",
             unitPrice: parseFloat((currentResult.totalPrice / currentOptions.qty).toFixed(2)),

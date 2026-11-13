@@ -635,6 +635,8 @@ function getCategorySectionTitle(category: PriceCategory, key: string): string {
       return getSolwentPlakatySectionTitle(key);
     case "laminowanie":
       return getLaminowanieSectionTitle(key);
+    case "wizytowki":
+      return getWizytowkiSectionTitle(key);
     case "wlepki":
       return getWlepkiSectionTitle(key);
     case "banner":
@@ -842,8 +844,10 @@ function getAddablePrefixOptions(category: PriceCategory): PrefixOption[] {
       options.push(
         { value: "wizytowki-85x55-none-", label: "Wizytówki 85×55 bez laminatu" },
         { value: "wizytowki-85x55-matt_gloss-", label: "Wizytówki 85×55 z laminatem mat/błysk" },
+        { value: "wizytowki-85x55-softtouch-", label: "Wizytówki 85×55 SoftTouch" },
         { value: "wizytowki-90x50-none-", label: "Wizytówki 90×50 bez laminatu" },
-        { value: "wizytowki-90x50-matt_gloss-", label: "Wizytówki 90×50 z laminatem mat/błysk" }
+        { value: "wizytowki-90x50-matt_gloss-", label: "Wizytówki 90×50 z laminatem mat/błysk" },
+        { value: "wizytowki-90x50-softtouch-", label: "Wizytówki 90×50 SoftTouch" }
       );
       break;
     case "broszury-katalogi":
@@ -1861,6 +1865,13 @@ export function getBindowanieSubgroupTitle(key: string): string {
   return "";
 }
 
+function getWizytowkiSectionTitle(key: string): string {
+  if (key.includes("-matt_gloss-")) return "WIZYTÓWKI Z LAMINATEM (MAT/BŁYSK)";
+  if (key.includes("-softtouch-")) return "WIZYTÓWKI SOFTTOUCH";
+  if (key.includes("-none-")) return "WIZYTÓWKI STANDARD (BEZ LAMINATU)";
+  return "WIZYTÓWKI";
+}
+
 function getDrukA4A3SkanSectionTitle(key: string): string {
   if (key.startsWith("druk-bw-a4-")) return "DRUK CZARNO-BIAŁY A4";
   if (key.startsWith("druk-bw-a3-")) return "DRUK CZARNO-BIAŁY A3";
@@ -2249,7 +2260,8 @@ function sortWizytowkiCategoryKeys(keys: string[]): string[] {
   const laminatRank = (key: string): number => {
     if (key.includes("-none-")) return 0;
     if (key.includes("-matt_gloss-")) return 1;
-    return 2;
+    if (key.includes("-softtouch-")) return 2;
+    return 3;
   };
 
   const formatRank = (key: string): number => {
@@ -3542,11 +3554,23 @@ export const UstawieniaView: View = {
           ? formatMaterialSizeOption(materialSizeOption)
           : "";
 
+        // Reguła "tylko natywne klucze mają pole edycji etykiety" miała
+        // odróżniać prawdziwe custom-subgroup (etykieta w variant.label jest
+        // tam autorytatywna) od zwykłego progu pod ISTNIEJĄCYM, natywnym
+        // kluczem kalkulatora — ale "Dodaj wariant" zapisuje VariantDefinition
+        // dla KAŻDEGO dodanego wiersza, więc samo variantsByKey.get(key) myli
+        // oba przypadki. Dla Wizytówek sprawdzamy wprost 6 realnych, natywnych
+        // kształtów klucza (format × laminat × ilość) zamiast gołego prefiksu
+        // "wizytowki-", który pasowałby też do freeform kluczy custom-subgroup
+        // (np. "wizytowki-wizytowki-85x55-foliowane-50szt").
+        const isWizytowkiNativeKey =
+          active.id === "wizytowki" &&
+          /^wizytowki-(85x55|90x50)-(none|matt_gloss|softtouch)-\d+szt$/.test(key);
         rows.push(`
           <tr data-key="${escapeHtml(key)}" class="${rowClasses.join(" ")}">
           <td class="settings-td-product">
             ${
-              variantsByKey.get(key)
+              variantsByKey.get(key) && !isWizytowkiNativeKey
                 ? `<span class="settings-product-label${useAltLabel ? " settings-product-label--alt" : ""}" title="${escapeHtml(label)}">${escapeHtml(label)}</span>`
                 : `<input type="text" data-field="label" value="${escapeHtml(label)}" title="Etykieta generowana automatycznie — edytuj, aby nadpisać. Wyczyść pole, żeby wrócić do automatycznej." class="settings-input settings-input--label settings-product-label${useAltLabel ? " settings-product-label--alt" : ""}">`
             }
