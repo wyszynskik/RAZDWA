@@ -8,8 +8,14 @@ describe("resolveVariantLabel", () => {
     );
   });
 
-  it("productLabel wins over the qty-tier fallback when legend is blank", () => {
+  it("qty-tiered custom subgroup: productLabel gets the qty appended, not silently dropped (real incident: two tiers of the same subgroup typed the same productLabel for every qty, both rows rendered with an identical label, only the price differed — no way to tell them apart)", () => {
     expect(resolveVariantLabel("", "Nazwa ręczna", true, "20", "raw fallback")).toBe(
+      "Nazwa ręczna – 20 szt."
+    );
+  });
+
+  it("NOT a qty-tiered custom subgroup: productLabel still wins outright, no qty appended", () => {
+    expect(resolveVariantLabel("", "Nazwa ręczna", false, "20", "raw fallback")).toBe(
       "Nazwa ręczna"
     );
   });
