@@ -4249,7 +4249,7 @@ export const UstawieniaView: View = {
                 </div>
               </details>
 
-              <details class="settings-add-group" id="add-surcharge-group" style="margin-top:12px;">
+              <details class="settings-add-group" id="add-surcharge-group" style="margin-top:12px;" open>
                 <summary class="settings-wizard-header settings-wizard-header--collapsible"><span class="settings-wizard-title">Dodaj dopłatę globalną</span></summary>
                 <div class="hint" style="margin-bottom:8px;">
                   Nowa dopłata procentowa (np. "Dwustronne +40%") — pojawi się jako checkbox w
