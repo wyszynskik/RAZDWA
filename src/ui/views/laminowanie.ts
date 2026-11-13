@@ -741,6 +741,14 @@ export const LaminowanieView: View = {
 
         clearCalcBreakdown();
         ensureLegend(targetTab ?? "laminowanie");
+        // Przełączenie zakładki samo w sobie nigdy nie wywoływało przeliczenia
+        // (ani ghost-hintów spoczynkowych) — tylko autoCalc po pierwszym
+        // input/change w POPRZEDNIO aktywnej zakładce to robiło. Nowa
+        // zakładka wisiała bez hinta aż do pierwszego wpisania czegokolwiek.
+        // recalcAll() jest zdefiniowane niżej w tej samej funkcji — domknięcie
+        // referencji działa, bo to wywołanie uruchamia się dopiero przy
+        // kliknięciu, długo po przypisaniu stałej.
+        recalcAll();
       };
     });
 
