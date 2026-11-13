@@ -222,7 +222,9 @@ test.describe("disabled add-to-cart hint (dlaczego przycisk wyłączony)", () =>
     page,
   }) => {
     await page.goto("/#/wizytowki-druk-cyfrowy");
-    await page.locator("#w-family").selectOption("softtouch");
+    // SoftTouch wliczony do kalkulatora (rozmiar/papier/ilość) — DELUXE
+    // zostaje jedyną ścieżką zewnętrzną, tu testowaną.
+    await page.locator("#w-family").selectOption("deluxe");
     const extBtn = page.locator("#w-ext-add-to-cart");
     const errEl = page.locator("#w-ext-price-err");
     await expect(extBtn).toHaveAttribute("aria-disabled", "true");
