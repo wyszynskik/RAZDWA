@@ -133,6 +133,55 @@ type PriceSubgroupMap = SubgroupRegistry;
 const CUSTOM_PREFIX_VALUE = "__custom_prefix__";
 
 /**
+ * Wykrywa, czy nazwa nowej, "niezależnej" podkategorii prawdopodobnie
+ * duplikuje istniejącą pozycję już dostępną w dropdownie "Podgrupa" (np.
+ * admin wpisuje "Ulotki dwustronne A4" zamiast wybrać gotową opcję "Ulotki
+ * dwustronne A4") — realny incydent: taki wpis tworzy nowy, równoległy
+ * prefiks (np. "ulotki-ulotki-dwustronne-a4-"), który nie pasuje do
+ * zarejestrowanego prefiksu kategorii i ląduje w "Pozostałe".
+ *
+ * Dopasowanie po tokenach (nie substring), żeby złapać "ulotki dwustronne
+ * a4" vs "Ulotki dwustronne A4" niezależnie od kolejności/wielkości liter,
+ * a jednocześnie NIE fałszywie trafiać w legalne nowe nazwy współdzielące
+ * tylko jedno słowo (np. placeholder "Ulotki kwadratowe" — overlap=1, nie
+ * zgłasza ostrzeżenia).
+ *
+ * Exported for unit tests only.
+ */
+export function findLikelySubgroupDuplicate(
+  options: Array<{ value: string; label: string }>,
+  subgroupName: string
+): string | null {
+  const tokenize = (s: string): string[] =>
+    s
+      .toLowerCase()
+      .replace(/[^\p{L}\p{N}]+/gu, " ")
+      .trim()
+      .split(/\s+/)
+      .filter(Boolean);
+
+  const typedTokens = new Set(tokenize(subgroupName));
+  if (typedTokens.size === 0) return null;
+
+  let bestLabel: string | null = null;
+  let bestOverlap = 0;
+  for (const option of options) {
+    if (option.value === CUSTOM_PREFIX_VALUE || !option.value) continue;
+    const optionTokens = tokenize(option.label);
+    if (optionTokens.length === 0) continue;
+    const overlap = optionTokens.filter((t) => typedTokens.has(t)).length;
+    if (overlap > bestOverlap) {
+      bestOverlap = overlap;
+      bestLabel = option.label;
+    }
+  }
+  if (bestOverlap >= 2 && bestOverlap / typedTokens.size >= 0.6) {
+    return bestLabel;
+  }
+  return null;
+}
+
+/**
  * Kategorie dostępne w formularzu "Nowy materiał (kilka kategorii naraz)".
  * Typowane przeciw DynamicMaterialCategoryId, więc dopisanie tu wartości
  * nieznanej temu typowi (np. literówki) jest błędem kompilacji — ale samo
@@ -4036,6 +4085,7 @@ export const UstawieniaView: View = {
                 <div id="new-subgroup-wrapper" class="settings-field" style="display:none">
                   <span class="settings-action-label">Nazwa nowej podgrupy</span>
                   <input id="new-price-subgroup" type="text" class="settings-input" placeholder="np. Ulotki kwadratowe">
+                  <div id="new-subgroup-dupe-hint" class="hint" style="display:none; color:#f59e0b; margin-top:4px;"></div>
                 </div>
 
                 <div id="new-subgroup-scheme-wrapper" class="settings-field" style="display:none">
@@ -4562,6 +4612,27 @@ export const UstawieniaView: View = {
       const subgroupName = addSubgroupInput?.value.trim() || "";
       const productLabel = addLabelInput?.value.trim() || "";
       const qty = container.querySelector<HTMLInputElement>("#new-price-qty")?.value.trim() || "";
+
+      const dupeHint = container.querySelector<HTMLElement>("#new-subgroup-dupe-hint");
+      if (dupeHint) {
+        const existingOptions =
+          selectedPrefix === CUSTOM_PREFIX_VALUE && subgroupName && addPrefixSelect
+            ? Array.from(addPrefixSelect.options).map((o) => ({
+                value: o.value,
+                label: o.textContent ?? "",
+              }))
+            : [];
+        const likelyMatch =
+          existingOptions.length > 0
+            ? findLikelySubgroupDuplicate(existingOptions, subgroupName)
+            : null;
+        if (likelyMatch) {
+          dupeHint.textContent = `⚠️ Czy nie chodzi Ci o istniejącą pozycję "${likelyMatch}"? Wybierz ją z listy "Podgrupa" powyżej zamiast tworzyć nową, osobną podkategorię — inaczej te ceny wylądują w „Pozostałe”, poza "${chosenCategory.label}".`;
+          dupeHint.style.display = "";
+        } else {
+          dupeHint.style.display = "none";
+        }
+      }
 
       let chosenPrefix = selectedPrefix;
       if (selectedPrefix === CUSTOM_PREFIX_VALUE) {
