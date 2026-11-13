@@ -154,8 +154,14 @@ export const BASE_PRICE_CATEGORIES: PriceCategory[] = [
     id: "dyplomy",
     label: "Dyplomy",
     icon: "assets/icons/award.svg",
-    prefixes: ["dyplomy-qty-"],
-    description: "Ceny dyplomów wg progów ilościowych.",
+    // "dyplomy-papier-a4-"/"dyplomy-papier-a5-": progi dynamicMaterials.ts
+    // (kategorie "dyplomyA4"/"dyplomyA5", papier kreda per gramatura) — bez
+    // tego dwóch prefiksów te klucze nie dopasują się do żadnej kategorii i
+    // wylądują w "Pozostałe" (ten sam bug co przy "ulotki-ulotki-...").
+    // Celowo NIE rozszerzamy do gołego "dyplomy-", bo złapałoby to też
+    // "dyplomy-eko-" (osobna kategoria "dyplomy-eko" poniżej).
+    prefixes: ["dyplomy-qty-", "dyplomy-papier-a4-", "dyplomy-papier-a5-"],
+    description: "Ceny dyplomów wg progów ilościowych i papieru (kreda).",
     newKeyPrefix: "dyplomy-qty-",
   },
   {

@@ -94,12 +94,19 @@ export const DyplomyView: View = {
         const isSatin = paperVal.startsWith("satyna");
         const isModigliani = paperVal === "modigliani";
         const usesSatinBase = isSatin || isModigliani;
+        // Gramatura wybranego papieru (kreda/satyna) — klucz do nowego
+        // mechanizmu cen per-papier (core/dynamicMaterials, "Dodaj materiał" →
+        // Dyplomy A4/A5). Modigliani nie niesie gramatury — liczy się zawsze
+        // od kredy 350g tego formatu, patrz calculateDyplomy.
+        const gramaturaMatch = /_(\d+)$/.exec(paperVal);
+        const gramatura = gramaturaMatch ? Number(gramaturaMatch[1]) : undefined;
         const options: DyplomyOptions = {
           format: formatSel.value === "A5" ? "A5" : "A4",
           qty: parseInt(qtyInput.value),
           sides: parseInt(sidesSel.value) || 1,
           isSatin,
           isModigliani,
+          gramatura,
           express: ctx.expressMode,
           checkedSurchargeIds: collectCheckedSurchargeIds(surchargesBox),
         };
@@ -110,13 +117,21 @@ export const DyplomyView: View = {
         const singleSidedDiscountRate = Number((result as any).singleSidedDiscountRate ?? 0);
         const singleSidedDiscountAmount = Number((result as any).singleSidedDiscountAmount ?? 0);
 
+        const usingNewPaperModel = Boolean((result as any).usingNewPaperModel);
         let satinAmount = 0;
         let modiglianiAmount = 0;
         if (options.isModigliani) {
-          satinAmount = parseFloat((result.basePrice * satinRate).toFixed(2));
-          modiglianiAmount = parseFloat(
-            ((result.basePrice + satinAmount) * modiglianiRate).toFixed(2)
-          );
+          // Nowy model (papier jako wymiar): Modigliani liczy się WYŁĄCZNIE
+          // od kredy 350g tego formatu — nie stackuje się z satyną (patrz
+          // calculateDyplomy). Stary model: satyna+modigliani jak dotąd.
+          if (usingNewPaperModel) {
+            modiglianiAmount = parseFloat((result.basePrice * modiglianiRate).toFixed(2));
+          } else {
+            satinAmount = parseFloat((result.basePrice * satinRate).toFixed(2));
+            modiglianiAmount = parseFloat(
+              ((result.basePrice + satinAmount) * modiglianiRate).toFixed(2)
+            );
+          }
         } else if (options.isSatin) {
           satinAmount = parseFloat((result.basePrice * satinRate).toFixed(2));
         }
@@ -142,12 +157,18 @@ export const DyplomyView: View = {
         }
 
         if (options.isModigliani) {
-          breakdown.push(
-            `<div><strong>Satyna:</strong> ${Math.round(satinRate * 100)}% × ${formatPLN(result.basePrice)} = ${formatPLN(satinAmount)}</div>`
-          );
-          breakdown.push(
-            `<div><strong>Modigliani:</strong> ${Math.round(modiglianiRate * 100)}% × (${formatPLN(result.basePrice)} + ${formatPLN(satinAmount)}) = ${formatPLN(modiglianiAmount)}</div>`
-          );
+          if (usingNewPaperModel) {
+            breakdown.push(
+              `<div><strong>Modigliani (od kredy 350g):</strong> ${Math.round(modiglianiRate * 100)}% × ${formatPLN(result.basePrice)} = ${formatPLN(modiglianiAmount)}</div>`
+            );
+          } else {
+            breakdown.push(
+              `<div><strong>Satyna:</strong> ${Math.round(satinRate * 100)}% × ${formatPLN(result.basePrice)} = ${formatPLN(satinAmount)}</div>`
+            );
+            breakdown.push(
+              `<div><strong>Modigliani:</strong> ${Math.round(modiglianiRate * 100)}% × (${formatPLN(result.basePrice)} + ${formatPLN(satinAmount)}) = ${formatPLN(modiglianiAmount)}</div>`
+            );
+          }
         } else if (options.isSatin) {
           breakdown.push(
             `<div><strong>Satyna:</strong> ${Math.round(satinRate * 100)}% × ${formatPLN(result.basePrice)} = ${formatPLN(satinAmount)}</div>`

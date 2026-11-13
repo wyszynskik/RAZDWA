@@ -8,6 +8,11 @@ import {
   resolveStoredPrice,
 } from "../core/compat";
 import { applySurcharges } from "../core/dynamicSurcharges";
+import {
+  getCombinedMaterials,
+  type DynamicMaterialCategoryId,
+  type MaterialTier,
+} from "../core/dynamicMaterials";
 
 type DyplomyTier = { qty: number; price: number };
 
@@ -55,45 +60,136 @@ function getPriceForQuantity(qty: number): number {
   return getInterpolatedPrice(tiers, qty);
 }
 
+function dyplomyMaterialCategoryId(format: "A4" | "A5"): DynamicMaterialCategoryId {
+  return format === "A4" ? "dyplomyA4" : "dyplomyA5";
+}
+
+function tierPriceForQty(tiers: MaterialTier[], qty: number): number | null {
+  const matching = tiers.filter((t) => qty >= t.min && (t.max === null || qty <= t.max));
+  if (matching.length === 0) return null;
+  return matching[matching.length - 1].price;
+}
+
+/**
+ * Cena kredy dla danej gramatury i ilości — interpolowana między punktami
+ * faktycznie wycenionymi przez admina przez "Dodaj materiał" (kreda-{g}).
+ * Poniżej najniższej wycenionej gramatury → cena tej najniższej; powyżej
+ * najwyższej → cena tej najwyższej; pomiędzy dwoma punktami → liniowo
+ * (ta sama funkcja, co progi ilościowe gdzie indziej w aplikacji).
+ *
+ * Zwraca null, gdy admin nie wycenił jeszcze ŻADNEJ gramatury tego formatu —
+ * sygnał dla calculateDyplomy, żeby spadł na stary, płaski mechanizm.
+ */
+export function resolveDyplomyKredaPrice(
+  format: "A4" | "A5",
+  gramatura: number,
+  qty: number
+): number | null {
+  const materials = getCombinedMaterials(dyplomyMaterialCategoryId(format));
+  const points = materials
+    .map((m) => {
+      const match = /^kreda-(\d+)$/.exec(m.id);
+      if (!match) return null;
+      const price = tierPriceForQty(m.tiers, qty);
+      return price === null ? null : { qty: Number(match[1]), price };
+    })
+    .filter((p): p is { qty: number; price: number } => p !== null)
+    .sort((a, b) => a.qty - b.qty);
+
+  if (points.length === 0) return null;
+  return getInterpolatedPrice(points, gramatura, "flat");
+}
+
+/** Cena kredy 350g dla danego formatu i ilości — baza dla Modigliani. Null, gdy admin jej jeszcze nie wycenił. */
+export function resolveDyplomyKreda350Price(format: "A4" | "A5", qty: number): number | null {
+  const materials = getCombinedMaterials(dyplomyMaterialCategoryId(format));
+  const kreda350 = materials.find((m) => m.id === "kreda-350");
+  if (!kreda350) return null;
+  return tierPriceForQty(kreda350.tiers, qty);
+}
+
 export interface DyplomyOptions {
   format?: "A4" | "A5";
   qty: number;
   sides?: number;
   isSatin: boolean;
   isModigliani?: boolean;
+  /**
+   * Gramatura (g/m²) wybranego papieru kreda/satyna — klucz do nowego
+   * mechanizmu cen per-papier (dynamicMaterials, kategorie "dyplomyA4"/
+   * "dyplomyA5"). Brak wartości = stary, płaski mechanizm bez zmian.
+   */
+  gramatura?: number;
   express: boolean;
   /** Ids of admin-defined dopłaty globalne (core/dynamicSurcharges.ts) checked by the customer. */
   checkedSurchargeIds?: string[];
 }
 
 export function calculateDyplomy(options: DyplomyOptions) {
-  const tierPrice = getPriceForQuantity(options.qty);
   const sides = options.sides ?? 1;
-  const bulkDiscountRate = options.qty >= 6 && sides === 1 ? 0.12 : 0;
-  const singleSidedDiscountRate = bulkDiscountRate;
-  const singleSidedDiscountAmount = parseFloat((tierPrice * singleSidedDiscountRate).toFixed(2));
-  const basePrice = parseFloat((tierPrice - singleSidedDiscountAmount).toFixed(2));
+  const format = options.format ?? "A4";
   const satinRate = resolveStoredPrice("modifier-satyna", 0.12);
   const modiglianiRate = resolveStoredPrice("modifier-modigliani", 0.2);
   const expressRate = resolveStoredPrice("modifier-express", 0.2);
 
+  const newKredaPrice =
+    !options.isModigliani && options.gramatura != null
+      ? resolveDyplomyKredaPrice(format, options.gramatura, options.qty)
+      : null;
+  const newKreda350Price = options.isModigliani
+    ? resolveDyplomyKreda350Price(format, options.qty)
+    : null;
+  const usingNewPaperModel = options.isModigliani
+    ? newKreda350Price !== null
+    : newKredaPrice !== null;
+
+  let tierPrice: number;
+  let basePrice: number;
+  let singleSidedDiscountRate = 0;
+  let singleSidedDiscountAmount = 0;
   let materialModifiersTotal = 0;
   const appliedModifiers: string[] = [];
 
-  if (singleSidedDiscountRate > 0) {
-    appliedModifiers.push("single-sided-discount");
-  }
+  if (usingNewPaperModel) {
+    // Papier jako realny wymiar ceny: Modigliani liczy się wprost od kredy
+    // 350g tego formatu (nie od satyny — zastępuje stare "satyna+modigliani
+    // stacked"); każdy inny papier (kreda/satyna danej gramatury) liczy się
+    // od ceny kredy zinterpolowanej po gramaturze, +satyna% gdy wybrana.
+    if (options.isModigliani) {
+      tierPrice = newKreda350Price as number;
+      basePrice = tierPrice;
+      materialModifiersTotal = parseFloat((basePrice * modiglianiRate).toFixed(2));
+      appliedModifiers.push("modigliani");
+    } else {
+      tierPrice = newKredaPrice as number;
+      basePrice = tierPrice;
+      if (options.isSatin) {
+        materialModifiersTotal = parseFloat((basePrice * satinRate).toFixed(2));
+        appliedModifiers.push("satin");
+      }
+    }
+  } else {
+    tierPrice = getPriceForQuantity(options.qty);
+    const bulkDiscountRate = options.qty >= 6 && sides === 1 ? 0.12 : 0;
+    singleSidedDiscountRate = bulkDiscountRate;
+    singleSidedDiscountAmount = parseFloat((tierPrice * singleSidedDiscountRate).toFixed(2));
+    basePrice = parseFloat((tierPrice - singleSidedDiscountAmount).toFixed(2));
 
-  if (options.isModigliani) {
-    const satinModifier = basePrice * satinRate;
-    const satinSubtotal = basePrice + satinModifier;
-    const modiglianiModifier = satinSubtotal * modiglianiRate;
-    materialModifiersTotal = satinModifier + modiglianiModifier;
-    appliedModifiers.push("satin");
-    appliedModifiers.push("modigliani");
-  } else if (options.isSatin) {
-    materialModifiersTotal = basePrice * satinRate;
-    appliedModifiers.push("satin");
+    if (singleSidedDiscountRate > 0) {
+      appliedModifiers.push("single-sided-discount");
+    }
+
+    if (options.isModigliani) {
+      const satinModifier = basePrice * satinRate;
+      const satinSubtotal = basePrice + satinModifier;
+      const modiglianiModifier = satinSubtotal * modiglianiRate;
+      materialModifiersTotal = satinModifier + modiglianiModifier;
+      appliedModifiers.push("satin");
+      appliedModifiers.push("modigliani");
+    } else if (options.isSatin) {
+      materialModifiersTotal = basePrice * satinRate;
+      appliedModifiers.push("satin");
+    }
   }
 
   const expressModifier = options.express ? basePrice * expressRate : 0;
@@ -119,6 +215,7 @@ export function calculateDyplomy(options: DyplomyOptions) {
     modifiersTotal,
     totalPrice,
     appliedModifiers,
+    usingNewPaperModel,
   };
 }
 
