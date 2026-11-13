@@ -48,6 +48,22 @@ describe("Wizytówki - druk cyfrowy", () => {
   });
 
   it("foliowane (matt_gloss) z progiem dodanym przez admina liczy poprawnie", () => {
+    // setPrice("defaultPrices.X", v) pisze do localStorage TYLKO gdy
+    // localStorage istnieje globalnie (priceService.ts) — bez jawnego stuba
+    // zapis cicho się nie dzieje w czystym środowisku testowym (brak jsdom),
+    // a mergeStoredQuantityTable/readStoredPrices i tak czytają wyłącznie
+    // localStorage, nie config root. Ten sam wzorzec co test dopłaty niżej.
+    const storage: Record<string, string> = {};
+    vi.stubGlobal("localStorage", {
+      getItem: (k: string) => storage[k] ?? null,
+      setItem: (k: string, v: string) => {
+        storage[k] = String(v);
+      },
+      removeItem: (k: string) => {
+        delete storage[k];
+      },
+    });
+
     try {
       setPrice("defaultPrices.wizytowki-85x55-matt_gloss-50szt", 85);
       const result = quoteWizytowki({
@@ -58,6 +74,7 @@ describe("Wizytówki - druk cyfrowy", () => {
       });
       expect(result.totalPrice).toBe(85);
     } finally {
+      vi.unstubAllGlobals();
       resetPrices();
     }
   });
