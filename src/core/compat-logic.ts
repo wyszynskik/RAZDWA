@@ -236,7 +236,16 @@ export function calculateBusinessCards(options: {
   }
 
   if (options.family !== "deluxe" && options.size) {
-    const foliaKey = options.lam === "noLam" ? "none" : "matt_gloss";
+    // SoftTouch wymusza lam="lam" (patrz mapowanie w quoteWizytowki), ale to
+    // osobny produkt z osobną ceną niż zwykłe Foliowane (matt_gloss) —
+    // bez tego rozróżnienia oba dzieliłyby jeden klucz administracyjny i
+    // zmiana ceny jednego nadpisywałaby drugi.
+    const foliaKey =
+      options.finish === "softtouch"
+        ? "softtouch"
+        : options.lam === "noLam"
+          ? "none"
+          : "matt_gloss";
     const storagePrefix = `wizytowki-${options.size}-${foliaKey}-`;
     table = mergeStoredQuantityTable(storagePrefix, table, (key) => {
       const match = key.match(/^(?:.*-)?(\d+)szt$/i);
