@@ -370,12 +370,14 @@ describe("Dyplomy Ekonomiczny", () => {
 
     const withoutSurcharge = calculateDyplomy({
       qty: 10,
-      format: "A4",      isSatin: false,
+      format: "A4",
+      isSatin: false,
       express: false,
     });
     const withSurcharge = calculateDyplomy({
       qty: 10,
-      format: "A4",      isSatin: false,
+      format: "A4",
+      isSatin: false,
       express: false,
       checkedSurchargeIds: ["dwustronne"],
     });
@@ -389,13 +391,15 @@ describe("Dyplomy Ekonomiczny", () => {
 
     const result = calculateDyplomy({
       qty: 10,
-      format: "A4",      isSatin: false,
+      format: "A4",
+      isSatin: false,
       express: false,
       checkedSurchargeIds: ["inna"],
     });
     const baseline = calculateDyplomy({
       qty: 10,
-      format: "A4",      isSatin: false,
+      format: "A4",
+      isSatin: false,
       express: false,
     });
     expect(result.totalPrice).toBe(baseline.totalPrice);
@@ -506,13 +510,15 @@ describe("Dyplomy — papier jako wymiar ceny (dynamicMaterials, kreda per grama
   it("calculateDyplomy: brak wycenionej kredy → identyczny wynik co przed zmianą (pełny fallback, usingNewPaperModel=false)", () => {
     const result = calculateDyplomy({
       format: "A4",
-      qty: 10,      isSatin: false,
+      qty: 10,
+      isSatin: false,
       express: false,
       gramatura: 250,
     });
     const legacy = calculateDyplomy({
       format: "A4",
-      qty: 10,      isSatin: false,
+      qty: 10,
+      isSatin: false,
       express: false,
     });
     expect(result.totalPrice).toBe(legacy.totalPrice);
@@ -526,7 +532,8 @@ describe("Dyplomy — papier jako wymiar ceny (dynamicMaterials, kreda per grama
     ]);
     const result = calculateDyplomy({
       format: "A4",
-      qty: 10,      isSatin: false,
+      qty: 10,
+      isSatin: false,
       express: false,
       gramatura: 300,
     });
@@ -539,7 +546,8 @@ describe("Dyplomy — papier jako wymiar ceny (dynamicMaterials, kreda per grama
     registerKreda("dyplomyA4", [{ gramatura: 250, tiers: [{ suffix: "1+", price: 100 }] }]);
     const result = calculateDyplomy({
       format: "A4",
-      qty: 10,      isSatin: true,
+      qty: 10,
+      isSatin: true,
       express: false,
       gramatura: 250,
     });
@@ -554,7 +562,8 @@ describe("Dyplomy — papier jako wymiar ceny (dynamicMaterials, kreda per grama
     ]);
     const result = calculateDyplomy({
       format: "A4",
-      qty: 10,      isSatin: false,
+      qty: 10,
+      isSatin: false,
       isModigliani: true,
       express: false,
       gramatura: 250, // celowo "zła" gramatura — Modigliani ma ją ignorować
@@ -568,7 +577,8 @@ describe("Dyplomy — papier jako wymiar ceny (dynamicMaterials, kreda per grama
     registerKreda("dyplomyA4", [{ gramatura: 250, tiers: [{ suffix: "1+", price: 100 }] }]);
     const result = calculateDyplomy({
       format: "A4",
-      qty: 10,      isSatin: false,
+      qty: 10,
+      isSatin: false,
       isModigliani: true,
       express: false,
     });
@@ -579,13 +589,15 @@ describe("Dyplomy — papier jako wymiar ceny (dynamicMaterials, kreda per grama
     registerKreda("dyplomyA5", [{ gramatura: 250, tiers: [{ suffix: "1+", price: 77 }] }]);
     const a5 = calculateDyplomy({
       format: "A5",
-      qty: 10,      isSatin: false,
+      qty: 10,
+      isSatin: false,
       express: false,
       gramatura: 250,
     });
     const a4 = calculateDyplomy({
       format: "A4",
-      qty: 10,      isSatin: false,
+      qty: 10,
+      isSatin: false,
       express: false,
       gramatura: 250,
     });
