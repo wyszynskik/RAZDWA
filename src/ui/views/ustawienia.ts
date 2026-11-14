@@ -1730,8 +1730,11 @@ function getPriceLabel(key: string): string {
 
 /** Etykieta wyliczona z klucza, bez nadpisania z customPriceLabels — baseline
  * do porównania w flushInputs(), żeby pusty/niezmieniony input etykiety nie
- * tworzył zbędnego nadpisania identycznego z tym co i tak by się wygenerowało. */
-function getAutoPriceLabel(key: string): string {
+ * tworzył zbędnego nadpisania identycznego z tym co i tak by się wygenerowało.
+ *
+ * Exported for unit tests only.
+ */
+export function getAutoPriceLabel(key: string): string {
   if (PRICE_LABELS[key]) return PRICE_LABELS[key];
 
   const dyplomyMatch = key.match(/^dyplomy-qty-(\d+)$/);
@@ -1767,6 +1770,21 @@ function getAutoPriceLabel(key: string): string {
     const from = broszuryKatalogiMatch[2];
     const to = broszuryKatalogiMatch[3];
     return `Broszury i katalogi ${format} – ${from}–${to} szt.`;
+  }
+
+  // Dyplomy — papier (dynamicMaterials, kategorie "dyplomyA4"/"dyplomyA5").
+  // Bez tego dopasowania te klucze dostają surowy, nieczytelny fallback
+  // "dyplomy papier a4 kreda 250 1 9" — dokładnie ten typ etykiety, który
+  // wcześniej już raz pomylił klientkę (nierozróżnialne wiersze cen).
+  const dyplomyPapierMatch = key.match(/^dyplomy-papier-(a4|a5)-kreda-(\d+)-(\d+)(?:-(\d+)|(\+))$/);
+  if (dyplomyPapierMatch) {
+    const format = dyplomyPapierMatch[1].toUpperCase();
+    const gramatura = dyplomyPapierMatch[2];
+    const tierMin = dyplomyPapierMatch[3];
+    const tierSuffix = dyplomyPapierMatch[5]
+      ? `${tierMin}+`
+      : `${tierMin}–${dyplomyPapierMatch[4]}`;
+    return `Dyplomy ${format} – Kreda ${gramatura}g – ${tierSuffix} szt.`;
   }
 
   if (key.startsWith("artykuly-")) {
