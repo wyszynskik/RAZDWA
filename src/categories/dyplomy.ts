@@ -100,6 +100,24 @@ export function resolveDyplomyKredaPrice(
   return getInterpolatedPrice(points, gramatura, "flat");
 }
 
+/**
+ * Wycenione przez admina gramatury kredy dla danego formatu, z pełnymi
+ * progami ilościowymi — źródło danych legendy cennika w widoku klienta.
+ * Pusta tablica = nowy model nieaktywny (legenda pokazuje stare progi).
+ */
+export function getDyplomyKredaMaterials(
+  format: "A4" | "A5"
+): Array<{ gramatura: number; tiers: MaterialTier[] }> {
+  const materials = getCombinedMaterials(dyplomyMaterialCategoryId(format));
+  return materials
+    .map((m) => {
+      const match = /^kreda-(\d+)$/.exec(m.id);
+      return match ? { gramatura: Number(match[1]), tiers: m.tiers } : null;
+    })
+    .filter((m): m is { gramatura: number; tiers: MaterialTier[] } => m !== null)
+    .sort((a, b) => a.gramatura - b.gramatura);
+}
+
 /** Cena kredy 350g dla danego formatu i ilości — baza dla Modigliani. Null, gdy admin jej jeszcze nie wycenił. */
 export function resolveDyplomyKreda350Price(format: "A4" | "A5", qty: number): number | null {
   const materials = getCombinedMaterials(dyplomyMaterialCategoryId(format));
