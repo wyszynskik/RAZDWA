@@ -6,6 +6,7 @@ import {
   getResolvedDyplomyEkoTiers,
   resolveDyplomyKredaPrice,
   resolveDyplomyKreda350Price,
+  getDyplomyKredaMaterials,
 } from "../src/categories/dyplomy";
 import {
   getPrice,
@@ -641,5 +642,36 @@ describe("Dyplomy — papier jako wymiar ceny (dynamicMaterials, kreda per grama
     expect((a5 as any).usingNewPaperModel).toBe(true);
     expect(a5.basePrice).toBe(77);
     expect((a4 as any).usingNewPaperModel).toBe(false);
+  });
+
+  it("getDyplomyKredaMaterials: pusta lista bez wycenionych kred; po wycenie zwraca gramatury rosnąco z pełnymi progami", () => {
+    // Gramatury 260/360 — celowo UNIKALNE w tym pliku: resetPrices() nie
+    // czyści kluczy defaultPrices dopisanych przez wcześniejsze testy
+    // (kreda-250/350), a toEqual jest ścisłe na pełnej liście progów.
+    expect(getDyplomyKredaMaterials("A4")).toEqual([]);
+
+    registerKreda("dyplomyA4", [
+      {
+        gramatura: 360,
+        tiers: [{ suffix: "1+", price: 50 }],
+      },
+      {
+        gramatura: 260,
+        tiers: [
+          { suffix: "1-9", price: 30 },
+          { suffix: "10+", price: 25 },
+        ],
+      },
+    ]);
+
+    const materials = getDyplomyKredaMaterials("A4");
+    expect(materials.map((m) => m.gramatura)).toEqual([260, 360]);
+    expect(materials[0].tiers).toEqual([
+      { min: 1, max: 9, price: 30 },
+      { min: 10, max: null, price: 25 },
+    ]);
+    expect(materials[1].tiers).toEqual([{ min: 1, max: null, price: 50 }]);
+    // A5 niezależne — nic nie wycieka między formatami.
+    expect(getDyplomyKredaMaterials("A5")).toEqual([]);
   });
 });

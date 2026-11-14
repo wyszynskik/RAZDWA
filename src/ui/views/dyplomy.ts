@@ -4,6 +4,7 @@ import {
   calculateDyplomy,
   DyplomyOptions,
   getResolvedDyplomyTiers,
+  getDyplomyKredaMaterials,
   calculateDyplomyEko,
   DyplomyEkoFormat,
   getResolvedDyplomyEkoTiers,
@@ -73,11 +74,47 @@ export const DyplomyView: View = {
 
       const updateLegend = () => {
         if (!legendRows) return;
+        const format = formatSel?.value === "A5" ? "A5" : "A4";
+        const kredaMaterials = getDyplomyKredaMaterials(format);
+
+        // Nowy model (papier jako wymiar ceny): legenda pokazuje realne progi
+        // każdej wycenionej gramatury kredy dla WYBRANEGO formatu + notkę jak
+        // liczą się satyna/Modigliani. Bez wycenionej kredy — stara legenda.
+        if (kredaMaterials.length > 0) {
+          const satinRate = resolveStoredPrice("modifier-satyna", 0.12);
+          const modiglianiRate = resolveStoredPrice("modifier-modigliani", 0.2);
+          const hasKreda350 = kredaMaterials.some((m) => m.gramatura === 350);
+
+          const sections = kredaMaterials.map((m) => {
+            const header = `<tr><td colspan="2" style="padding-top:10px;"><strong>Kreda ${m.gramatura}g (${format})</strong></td></tr>`;
+            const rows = m.tiers
+              .map((tier) => {
+                const range = tier.max === null ? `${tier.min}+` : `${tier.min}–${tier.max}`;
+                return `<tr><td>${range} szt</td><td>${formatPLN(tier.price)}</td></tr>`;
+              })
+              .join("");
+            return header + rows;
+          });
+
+          const notes: string[] = [
+            `<tr><td colspan="2" style="padding-top:10px; color:#64748b;">Satyna: cena kredy tej gramatury +${Math.round(satinRate * 100)}%. Gramatury pomiędzy wycenionymi liczone proporcjonalnie.</td></tr>`,
+          ];
+          if (hasKreda350) {
+            notes.push(
+              `<tr><td colspan="2" style="color:#64748b;">Modigliani: cena Kredy 350g +${Math.round(modiglianiRate * 100)}%.</td></tr>`
+            );
+          }
+
+          legendRows.innerHTML = sections.join("") + notes.join("");
+          return;
+        }
+
         const tiers = getResolvedDyplomyTiers();
         legendRows.innerHTML = tiers
           .map((tier) => `<tr><td>${tier.qty} szt</td><td>${formatPLN(tier.price)}</td></tr>`)
           .join("");
       };
+      formatSel?.addEventListener("change", updateLegend);
 
       const calculate = () => {
         const satinRate = resolveStoredPrice("modifier-satyna", 0.12);
