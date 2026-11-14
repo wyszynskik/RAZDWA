@@ -160,7 +160,10 @@ export function getDyplomyKredaMaterials(format: DyplomyPaperFormat): DyplomyKre
 }
 
 /** Cena kredy 350g dla danego formatu i ilości — baza dla Modigliani. Null, gdy nie jest jeszcze wyceniona. */
-export function resolveDyplomyKreda350Price(format: DyplomyPaperFormat, qty: number): number | null {
+export function resolveDyplomyKreda350Price(
+  format: DyplomyPaperFormat,
+  qty: number
+): number | null {
   return kredaGramaturaPriceMap(format, qty).get(350) ?? null;
 }
 

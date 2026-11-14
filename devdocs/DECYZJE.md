@@ -5,6 +5,7 @@ Jedno miejsce na decyzje biznesowe właściciela: zaakceptowane ryzyka, odroczen
 **Format wpisu:** nazwa, data (choćby przybliżona), treść decyzji, powód, status. Nowe decyzje dopisuj na górze właściwej sekcji.
 
 **Statusy w sekcjach D-1xx i D-2xx:**
+
 - **OBOWIĄZUJE** — tak działa kod albo tak zdecydował właściciel; kod niezgodny to odstępstwo do poprawienia.
 - **DO POTWIERDZENIA (właściciel)** — rekomendacja, o której decyduje Karol.
 - **DO POTWIERDZENIA (klientka)** — rekomendacja, która zmienia to, co klientka widzi lub jak wycenia.
