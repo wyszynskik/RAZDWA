@@ -13,6 +13,11 @@ import {
   type DynamicMaterialCategoryId,
   type MaterialTier,
 } from "../core/dynamicMaterials";
+import {
+  getDyplomySubgroupPaperTables,
+  type DyplomyPaperFormat,
+  type DyplomyPaperPoint,
+} from "../core/dyplomyPaperTables";
 
 type DyplomyTier = { qty: number; price: number };
 
@@ -71,65 +76,97 @@ function tierPriceForQty(tiers: MaterialTier[], qty: number): number | null {
 }
 
 /**
- * Cena kredy dla danej gramatury i ilości — interpolowana między punktami
- * faktycznie wycenionymi przez admina przez "Dodaj materiał" (kreda-{g}).
- * Poniżej najniższej wycenionej gramatury → cena tej najniższej; powyżej
- * najwyższej → cena tej najwyższej; pomiędzy dwoma punktami → liniowo
- * (ta sama funkcja, co progi ilościowe gdzie indziej w aplikacji).
- *
- * Zwraca null, gdy admin nie wycenił jeszcze ŻADNEJ gramatury tego formatu —
- * sygnał dla calculateDyplomy, żeby spadł na stary, płaski mechanizm.
+ * Cena każdej wycenionej gramatury kredy dla danego formatu przy danej
+ * ilości, z OBU źródeł panelu:
+ * - tabele-podkategorie (kreator "Dodaj wariant", punkty ilości) — cena
+ *   interpolowana liniowo między punktami, powyżej ostatniego punktu
+ *   ekstrapolowana per sztuka (D-110);
+ * - "Dodaj materiał" (kreda-{g}, progi zakresowe) — cena progu, w którym
+ *   mieści się ilość; przy tej samej gramaturze w obu źródłach wygrywa
+ *   materiał (docelowy mechanizm — pozwala płynnie przemigrować tabelę).
  */
-export function resolveDyplomyKredaPrice(
-  format: "A4" | "A5",
-  gramatura: number,
-  qty: number
-): number | null {
-  const materials = getCombinedMaterials(dyplomyMaterialCategoryId(format));
-  const points = materials
-    .map((m) => {
-      const match = /^kreda-(\d+)$/.exec(m.id);
-      if (!match) return null;
-      const price = tierPriceForQty(m.tiers, qty);
-      return price === null ? null : { qty: Number(match[1]), price };
-    })
-    .filter((p): p is { qty: number; price: number } => p !== null)
-    .sort((a, b) => a.qty - b.qty);
+function kredaGramaturaPriceMap(format: DyplomyPaperFormat, qty: number): Map<number, number> {
+  const prices = new Map<number, number>();
 
-  if (points.length === 0) return null;
-  return getInterpolatedPrice(points, gramatura, "flat");
+  for (const table of getDyplomySubgroupPaperTables(format)) {
+    prices.set(table.gramatura, getInterpolatedPrice(table.points, qty, "per-unit"));
+  }
+
+  for (const material of getCombinedMaterials(dyplomyMaterialCategoryId(format))) {
+    const match = /^kreda-(\d+)$/.exec(material.id);
+    if (!match) continue;
+    const price = tierPriceForQty(material.tiers, qty);
+    if (price !== null) prices.set(Number(match[1]), price);
+  }
+
+  return prices;
 }
 
 /**
- * Wycenione przez admina gramatury kredy dla danego formatu, z pełnymi
- * progami ilościowymi — źródło danych legendy cennika w widoku klienta.
- * Pusta tablica = nowy model nieaktywny (legenda pokazuje stare progi).
+ * Cena kredy dla danej gramatury i ilości — interpolowana między gramaturami
+ * faktycznie wycenionymi w panelu (podkategorie-tabele papieru oraz "Dodaj
+ * materiał"). Poniżej najniższej wycenionej gramatury → cena tej najniższej
+ * (D-201: poniżej 250g liczy się jak 250g); pomiędzy dwiema → liniowo.
+ *
+ * Zwraca null (sygnał fallbacku na starą tabelę, D-111) w dwóch sytuacjach:
+ * - żadna gramatura tego formatu nie jest wyceniona;
+ * - żądana gramatura jest POWYŻEJ najwyższej wycenionej — zaniżenie ceny
+ *   przez przycięcie w dół byłoby realną stratą (żywy przypadek: A4 ma
+ *   wycenioną tylko kredę 250g, a ceny A4 350g wciąż trzyma stara tabela).
  */
-export function getDyplomyKredaMaterials(
-  format: "A4" | "A5"
-): Array<{ gramatura: number; tiers: MaterialTier[] }> {
-  const materials = getCombinedMaterials(dyplomyMaterialCategoryId(format));
-  return materials
-    .map((m) => {
-      const match = /^kreda-(\d+)$/.exec(m.id);
-      return match ? { gramatura: Number(match[1]), tiers: m.tiers } : null;
-    })
-    .filter((m): m is { gramatura: number; tiers: MaterialTier[] } => m !== null)
-    .sort((a, b) => a.gramatura - b.gramatura);
+export function resolveDyplomyKredaPrice(
+  format: DyplomyPaperFormat,
+  gramatura: number,
+  qty: number
+): number | null {
+  const points = [...kredaGramaturaPriceMap(format, qty).entries()]
+    .map(([g, price]) => ({ qty: g, price }))
+    .sort((a, b) => a.qty - b.qty);
+
+  if (points.length === 0) return null;
+  if (gramatura > points[points.length - 1].qty) return null;
+  return getInterpolatedPrice(points, gramatura, "flat");
 }
 
-/** Cena kredy 350g dla danego formatu i ilości — baza dla Modigliani. Null, gdy admin jej jeszcze nie wycenił. */
-export function resolveDyplomyKreda350Price(format: "A4" | "A5", qty: number): number | null {
-  const materials = getCombinedMaterials(dyplomyMaterialCategoryId(format));
-  const kreda350 = materials.find((m) => m.id === "kreda-350");
-  if (!kreda350) return null;
-  return tierPriceForQty(kreda350.tiers, qty);
+export interface DyplomyKredaLegendEntry {
+  gramatura: number;
+  /** Progi zakresowe ze źródła "Dodaj materiał". */
+  tiers?: MaterialTier[];
+  /** Punkty ilości ze źródła podkategorii-tabel (D-110). */
+  points?: DyplomyPaperPoint[];
+}
+
+/**
+ * Wycenione gramatury kredy dla danego formatu, z pełnymi progami/punktami
+ * ilościowymi — źródło danych legendy cennika w widoku klienta. Łączy oba
+ * źródła panelu (przy tej samej gramaturze wygrywa materiał, jak w wycenie).
+ * Pusta tablica = nowy model nieaktywny (legenda pokazuje stare progi).
+ */
+export function getDyplomyKredaMaterials(format: DyplomyPaperFormat): DyplomyKredaLegendEntry[] {
+  const byGramatura = new Map<number, DyplomyKredaLegendEntry>();
+
+  for (const table of getDyplomySubgroupPaperTables(format)) {
+    byGramatura.set(table.gramatura, { gramatura: table.gramatura, points: table.points });
+  }
+
+  for (const material of getCombinedMaterials(dyplomyMaterialCategoryId(format))) {
+    const match = /^kreda-(\d+)$/.exec(material.id);
+    if (!match) continue;
+    const gramatura = Number(match[1]);
+    byGramatura.set(gramatura, { gramatura, tiers: material.tiers });
+  }
+
+  return [...byGramatura.values()].sort((a, b) => a.gramatura - b.gramatura);
+}
+
+/** Cena kredy 350g dla danego formatu i ilości — baza dla Modigliani. Null, gdy nie jest jeszcze wyceniona. */
+export function resolveDyplomyKreda350Price(format: DyplomyPaperFormat, qty: number): number | null {
+  return kredaGramaturaPriceMap(format, qty).get(350) ?? null;
 }
 
 export interface DyplomyOptions {
   format?: "A4" | "A5";
   qty: number;
-  sides?: number;
   isSatin: boolean;
   isModigliani?: boolean;
   /**
@@ -144,7 +181,6 @@ export interface DyplomyOptions {
 }
 
 export function calculateDyplomy(options: DyplomyOptions) {
-  const sides = options.sides ?? 1;
   const format = options.format ?? "A4";
   const satinRate = resolveStoredPrice("modifier-satyna", 0.12);
   const modiglianiRate = resolveStoredPrice("modifier-modigliani", 0.2);
@@ -163,8 +199,6 @@ export function calculateDyplomy(options: DyplomyOptions) {
 
   let tierPrice: number;
   let basePrice: number;
-  let singleSidedDiscountRate = 0;
-  let singleSidedDiscountAmount = 0;
   let materialModifiersTotal = 0;
   const appliedModifiers: string[] = [];
 
@@ -187,15 +221,10 @@ export function calculateDyplomy(options: DyplomyOptions) {
       }
     }
   } else {
+    // Stara płaska tabela (D-111) — bez rabatu -12% od 6 szt (usunięty, D-202)
+    // i bez wymiaru zadruku (dwustronne = dopłata globalna, D-203).
     tierPrice = getPriceForQuantity(options.qty);
-    const bulkDiscountRate = options.qty >= 6 && sides === 1 ? 0.12 : 0;
-    singleSidedDiscountRate = bulkDiscountRate;
-    singleSidedDiscountAmount = parseFloat((tierPrice * singleSidedDiscountRate).toFixed(2));
-    basePrice = parseFloat((tierPrice - singleSidedDiscountAmount).toFixed(2));
-
-    if (singleSidedDiscountRate > 0) {
-      appliedModifiers.push("single-sided-discount");
-    }
+    basePrice = tierPrice;
 
     if (options.isModigliani) {
       const satinModifier = basePrice * satinRate;
@@ -228,8 +257,6 @@ export function calculateDyplomy(options: DyplomyOptions) {
   return {
     tierPrice,
     basePrice,
-    singleSidedDiscountRate,
-    singleSidedDiscountAmount,
     modifiersTotal,
     totalPrice,
     appliedModifiers,

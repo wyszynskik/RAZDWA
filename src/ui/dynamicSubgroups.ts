@@ -35,6 +35,7 @@ import {
   type ProductCalcType,
 } from "../core/productModel";
 import { buildProductLabel } from "../core/productLabel";
+import { isDyplomyPaperTableProduct } from "../core/dyplomyPaperTables";
 import { isValidSortOrder } from "../core/subgroupOrder";
 import type { CartItem } from "../core/types";
 import type { ViewContext } from "./types";
@@ -164,7 +165,10 @@ export function getRenderableProducts(categoryId: string): RenderableProduct[] {
   const eligible = report.migrated
     .filter((p) => p.categoryId === categoryId)
     .filter((p) => p.status === "published")
-    .filter((p) => p.visibleInCalculator);
+    .filter((p) => p.visibleInCalculator)
+    // Tabele papieru Dyplomów są scalone z głównym formularzem (wybór
+    // papieru + jedna ilość) — osobna karta byłaby duplikatem wyceny.
+    .filter((p) => !isDyplomyPaperTableProduct(p));
 
   return sortProductsByOrder(eligible, freshSubgroups, variantsByIdentity)
     .map((p) => {

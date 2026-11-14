@@ -55,7 +55,6 @@ export const DyplomyView: View = {
         ?.addEventListener("click", () => switchTab("standard"));
       container.querySelector("#tabBtn-eko")?.addEventListener("click", () => switchTab("eko"));
 
-      const sidesSel = container.querySelector("#dypSides") as HTMLSelectElement;
       const formatSel = container.querySelector("#dypFormat") as HTMLSelectElement;
       const qtyInput = container.querySelector("#dypQty") as HTMLInputElement;
       const paperSel = container.querySelector("#dypPaper") as HTMLSelectElement;
@@ -80,6 +79,8 @@ export const DyplomyView: View = {
         // Nowy model (papier jako wymiar ceny): legenda pokazuje realne progi
         // każdej wycenionej gramatury kredy dla WYBRANEGO formatu + notkę jak
         // liczą się satyna/Modigliani. Bez wycenionej kredy — stara legenda.
+        // Gramatura może pochodzić z "Dodaj materiał" (progi zakresowe,
+        // `tiers`) albo z tabeli-podkategorii (punkty ilości, `points`).
         if (kredaMaterials.length > 0) {
           const satinRate = resolveStoredPrice("modifier-satyna", 0.12);
           const modiglianiRate = resolveStoredPrice("modifier-modigliani", 0.2);
@@ -87,13 +88,18 @@ export const DyplomyView: View = {
 
           const sections = kredaMaterials.map((m) => {
             const header = `<tr><td colspan="2" style="padding-top:10px;"><strong>Kreda ${m.gramatura}g (${format})</strong></td></tr>`;
-            const rows = m.tiers
+            const rangeRows = (m.tiers ?? [])
               .map((tier) => {
                 const range = tier.max === null ? `${tier.min}+` : `${tier.min}–${tier.max}`;
                 return `<tr><td>${range} szt</td><td>${formatPLN(tier.price)}</td></tr>`;
               })
               .join("");
-            return header + rows;
+            const pointRows = (m.points ?? [])
+              .map(
+                (point) => `<tr><td>${point.qty} szt</td><td>${formatPLN(point.price)}</td></tr>`
+              )
+              .join("");
+            return header + rangeRows + pointRows;
           });
 
           const notes: string[] = [
@@ -140,7 +146,6 @@ export const DyplomyView: View = {
         const options: DyplomyOptions = {
           format: formatSel.value === "A5" ? "A5" : "A4",
           qty: parseInt(qtyInput.value),
-          sides: parseInt(sidesSel.value) || 1,
           isSatin,
           isModigliani,
           gramatura,
@@ -150,9 +155,7 @@ export const DyplomyView: View = {
 
         const result = calculateDyplomy(options);
         const totalPrice = result.totalPrice;
-        const tierPrice = Number((result as any).tierPrice ?? result.basePrice);
-        const singleSidedDiscountRate = Number((result as any).singleSidedDiscountRate ?? 0);
-        const singleSidedDiscountAmount = Number((result as any).singleSidedDiscountAmount ?? 0);
+        const tierPrice = result.tierPrice;
 
         const usingNewPaperModel = Boolean((result as any).usingNewPaperModel);
         let satinAmount = 0;
@@ -177,21 +180,9 @@ export const DyplomyView: View = {
           : 0;
 
         const breakdown = [
-          `<div><strong>Parametry:</strong> ${options.qty} szt, ${options.sides === 1 ? "jednostronne" : "dwustronne"}, format ${options.format}</div>`,
-          `<div><strong>Cena z tabeli (${options.sides === 1 ? "jednostronne" : "dwustronne"}):</strong> ${formatPLN(tierPrice)}</div>`,
+          `<div><strong>Parametry:</strong> ${options.qty} szt, format ${options.format}</div>`,
+          `<div><strong>Cena z tabeli:</strong> ${formatPLN(tierPrice)}</div>`,
         ];
-
-        if (options.sides === 1 && singleSidedDiscountRate > 0) {
-          breakdown.push(
-            `<div><strong>Rabat jednostronne:</strong> ${Math.round(singleSidedDiscountRate * 100)}% × ${formatPLN(tierPrice)} = ${formatPLN(singleSidedDiscountAmount)} (od 6 szt.)</div>`
-          );
-        }
-
-        if (options.sides === 1) {
-          breakdown.push(
-            `<div><strong>Cena bazowa po rabacie:</strong> ${formatPLN(result.basePrice)}</div>`
-          );
-        }
 
         if (options.isModigliani) {
           if (usingNewPaperModel) {
@@ -241,21 +232,7 @@ export const DyplomyView: View = {
           formatPLN(totalPrice);
         const tierHintEl = container.querySelector("#resTierHint") as HTMLElement;
         if (tierHintEl) {
-          const sideLabel = options.sides === 1 ? "jednostronne" : "dwustronne";
-          const discountHint =
-            options.sides === 1 && singleSidedDiscountRate > 0
-              ? `; rabat jednostronne ${Math.round(singleSidedDiscountRate * 100)}% = ${formatPLN(singleSidedDiscountAmount)}`
-              : "";
-          tierHintEl.textContent = `Dla ${options.qty} szt użyto ceny tabeli ${formatPLN(tierPrice)} (${sideLabel}${discountHint}; papier: ${paperVal.replace("_", " ")})`;
-        }
-        const discountHintEl = container.querySelector("#resDiscountHint") as HTMLElement;
-        if (discountHintEl) {
-          discountHintEl.textContent =
-            options.sides === 1 && singleSidedDiscountRate > 0
-              ? `Zastosowano rabat jednostronne: ${Math.round(singleSidedDiscountRate * 100)}% (${formatPLN(singleSidedDiscountAmount)})`
-              : "";
-          discountHintEl.style.display =
-            options.sides === 1 && singleSidedDiscountRate > 0 ? "block" : "none";
+          tierHintEl.textContent = `Dla ${options.qty} szt użyto ceny tabeli ${formatPLN(tierPrice)} (papier: ${paperVal.replace("_", " ")})`;
         }
         (container.querySelector("#resExpressHint") as HTMLElement).style.display = options.express
           ? "block"
@@ -496,7 +473,7 @@ export const DyplomyView: View = {
         ctx.cart.addItem({
           id: `dyp-${Date.now()}`,
           category: "Dyplomy",
-          name: `Dyplomy ${options.format} ${options.sides === 1 ? "1-str" : "2-str"}`,
+          name: `Dyplomy ${options.format}`,
           quantity: options.qty,
           unit: "szt",
           unitPrice: result.totalPrice / options.qty,

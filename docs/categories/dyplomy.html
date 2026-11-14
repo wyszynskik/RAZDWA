@@ -22,17 +22,8 @@
     </div>
 
     <div class="form-group">
-      <label for="dypSides">Zadruk:</label>
-      <select id="dypSides">
-        <option value="1">Jednostronne</option>
-        <option value="2">Dwustronne</option>
-      </select>
-    </div>
-
-    <div class="form-group">
       <label for="dypQty">Ilość (szt):</label>
       <input type="number" id="dypQty" min="1" step="1" placeholder="ilość" inputmode="numeric">
-      <div class="hint">Od 6 szt. automatyczny rabat -12% dla jednostronnych.</div>
       <div id="dypQty-hint" class="ghost-hint"></div>
     </div>
 
@@ -69,7 +60,6 @@
       <div class="price-line highlight">SUMA ZA WSZYSTKO: <span id="resTotalPrice">0.00</span></div>
       <div class="price-line">Cena za szt: <span id="resUnitPrice">0.00</span></div>
       <div id="resTierHint" class="modifier-hint" style="color: #555; font-size: 12px;"></div>
-      <div id="resDiscountHint" class="modifier-hint" style="display: none; color: #22c55e;"></div>
       <div id="resExpressHint" class="express-hint" style="display: none;">W tym dopłata EXPRESS +20%</div>
       <div id="resSatinHint" class="modifier-hint" style="display: none;">W tym dopłata SATYNA +12%</div>
       <div id="resModiglianiHint" class="modifier-hint" style="display: none;">W tym dopłata MODIGLIANI +20% od ceny satyny</div>
@@ -83,11 +73,8 @@
       <div class="legend-head">
         <div>
           <h4>CENNIK DYPLOMY</h4>
-          <p class="legend-subtitle">Cena zależy od ilości i zadruku (jedno-/dwustronne).</p>
+          <p class="legend-subtitle">Cena zależy od ilości i wybranego papieru.</p>
         </div>
-      </div>
-      <div class="legend-badges">
-        <span class="legend-badge"><strong>Rabat:</strong> od 6 szt. -12%</span>
       </div>
       <table>
         <thead><tr><th>Ilość (szt)</th><th>Cena</th></tr></thead>
