@@ -1,14 +1,16 @@
-# Sekcja do wklejenia w devdocs/DECYZJE.md
+# DECYZJE.md — rejestr decyzji biznesowych
 
-Stan kodu: `main` @ beced81 (PR #230), zweryfikowany 2026-11-14.
+Jedno miejsce na decyzje biznesowe właściciela: zaakceptowane ryzyka, odroczenia, zasady procesu i rozstrzygnięcia produktowe. Decyzje czysto architektoniczne trafiają do [adr/](adr/), nie tutaj.
 
-Statusy:
-- **OBOWIĄZUJE** — tak działa kod dzisiaj, zapisujemy to jako decyzję.
+**Format wpisu:** nazwa, data (choćby przybliżona), treść decyzji, powód, status. Nowe decyzje dopisuj na górze właściwej sekcji.
+
+**Statusy w sekcjach D-1xx i D-2xx:**
+- **OBOWIĄZUJE** — tak działa kod albo tak zdecydował właściciel; kod niezgodny to odstępstwo do poprawienia.
 - **DO POTWIERDZENIA (właściciel)** — rekomendacja, o której decyduje Karol.
 - **DO POTWIERDZENIA (klientka)** — rekomendacja, która zmienia to, co klientka widzi lub jak wycenia.
 - **KIERUNEK** — cel docelowy, bez terminu.
 
-Zgodnie z AGENTS.md każda decyzja zmieniająca wynik istniejącego liczenia wymaga osobnego zadania „refactor core" z testami.
+Stan kodu dla sekcji D-1xx i D-2xx: `main` @ beced81 (PR #230), zweryfikowany 2026-11-14. Zgodnie z AGENTS.md każda decyzja zmieniająca wynik istniejącego liczenia wymaga osobnego zadania „refactor core" z testami.
 
 ---
 
@@ -157,8 +159,97 @@ Zgodnie z AGENTS.md każda decyzja zmieniająca wynik istniejącego liczenia wym
 
 ---
 
-## Do poprawienia w istniejących wpisach
+## Zaakceptowane ryzyka
 
-- **„Laminowanie `specialPrints` z ceną 0" (Odroczone):** tych pozycji nie ma już w kodzie ani w `prices.json`. Wpis zamknąć jako nieaktualny; poprawić też ADR G i `COVERAGE_MATRIX.md`.
-- **„Merge i deploy wykonuje wyłącznie właściciel":** dopisać, że push na `main` uruchamia automatyczny deploy na Pages.
-- **„Porządki panelu admina, punkty 2–4":** walidację ceny przejmuje D-106.
+### Dedup zamówień multi-tab — kolizja identycznych zamówień w 90 s
+
+- **Data:** ~2026-10
+- **Decyzja:** dedup zamówień między kartami przeglądarki opiera się na content-hash (`computeOrderRequestId`). Dwa faktycznie identyczne zamówienia złożone w oknie ~90 s zostaną potraktowane jako duplikat.
+- **Powód:** dodanie dyskryminatora (timestamp, losowy salt) zepsułoby dedup między kartami — czyli główny cel mechanizmu. Ryzyko realnej kolizji ocenione jako znikome.
+- **Konsekwencja:** NIE dodawać dyskryminatora do `computeOrderRequestId`. Udokumentowane też w kodzie.
+- **Status:** obowiązuje.
+
+### Kontrola sumy zamówienia nie weryfikuje cen z cennika
+
+- **Data:** 2026-10 (patch GAS live od 2026-10-03)
+- **Decyzja:** kontrola spójności po stronie GAS sprawdza tylko `qty × price ≈ total` dla pozycji. Nie porównuje ceny jednostkowej z aktualnym cennikiem.
+- **Powód:** pełna weryfikacja wymagałaby odtworzenia logiki kalkulatorów po stronie GAS; koszt nieproporcjonalny do ryzyka.
+- **Status:** residual otwarty, zaakceptowany.
+
+## Odroczone (deferred)
+
+### Laminowanie `specialPrints` z ceną 0
+
+- **Data:** ~2026-06 (E1B)
+- **Decyzja:** pozycje `laminowanie-special-*` z `price: 0` pozostają bez zmian. Nie rozstrzygnięto, czy `0` znaczy „darmowe", czy „wycena indywidualna / do uzupełnienia".
+- **Powód:** semantyka niejednoznaczna biznesowo — wymaga decyzji właściciela, nie poprawki technicznej. Wzorcem docelowym jest obsługa `price=0` z Broszur/Katalogów („— (do uzupełnienia)" + zablokowany koszyk).
+- **Status:** NIEAKTUALNE (2026-11-14). Pozycji `laminowanie-special-*` nie ma już w `src/` ani w `prices.json`; pozostały tylko wzmianki w dokumentacji (ADR G, [COVERAGE_MATRIX.md](COVERAGE_MATRIX.md)) do usunięcia. Ogólną zasadę dla ceny 0 określa D-102.
+
+### Snapshot katalogu co 12 h — trigger nieuruchomiony
+
+- **Data:** ~2026-10
+- **Decyzja:** kod snapshotu wdrożony, GAS zredeployowany, `getSnapshot` zweryfikowany — ale trigger czasowy celowo NIE został uruchomiony.
+- **Powód:** uruchomienie triggera to decyzja operacyjna właściciela (koszty, moment startu).
+- **Status:** czeka na decyzję właściciela (owner-gated).
+
+### Porządki panelu admina — punkty 2–4 odłożone
+
+- **Data:** ~2026-11
+- **Decyzja:** z planu porządków panelu admina realizowany najpierw punkt 1 w całości. Odłożone: walidacja ceny przy zapisie, `beforeunload` dla niezapisanych draftów, `try/catch` przy wysyłce.
+- **Powód:** priorytetyzacja — najpierw jedna rzecz zrobiona do końca.
+- **Status:** punkty 2–4 otwarte. Walidację ceny przy zapisie przejmuje D-106.
+
+### Kolejka offline dla zamówień (K3)
+
+- **Data:** ~2026-10
+- **Decyzja:** właściciel potwierdził potrzebę kolejki offline (zamówienie złożone bez sieci nie może przepaść), ale wdrożenie czeka na osobny plan.
+- **Status:** otwarte, czeka na plan.
+
+## Zasady procesu
+
+### Merge i deploy wykonuje wyłącznie właściciel
+
+- **Data:** obowiązuje od początku współpracy z agentami
+- **Decyzja:** żaden agent nie merguje PR ani nie pushuje na `main` — nawet po potwierdzeniu w rozmowie. Każdy PR to punkt kontrolny; właściciel merguje ręcznie, deploy idzie z `main`.
+- **Powód:** kontrola nad tym, co trafia na produkcję. Push na `main` uruchamia automatyczny deploy na GitHub Pages.
+- **Status:** obowiązuje bezwzględnie.
+
+### devdocs dla Code.gs bywa nieaktualne
+
+- **Data:** ~2026-10
+- **Decyzja:** przed każdą zmianą w GAS weryfikować realny, żywy kod `Code.gs`, nie opis w devdocs. Wklejany plik `Code.gs` zawsze gubi polskie znaki — to artefakt transferu, nie stan produkcji.
+- **Status:** obowiązuje.
+
+## Decyzje produktowe (wdrożone)
+
+### Dopłaty globalne — Artykuły biurowe i Usługi bez dopłat
+
+- **Data:** 2026-11
+- **Decyzja:** generyczny mechanizm dopłat globalnych podłączony do ~16 kategorii kalkulatora. Kategorie „Artykuły biurowe" i „Usługi" celowo pominięte.
+- **Powód:** charakter tych pozycji (produkty gotowe / usługi wyceniane inaczej) — dopłaty procentowe nie mają tam sensu.
+- **Status:** wdrożone (PR #220 i kolejne).
+
+### Cena relatywna materiałów — żywy związek z ceną bazową
+
+- **Data:** ~2026-10
+- **Decyzja:** materiały z ceną relatywną (`priceFormula` na `VariantDefinition`) aktualizują się automatycznie przy zmianie ceny bazowej — relacja jest żywa, nie jednorazowo przeliczona przy tworzeniu.
+- **Powód:** admin zmienia bazę w jednym miejscu, pochodne nadążają same.
+- **Status:** wdrożone, kolumna w GAS wdrożona i zredeployowana.
+
+### Plakaty — nowy materiał przez mechanizm ilościowy, nie m²
+
+- **Data:** ~2026-10
+- **Decyzja:** kreator „Nowy materiał" (model m²) jest niekompatybilny z plakatami. Dla plakatów nowe materiały dodaje się istniejącym mechanizmem opartym o progi ilościowe (qty-based).
+- **Powód:** plakaty wyceniane są od sztuki/progu, nie od powierzchni.
+- **Status:** obowiązuje.
+
+### Reset cen = przywrócenie z localStorage, nie factory wipe
+
+- **Data:** ~2026 (rozmowa „Duży Canon")
+- **Decyzja:** przycisk resetu cen przywraca ostatni zapisany stan z localStorage. Nie jest to powrót do cen fabrycznych z `prices.json`.
+- **Powód:** ochrona przed przypadkowym skasowaniem realnego cennika klientki.
+- **Status:** obowiązuje.
+
+---
+
+**Utworzono:** 2026-11-14. Źródła: pamięć projektu agenta, `.remember/`, [COVERAGE_MATRIX.md](COVERAGE_MATRIX.md), historia PR. Sekcje D-1xx i D-2xx: przegląd kodu i decyzje właściciela z 2026-11-14.
