@@ -13,7 +13,9 @@ import {
   resetPrices,
   setPrice,
   setVariantDefinitions,
+  type VariantDefinition,
 } from "../src/services/priceService";
+import { getRenderableProducts } from "../src/ui/dynamicSubgroups";
 import { buildSurchargeVariant, surchargeRateKey } from "../src/core/dynamicSurcharges";
 import { buildMaterialAssignmentKey, materialTierKeyPrefix } from "../src/core/dynamicMaterials";
 import { MATERIAL_ASSIGNMENT_PREFIX } from "../src/core/variantKeys";
@@ -51,14 +53,15 @@ describe("Dyplomy logic", () => {
     expect(result.totalPrice).toBe(20.0);
   });
 
-  it("should apply bulk -12% from 6szt (base tier 35.00 => 30.80)", () => {
+  it("no rabat -12% from 6szt (D-202: rabat usunięty) — cena tabeli bez potrąceń", () => {
     const result = calculateDyplomy({
       qty: 6,
       isSatin: false,
       express: false,
     });
-    expect(result.basePrice).toBe(30.8);
-    expect(result.totalPrice).toBe(30.8);
+    expect(result.basePrice).toBe(35.0);
+    expect(result.totalPrice).toBe(35.0);
+    expect(result.appliedModifiers).toEqual([]);
   });
 
   it("should apply Satin modifier (+12%) to base price", () => {
@@ -71,17 +74,13 @@ describe("Dyplomy logic", () => {
     expect(result.totalPrice).toBe(22.4);
   });
 
-  it("should apply both bulk discount and Satin correctly", () => {
-    // 6szt tier = 35.00
-    // bulk -12% => 30.80
-    // Satin +12% = +3.70
-    // Total = 34.50
+  it("satin at 6szt applies to full table price (no D-202 rabat): 35 × 1.12 = 39.20", () => {
     const result = calculateDyplomy({
       qty: 6,
       isSatin: true,
       express: false,
     });
-    expect(result.totalPrice).toBe(34.5);
+    expect(result.totalPrice).toBe(39.2);
   });
 
   it("should apply Express modifier (+20%)", () => {
@@ -144,51 +143,39 @@ describe("Dyplomy logic", () => {
     expect(result.appliedModifiers).toEqual([]);
   });
 
-  it("should apply -12% discount from 6 pcs for single-sided", () => {
-    // baza z tabeli: 6 szt = 35.00
-    // jednostronne od 6 szt: -12% = 4.20
-    // suma: 30.80
-    const result = calculateDyplomy({ qty: 6, sides: 1, isSatin: false, express: false });
-    expect((result as any).tierPrice).toBe(35.0);
-    expect((result as any).singleSidedDiscountAmount).toBe(4.2);
-    expect(result.basePrice).toBe(30.8);
-    expect(result.totalPrice).toBe(30.8);
-    expect(result.appliedModifiers).toContain("single-sided-discount");
-  });
-
   describe("Interpolacja liniowa", () => {
     it("exact tier – qty=50: próg dokładny → 75 zł", () => {
-      const result = calculateDyplomy({ qty: 50, sides: 2, isSatin: false, express: false });
+      const result = calculateDyplomy({ qty: 50, isSatin: false, express: false });
       expect(result.tierPrice).toBe(75);
       expect(result.totalPrice).toBe(75);
     });
 
     it("between tiers – qty=70: między 50→75 a 100→120, t=0.4 → 93 zł", () => {
-      const result = calculateDyplomy({ qty: 70, sides: 2, isSatin: false, express: false });
+      const result = calculateDyplomy({ qty: 70, isSatin: false, express: false });
       expect(result.tierPrice).toBe(93);
       expect(result.totalPrice).toBe(93);
     });
 
     it("between tiers – qty=80: między 50→75 a 100→120, t=0.6 → 102 zł", () => {
-      const result = calculateDyplomy({ qty: 80, sides: 2, isSatin: false, express: false });
+      const result = calculateDyplomy({ qty: 80, isSatin: false, express: false });
       expect(result.tierPrice).toBe(102);
       expect(result.totalPrice).toBe(102);
     });
 
     it("between tiers – qty=25: między 20→49 a 30→58, t=0.5 → 53.5 zł", () => {
-      const result = calculateDyplomy({ qty: 25, sides: 2, isSatin: false, express: false });
+      const result = calculateDyplomy({ qty: 25, isSatin: false, express: false });
       expect(result.tierPrice).toBe(53.5);
       expect(result.totalPrice).toBe(53.5);
     });
 
     it("below min – qty=0: poniżej progu 1→20 → clamp do 20 zł", () => {
-      const result = calculateDyplomy({ qty: 0, sides: 2, isSatin: false, express: false });
+      const result = calculateDyplomy({ qty: 0, isSatin: false, express: false });
       expect(result.tierPrice).toBe(20);
       expect(result.totalPrice).toBe(20);
     });
 
     it("above max – qty=200: powyżej progu 100→120 → flat 120 zł", () => {
-      const result = calculateDyplomy({ qty: 200, sides: 2, isSatin: false, express: false });
+      const result = calculateDyplomy({ qty: 200, isSatin: false, express: false });
       expect(result.tierPrice).toBe(120);
       expect(result.totalPrice).toBe(120);
     });
@@ -203,7 +190,6 @@ describe("Dyplomy logic", () => {
 
     const result = calculateDyplomy({
       qty: 50,
-      sides: 2,
       isSatin: false,
       express: false,
     });
@@ -212,43 +198,26 @@ describe("Dyplomy logic", () => {
     expect(result.totalPrice).toBe(180);
   });
 
-  it("should not apply -12% discount for double-sided even from 6 pcs", () => {
-    const result = calculateDyplomy({ qty: 6, sides: 2, isSatin: false, express: false });
-    expect((result as any).tierPrice).toBe(35.0);
-    expect((result as any).singleSidedDiscountAmount).toBe(0);
+  it("satin and express both apply to full table price (D-202: bez rabatu)", () => {
+    // 6 szt: baza tabeli 35.00
+    // satyna +12% => 4.20
+    // express +20% => 7.00
+    // razem: 46.20
+    const result = calculateDyplomy({ qty: 6, isSatin: true, express: true });
     expect(result.basePrice).toBe(35.0);
-    expect(result.totalPrice).toBe(35.0);
+    expect(result.modifiersTotal).toBe(11.2);
+    expect(result.totalPrice).toBe(46.2);
   });
 
-  it("should not apply single-sided discount below 6 pcs", () => {
-    const result = calculateDyplomy({ qty: 5, sides: 1, isSatin: false, express: false });
-    expect((result as any).singleSidedDiscountAmount).toBe(0);
-    expect(result.totalPrice).toBe(35.0);
-  });
-
-  it("should apply satin and express on discounted single-sided base", () => {
-    // 6 szt jednostronne:
-    // baza tabeli 35.00, rabat -12% => 30.80
-    // satyna +12% => 3.70
-    // express +20% => 6.16
-    // razem: 40.66
-    const result = calculateDyplomy({ qty: 6, sides: 1, isSatin: true, express: true });
-    expect(result.basePrice).toBe(30.8);
-    expect(result.modifiersTotal).toBe(9.86);
-    expect(result.totalPrice).toBe(40.66);
-  });
-
-  it("should ignore format in price calculation", () => {
+  it("should ignore format in price calculation (stara tabela)", () => {
     const a4 = calculateDyplomy({
       qty: 10,
-      sides: 2,
       format: "A4",
       isSatin: false,
       express: false,
     });
     const a5 = calculateDyplomy({
       qty: 10,
-      sides: 2,
       format: "A5",
       isSatin: false,
       express: false,
@@ -293,7 +262,7 @@ describe("getResolvedDyplomyTiers – legenda progów ilościowych", () => {
 
   it("overriding a tier price is reflected in calculateDyplomy", () => {
     setPrice("defaultPrices.dyplomy-qty-10", 50);
-    const result = calculateDyplomy({ qty: 10, sides: 2, isSatin: false, express: false });
+    const result = calculateDyplomy({ qty: 10, isSatin: false, express: false });
     expect(result.tierPrice).toBe(50);
     expect(result.totalPrice).toBe(50);
   });
@@ -401,16 +370,12 @@ describe("Dyplomy Ekonomiczny", () => {
 
     const withoutSurcharge = calculateDyplomy({
       qty: 10,
-      format: "A4",
-      sides: 1,
-      isSatin: false,
+      format: "A4",      isSatin: false,
       express: false,
     });
     const withSurcharge = calculateDyplomy({
       qty: 10,
-      format: "A4",
-      sides: 1,
-      isSatin: false,
+      format: "A4",      isSatin: false,
       express: false,
       checkedSurchargeIds: ["dwustronne"],
     });
@@ -424,17 +389,13 @@ describe("Dyplomy Ekonomiczny", () => {
 
     const result = calculateDyplomy({
       qty: 10,
-      format: "A4",
-      sides: 1,
-      isSatin: false,
+      format: "A4",      isSatin: false,
       express: false,
       checkedSurchargeIds: ["inna"],
     });
     const baseline = calculateDyplomy({
       qty: 10,
-      format: "A4",
-      sides: 1,
-      isSatin: false,
+      format: "A4",      isSatin: false,
       express: false,
     });
     expect(result.totalPrice).toBe(baseline.totalPrice);
@@ -494,14 +455,19 @@ describe("Dyplomy — papier jako wymiar ceny (dynamicMaterials, kreda per grama
     expect(resolveDyplomyKredaPrice("A4", 250, 10)).toBeNull();
   });
 
-  it("resolveDyplomyKredaPrice: tylko jedna gramatura wyceniona → ta sama cena niezależnie od wybranej gramatury", () => {
+  it("resolveDyplomyKredaPrice: tylko jedna gramatura wyceniona → poniżej/na niej jej cena, POWYŻEJ null (fallback na starą tabelę, D-111)", () => {
+    // Zmiana względem PR #228 (wcześniej clamp w górę): żywy przypadek to A4
+    // z wycenioną tylko kredą 250g, podczas gdy ceny A4 350g wciąż trzyma
+    // stara płaska tabela — przycięcie w dół zaniżałoby cenę droższego
+    // papieru. Powyżej najwyższej wycenionej gramatury nowy model mówi
+    // "nie wiem" i oddaje wycenę starej tabeli.
     registerKreda("dyplomyA4", [{ gramatura: 250, tiers: [{ suffix: "1+", price: 30 }] }]);
     expect(resolveDyplomyKredaPrice("A4", 130, 10)).toBe(30);
     expect(resolveDyplomyKredaPrice("A4", 250, 10)).toBe(30);
-    expect(resolveDyplomyKredaPrice("A4", 350, 10)).toBe(30);
+    expect(resolveDyplomyKredaPrice("A4", 350, 10)).toBeNull();
   });
 
-  it("resolveDyplomyKredaPrice: dwie gramatury — poniżej minimum bierze cenę minimum, powyżej maksimum bierze cenę maksimum, pomiędzy interpoluje liniowo", () => {
+  it("resolveDyplomyKredaPrice: dwie gramatury — poniżej minimum bierze cenę minimum, pomiędzy interpoluje liniowo, powyżej maksimum null (D-111)", () => {
     registerKreda("dyplomyA4", [
       { gramatura: 250, tiers: [{ suffix: "1+", price: 30 }] },
       { gramatura: 350, tiers: [{ suffix: "1+", price: 50 }] },
@@ -510,7 +476,7 @@ describe("Dyplomy — papier jako wymiar ceny (dynamicMaterials, kreda per grama
     expect(resolveDyplomyKredaPrice("A4", 250, 10)).toBe(30);
     expect(resolveDyplomyKredaPrice("A4", 300, 10)).toBe(40); // średnia 30 i 50
     expect(resolveDyplomyKredaPrice("A4", 350, 10)).toBe(50);
-    expect(resolveDyplomyKredaPrice("A4", 500, 10)).toBe(50);
+    expect(resolveDyplomyKredaPrice("A4", 500, 10)).toBeNull();
   });
 
   it("resolveDyplomyKredaPrice: progi ilościowe WEWNĄTRZ jednej gramatury nadal działają (qty i gramatura to niezależne osie)", () => {
@@ -540,17 +506,13 @@ describe("Dyplomy — papier jako wymiar ceny (dynamicMaterials, kreda per grama
   it("calculateDyplomy: brak wycenionej kredy → identyczny wynik co przed zmianą (pełny fallback, usingNewPaperModel=false)", () => {
     const result = calculateDyplomy({
       format: "A4",
-      qty: 10,
-      sides: 1,
-      isSatin: false,
+      qty: 10,      isSatin: false,
       express: false,
       gramatura: 250,
     });
     const legacy = calculateDyplomy({
       format: "A4",
-      qty: 10,
-      sides: 1,
-      isSatin: false,
+      qty: 10,      isSatin: false,
       express: false,
     });
     expect(result.totalPrice).toBe(legacy.totalPrice);
@@ -564,9 +526,7 @@ describe("Dyplomy — papier jako wymiar ceny (dynamicMaterials, kreda per grama
     ]);
     const result = calculateDyplomy({
       format: "A4",
-      qty: 10,
-      sides: 1,
-      isSatin: false,
+      qty: 10,      isSatin: false,
       express: false,
       gramatura: 300,
     });
@@ -579,9 +539,7 @@ describe("Dyplomy — papier jako wymiar ceny (dynamicMaterials, kreda per grama
     registerKreda("dyplomyA4", [{ gramatura: 250, tiers: [{ suffix: "1+", price: 100 }] }]);
     const result = calculateDyplomy({
       format: "A4",
-      qty: 10,
-      sides: 1,
-      isSatin: true,
+      qty: 10,      isSatin: true,
       express: false,
       gramatura: 250,
     });
@@ -596,9 +554,7 @@ describe("Dyplomy — papier jako wymiar ceny (dynamicMaterials, kreda per grama
     ]);
     const result = calculateDyplomy({
       format: "A4",
-      qty: 10,
-      sides: 1,
-      isSatin: false,
+      qty: 10,      isSatin: false,
       isModigliani: true,
       express: false,
       gramatura: 250, // celowo "zła" gramatura — Modigliani ma ją ignorować
@@ -612,9 +568,7 @@ describe("Dyplomy — papier jako wymiar ceny (dynamicMaterials, kreda per grama
     registerKreda("dyplomyA4", [{ gramatura: 250, tiers: [{ suffix: "1+", price: 100 }] }]);
     const result = calculateDyplomy({
       format: "A4",
-      qty: 10,
-      sides: 1,
-      isSatin: false,
+      qty: 10,      isSatin: false,
       isModigliani: true,
       express: false,
     });
@@ -625,17 +579,13 @@ describe("Dyplomy — papier jako wymiar ceny (dynamicMaterials, kreda per grama
     registerKreda("dyplomyA5", [{ gramatura: 250, tiers: [{ suffix: "1+", price: 77 }] }]);
     const a5 = calculateDyplomy({
       format: "A5",
-      qty: 10,
-      sides: 1,
-      isSatin: false,
+      qty: 10,      isSatin: false,
       express: false,
       gramatura: 250,
     });
     const a4 = calculateDyplomy({
       format: "A4",
-      qty: 10,
-      sides: 1,
-      isSatin: false,
+      qty: 10,      isSatin: false,
       express: false,
       gramatura: 250,
     });
@@ -673,5 +623,174 @@ describe("Dyplomy — papier jako wymiar ceny (dynamicMaterials, kreda per grama
     expect(materials[1].tiers).toEqual([{ min: 1, max: null, price: 50 }]);
     // A5 niezależne — nic nie wycieka między formatami.
     expect(getDyplomyKredaMaterials("A5")).toEqual([]);
+  });
+});
+
+describe("Dyplomy — tabele papieru z podkategorii (scalenie z głównym formularzem)", () => {
+  // Odwzorowanie danych, które klientka realnie tworzy kreatorem podkategorii
+  // ("Dodaj wariant"): punkty ilości + materialSizeOptions [{material, size}].
+  function paperSubgroupDefs(
+    format: "a4" | "a5",
+    gramatura: number,
+    points: Array<{ qty: number; price: number }>,
+    overrides: Partial<VariantDefinition> = {}
+  ): VariantDefinition[] {
+    const subcategoryPrefix = `dyplomy-dyplomy-${format}-${gramatura}g-`;
+    const subgroupLabel = `Dyplomy (${format.toUpperCase()}) ${gramatura}g`;
+    return points.map(({ qty, price }, index) => {
+      setPrice(`defaultPrices.${subcategoryPrefix}${qty}`, price);
+      return {
+        key: `${subcategoryPrefix}${qty}`,
+        categoryId: "dyplomy",
+        subcategoryPrefix,
+        subgroupLabel,
+        label: subgroupLabel,
+        legend: "",
+        visibleInSettings: true,
+        visibleInCalculator: true,
+        sortOrder: index,
+        createdAt: "2026-11-13T00:00:00.000Z",
+        updatedAt: "2026-11-13T00:00:00.000Z",
+        subgroupSortOrder: 0,
+        calcScheme: "interpolated",
+        materialSizeOptions: [{ material: `${gramatura}g`, size: format }],
+        ...overrides,
+      };
+    });
+  }
+
+  it("cena z tabeli-podkategorii: dokładny punkt i interpolacja ilości między punktami", () => {
+    setVariantDefinitions(
+      paperSubgroupDefs("a4", 251, [
+        { qty: 1, price: 30 },
+        { qty: 10, price: 57 },
+      ])
+    );
+    expect(resolveDyplomyKredaPrice("A4", 251, 10)).toBe(57);
+    // qty 5: 30 + (4/9) * 27 = 42
+    expect(resolveDyplomyKredaPrice("A4", 251, 5)).toBe(42);
+  });
+
+  it("powyżej ostatniego punktu ilości cena ekstrapolowana per sztuka (D-110)", () => {
+    setVariantDefinitions(
+      paperSubgroupDefs("a4", 252, [
+        { qty: 1, price: 30 },
+        { qty: 150, price: 290 },
+      ])
+    );
+    // 300 szt → 290 / 150 * 300 = 580
+    expect(resolveDyplomyKredaPrice("A4", 252, 300)).toBe(580);
+  });
+
+  it("gramatura powyżej najwyższej tabeli → fallback na starą tabelę (żywy przypadek A4 350g)", () => {
+    setVariantDefinitions(paperSubgroupDefs("a4", 253, [{ qty: 10, price: 55 }]));
+    const result = calculateDyplomy({
+      format: "A4",
+      qty: 10,
+      isSatin: false,
+      express: false,
+      gramatura: 350,
+    });
+    expect(result.usingNewPaperModel).toBe(false);
+    expect(result.totalPrice).toBe(40.0); // stara tabela: 10 szt = 40
+  });
+
+  it("interpolacja po gramaturze między dwiema tabelami-podkategoriami (A5)", () => {
+    setVariantDefinitions([
+      ...paperSubgroupDefs("a5", 254, [{ qty: 10, price: 45 }]),
+      ...paperSubgroupDefs("a5", 354, [{ qty: 10, price: 50 }]),
+    ]);
+    expect(resolveDyplomyKredaPrice("A5", 304, 10)).toBe(47.5);
+    const result = calculateDyplomy({
+      format: "A5",
+      qty: 10,
+      isSatin: false,
+      express: false,
+      gramatura: 304,
+    });
+    expect(result.usingNewPaperModel).toBe(true);
+    expect(result.basePrice).toBe(47.5);
+  });
+
+  it("Modigliani liczy się od tabeli-podkategorii kredy 350g (D-201)", () => {
+    setVariantDefinitions([
+      ...paperSubgroupDefs("a5", 255, [{ qty: 10, price: 45 }]),
+      ...paperSubgroupDefs("a5", 350, [{ qty: 10, price: 50 }]),
+    ]);
+    expect(resolveDyplomyKreda350Price("A5", 10)).toBe(50);
+    const result = calculateDyplomy({
+      format: "A5",
+      qty: 10,
+      isSatin: false,
+      isModigliani: true,
+      express: false,
+      gramatura: 255,
+    });
+    expect(result.usingNewPaperModel).toBe(true);
+    expect(result.basePrice).toBe(50);
+    expect(result.totalPrice).toBeCloseTo(60, 2); // +20% modifier-modigliani
+  });
+
+  it("'Dodaj materiał' wygrywa z tabelą-podkategorią przy tej samej gramaturze (ścieżka migracji)", () => {
+    const defs = paperSubgroupDefs("a4", 280, [{ qty: 10, price: 55 }]);
+    setVariantDefinitions([
+      ...defs,
+      {
+        ...defs[0],
+        key: buildMaterialAssignmentKey("dyplomyA4", "kreda-280"),
+        categoryId: "dyplomyA4",
+        subcategoryPrefix: MATERIAL_ASSIGNMENT_PREFIX,
+        label: "Kreda 280g",
+        materialSizeOptions: undefined,
+        calcScheme: undefined,
+      },
+    ]);
+    setPrice(`defaultPrices.${materialTierKeyPrefix("dyplomyA4", "kreda-280")}1+`, 99);
+    expect(resolveDyplomyKredaPrice("A4", 280, 10)).toBe(99);
+  });
+
+  it("getDyplomyKredaMaterials zwraca punkty tabel-podkategorii do legendy", () => {
+    setVariantDefinitions(
+      paperSubgroupDefs("a5", 256, [
+        { qty: 1, price: 30 },
+        { qty: 10, price: 45 },
+      ])
+    );
+    const entries = getDyplomyKredaMaterials("A5");
+    const entry = entries.find((e) => e.gramatura === 256);
+    expect(entry).toBeDefined();
+    expect(entry!.points).toEqual([
+      { qty: 1, price: 30 },
+      { qty: 10, price: 45 },
+    ]);
+    expect(entry!.tiers).toBeUndefined();
+  });
+
+  it("tabela papieru NIE renderuje się jako osobna karta; inne podkategorie Dyplomów zostają", () => {
+    setVariantDefinitions([
+      ...paperSubgroupDefs("a4", 257, [{ qty: 10, price: 55 }]),
+      // Zwykła podkategoria bez materialSizeOptions — ma zostać kartą.
+      ...paperSubgroupDefs("a4", 258, [{ qty: 10, price: 70 }]).map((v) => ({
+        ...v,
+        materialSizeOptions: undefined,
+        subgroupLabel: "Medale",
+        label: "Medale",
+      })),
+    ]);
+    const products = getRenderableProducts("dyplomy");
+    expect(products.some((p) => p.subcategoryPrefix === "dyplomy-dyplomy-a4-257g-")).toBe(false);
+    expect(products.some((p) => p.subgroupLabel === "Medale")).toBe(true);
+  });
+
+  it("opcja materiał/rozmiar niepasująca do wzorca papieru (size inny niż a4/a5) wciąż renderuje kartę", () => {
+    setVariantDefinitions(
+      paperSubgroupDefs("a4", 259, [{ qty: 10, price: 55 }], {
+        materialSizeOptions: [{ material: "259g", size: "dl" }],
+      })
+    );
+    const products = getRenderableProducts("dyplomy");
+    expect(products.some((p) => p.subcategoryPrefix === "dyplomy-dyplomy-a4-259g-")).toBe(true);
+    // I nie zasila modelu papieru:
+    expect(resolveDyplomyKredaPrice("A4", 259, 10)).toBeNull();
   });
 });
