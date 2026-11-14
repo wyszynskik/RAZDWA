@@ -520,7 +520,14 @@ export function resolveVariantLabel(
   // quantity tiers; both rows showed as "Dyplomy (A4) 250g" with no way to
   // tell which price belonged to which quantity.
   if (isQtyTieredCustomSubgroupTier && qtyValue) {
-    return productLabel ? `${productLabel} – ${qtyValue} szt.` : `${qtyValue} szt.`;
+    const qtySuffix = `${qtyValue} szt.`;
+    if (!productLabel) return qtySuffix;
+    // Admin convention seen in practice: typing the qty suffix itself as the
+    // "Nazwa wariantu" (e.g. "10 szt.") — appending again would double it to
+    // "10 szt. – 10 szt.". Only append when productLabel doesn't already end
+    // with the suffix.
+    if (productLabel === qtySuffix || productLabel.endsWith(qtySuffix)) return productLabel;
+    return `${productLabel} – ${qtySuffix}`;
   }
   if (productLabel) return productLabel;
   return fallbackKeyLabel;
