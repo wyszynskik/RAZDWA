@@ -14,6 +14,16 @@ describe("resolveVariantLabel", () => {
     );
   });
 
+  it("REGRESSION (CI incydent po PR #227): productLabel wpisany DOKŁADNIE jako sufiks ilości ('10 szt.') nie dubluje się do '10 szt. – 10 szt.'", () => {
+    expect(resolveVariantLabel("", "10 szt.", true, "10", "raw fallback")).toBe("10 szt.");
+  });
+
+  it("productLabel kończący się sufiksem ilości (ale nie identyczny) też nie dubluje się", () => {
+    expect(resolveVariantLabel("", "Partia A 10 szt.", true, "10", "raw fallback")).toBe(
+      "Partia A 10 szt."
+    );
+  });
+
   it("NOT a qty-tiered custom subgroup: productLabel still wins outright, no qty appended", () => {
     expect(resolveVariantLabel("", "Nazwa ręczna", false, "20", "raw fallback")).toBe(
       "Nazwa ręczna"
