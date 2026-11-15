@@ -2,10 +2,24 @@ import { describe, it, expect } from "vitest";
 import { resolveVariantLabel } from "../src/ui/views/ustawienia";
 
 describe("resolveVariantLabel", () => {
-  it("legend wins over everything when provided", () => {
+  it("D-108: nazwa wygrywa z legendą (legenda NIE zastępuje nazwy) — qty-tier dokleja ilość do nazwy, nie do legendy", () => {
     expect(resolveVariantLabel("Legenda ręczna", "Nazwa", true, "20", "raw fallback")).toBe(
+      "Nazwa – 20 szt."
+    );
+  });
+
+  it("D-108: nazwa wygrywa z legendą poza qty-tier (label = nazwa, nie legenda)", () => {
+    expect(resolveVariantLabel("Legenda ręczna", "Nazwa", false, "", "raw fallback")).toBe("Nazwa");
+  });
+
+  it("D-108: sama legenda bez nazwy → legenda jako zastępcza nazwa (przed raw fallback)", () => {
+    expect(resolveVariantLabel("Legenda ręczna", "", false, "", "raw fallback")).toBe(
       "Legenda ręczna"
     );
+  });
+
+  it("D-108: brak nazwy i legendy → raw fallback z klucza", () => {
+    expect(resolveVariantLabel("", "", false, "", "raw fallback")).toBe("raw fallback");
   });
 
   it("qty-tiered custom subgroup: productLabel gets the qty appended, not silently dropped (real incident: two tiers of the same subgroup typed the same productLabel for every qty, both rows rendered with an identical label, only the price differed — no way to tell them apart)", () => {

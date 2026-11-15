@@ -513,7 +513,12 @@ export function resolveVariantLabel(
   qtyValue: string,
   fallbackKeyLabel: string
 ): string {
-  if (legendText) return legendText;
+  // D-108/H9: legenda NIE zastępuje nazwy wariantu. Nazwa (productLabel)
+  // wygrywa; legenda schodzi na ostatnie miejsce i służy wyłącznie jako
+  // zastępcza nazwa, gdy admin nie podał własnej. Osobny tekst legendy i tak
+  // trafia do pola VariantDefinition.legend i renderuje się jako podtytuł
+  // karty (dynamicSubgroups), więc tu interesuje nas tylko nazwa.
+
   // Qty-tiered custom subgroups must keep the quantity visible in the label
   // even when the admin ALSO typed a product name for every tier — otherwise
   // every row of the same subgroup renders with an identical label (only the
@@ -532,6 +537,7 @@ export function resolveVariantLabel(
     return `${productLabel} – ${qtySuffix}`;
   }
   if (productLabel) return productLabel;
+  if (legendText) return legendText;
   return fallbackKeyLabel;
 }
 
