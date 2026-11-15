@@ -406,9 +406,7 @@ export const PlakatyA4A3View: View = {
           calcDuzyCanon(duzyQty);
         } catch (err) {
           clearResult(
-            err instanceof Error
-              ? err.message
-              : "Nie udało się obliczyć ceny — spróbuj inną ilość."
+            err instanceof Error ? err.message : "Nie udało się obliczyć ceny — spróbuj inną ilość."
           );
         }
         return;
