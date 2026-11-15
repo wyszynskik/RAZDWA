@@ -8,6 +8,7 @@ import {
   type MaterialTier,
 } from "../core/dynamicMaterials";
 import { applySurcharges } from "../core/dynamicSurcharges";
+import { withResolvedExpress } from "../core/modifiers";
 
 export interface BannerOptions {
   material: string;
@@ -45,18 +46,20 @@ export function calculateBanner(options: BannerOptions): CalculationResult {
     unit: tableData.unit,
     pricing: tableData.pricing,
     tiers: overrideTiersWithStoredPrices(`banner-${options.material}`, materialData.tiers),
-    modifiers: tableData.modifiers.map((m: any) => {
-      if (m.id === "oczkowanie") {
-        const value = resolveStoredPrice("banner-oczkowanie", m.value);
-        return {
-          ...m,
-          name: `Oczkowanie (+${value.toFixed(2)} zł/m2)`,
-          value,
-        };
-      }
+    modifiers: withResolvedExpress(
+      tableData.modifiers.map((m: any) => {
+        if (m.id === "oczkowanie") {
+          const value = resolveStoredPrice("banner-oczkowanie", m.value);
+          return {
+            ...m,
+            name: `Oczkowanie (+${value.toFixed(2)} zł/m2)`,
+            value,
+          };
+        }
 
-      return m;
-    }),
+        return m;
+      })
+    ),
   };
 
   const activeModifiers: string[] = [];

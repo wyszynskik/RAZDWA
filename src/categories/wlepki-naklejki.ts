@@ -78,6 +78,9 @@ export function calculateWlepki(input: WlepkiCalculation): CalculationResult {
     pricing: staticGroupData?.pricing || "per_unit",
     tiers: resolveWlepkiGroupTiers(material),
     modifiers: tableData.modifiers.map((m: any) => {
+      if (m.id === "express") {
+        return { ...m, value: resolveStoredPrice("modifier-express", m.value) };
+      }
       const modKey = `wlepki-modifier-${m.id.replace(/_/g, "-")}`;
       return { ...m, value: resolveStoredPrice(modKey, m.value) };
     }),

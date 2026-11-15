@@ -90,7 +90,14 @@ export function calculateWycinanieFolii(options: WycinanieFoliiOptions): Calcula
     pricing: "per_unit",
     tiers: [{ min: 0, max: null, price: activeRate }],
     rules: [{ type: "minimum" as const, unit: "pln", value: 30 }],
-    modifiers: [{ id: "express", type: "percent" as const, name: "EXPRESS", value: 0.2 }],
+    modifiers: [
+      {
+        id: "express",
+        type: "percent" as const,
+        name: "EXPRESS",
+        value: resolveStoredPrice("modifier-express", 0.2),
+      },
+    ],
   };
 
   const activeModifiers: string[] = [];

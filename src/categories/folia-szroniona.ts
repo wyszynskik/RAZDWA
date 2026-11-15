@@ -8,6 +8,7 @@ import {
   type MaterialTier,
 } from "../core/dynamicMaterials";
 import { applySurcharges } from "../core/dynamicSurcharges";
+import { withResolvedExpress } from "../core/modifiers";
 
 export interface FoliaSzronionaOptions {
   widthMm: number;
@@ -57,7 +58,7 @@ export function calculateFoliaSzroniona(
       `folia-szroniona-${materialData.storageId ?? materialData.id}`,
       materialData.tiers
     ),
-    modifiers: tableData.modifiers,
+    modifiers: withResolvedExpress(tableData.modifiers),
   };
 
   const activeModifiers: string[] = [];

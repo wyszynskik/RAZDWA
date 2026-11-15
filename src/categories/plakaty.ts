@@ -155,7 +155,9 @@ export function calculatePlakatyM2(input: PlakatyM2Input): PlakatyM2Result {
   if (input.express) {
     const mod = data.modifiers.find((m: any) => m.id === "express");
     if (mod) {
-      modifiersTotal = parseFloat((basePrice * mod.value).toFixed(2));
+      modifiersTotal = parseFloat(
+        (basePrice * resolveStoredPrice("modifier-express", mod.value)).toFixed(2)
+      );
       appliedModifiers.push(mod.name);
     }
   }
@@ -279,7 +281,9 @@ export function calculatePlakatyFormat(input: PlakatyFormatInput): PlakatyFormat
   if (input.express) {
     const mod = data.modifiers.find((m: any) => m.id === "express");
     if (mod) {
-      modifiersTotal = parseFloat((basePrice * mod.value).toFixed(2));
+      modifiersTotal = parseFloat(
+        (basePrice * resolveStoredPrice("modifier-express", mod.value)).toFixed(2)
+      );
       appliedModifiers.push(mod.name);
     }
   }
@@ -539,7 +543,9 @@ export function calculatePlakatyDuzyCanon(input: PlakatyDuzyCanonInput): Plakaty
   if (input.express) {
     const mod = fullData?.modifiers?.find((m: any) => m.id === "express");
     if (mod) {
-      modifiersTotal = parseFloat((basePrice * mod.value).toFixed(2));
+      modifiersTotal = parseFloat(
+        (basePrice * resolveStoredPrice("modifier-express", mod.value)).toFixed(2)
+      );
       appliedModifiers.push(mod.name);
     }
   }
@@ -631,7 +637,9 @@ export function calculatePlakatyMalyCanon(input: PlakatyMalyCanonInput): Plakaty
   if (input.express) {
     const mod = data.modifiers.find((m: any) => m.id === "express");
     if (mod) {
-      modifiersTotal = parseFloat((basePrice * mod.value).toFixed(2));
+      modifiersTotal = parseFloat(
+        (basePrice * resolveStoredPrice("modifier-express", mod.value)).toFixed(2)
+      );
       appliedModifiers.push(mod.name);
     }
   }

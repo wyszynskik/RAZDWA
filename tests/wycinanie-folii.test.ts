@@ -188,3 +188,34 @@ describe("Wycinanie z folii — materiał relatywny do bazy STATYCZNEJ z nadpisa
     expect(withSurcharge.totalPrice).toBeCloseTo(base.totalPrice * 1.4, 2);
   });
 });
+
+describe("Wycinanie z folii — źródło stawki EXPRESS (D-105/PR-5)", () => {
+  afterEach(() => {
+    resetPrices();
+    vi.unstubAllGlobals();
+  });
+
+  it("stawka EXPRESS pochodzi z globalnego modifier-express, nie z literału 0.2 (0.3 → +30%)", () => {
+    const storage: Record<string, string> = {
+      [PRICES_STORAGE_KEY]: JSON.stringify({ "modifier-express": 0.3 }),
+    };
+    vi.stubGlobal("localStorage", {
+      getItem: (k: string) => storage[k] ?? null,
+      setItem: (k: string, v: string) => {
+        storage[k] = String(v);
+      },
+      removeItem: (k: string) => {
+        delete storage[k];
+      },
+    });
+
+    const result = calculateWycinanieFolii({
+      variantId: "kolorowa",
+      widthMm: 1000,
+      heightMm: 1000,
+      express: true,
+    });
+    // 125 * 1.3 = 162.5
+    expect(result.totalPrice).toBe(162.5);
+  });
+});

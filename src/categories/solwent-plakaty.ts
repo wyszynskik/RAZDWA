@@ -8,6 +8,7 @@ import {
   type MaterialTier,
 } from "../core/dynamicMaterials";
 import { applySurcharges } from "../core/dynamicSurcharges";
+import { withResolvedExpress } from "../core/modifiers";
 
 export interface SolwentPlakatyInput {
   areaM2: number;
@@ -85,7 +86,7 @@ export function calculateSolwentPlakaty(input: SolwentPlakatyInput): Calculation
     pricing: tableData.pricing,
     tiers: overrideTiersWithStoredPrices(`solwent-${materialData.id}`, materialData.tiers),
     rules: tableData.rules,
-    modifiers: tableData.modifiers,
+    modifiers: withResolvedExpress(tableData.modifiers),
   };
 
   const activeModifiers: string[] = [];

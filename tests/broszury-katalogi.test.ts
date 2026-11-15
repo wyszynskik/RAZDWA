@@ -3,8 +3,9 @@ import {
   BroszuryKatalogiView,
   getResolvedBroszuryTiers,
   resolveTierPrice,
+  broszuryExpressCost,
 } from "../src/ui/views/broszury-katalogi";
-import { resetPrices, setPrice } from "../src/services/priceService";
+import { resetPrices, setPrice, PRICES_STORAGE_KEY } from "../src/services/priceService";
 
 let storageData: Record<string, string> = {};
 
@@ -111,5 +112,16 @@ describe("resolveTierPrice", () => {
     storageData = {};
     resetPrices();
     expect(resolveTierPrice("a4", 10)).toBe(0);
+  });
+});
+
+describe("broszuryExpressCost — źródło stawki EXPRESS (D-105/PR-5)", () => {
+  it("regresja: domyślnie +20% (modifier-express 0.2)", () => {
+    expect(broszuryExpressCost(100)).toBe(20);
+  });
+
+  it("wrażliwość: modifier-express 0.3 → +30%", () => {
+    storageData[PRICES_STORAGE_KEY] = JSON.stringify({ "modifier-express": 0.3 });
+    expect(broszuryExpressCost(100)).toBe(30);
   });
 });

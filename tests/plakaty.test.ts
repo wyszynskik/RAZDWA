@@ -7,7 +7,12 @@ import {
   getPlakatyMalyCanonLegendPanels,
 } from "../src/categories/plakaty";
 import { getPlakatyA4A3LegendStyles } from "../src/ui/views/plakaty-a4-a3";
-import { resetPrices, setPrice, setVariantDefinitions } from "../src/services/priceService";
+import {
+  resetPrices,
+  setPrice,
+  setVariantDefinitions,
+  PRICES_STORAGE_KEY,
+} from "../src/services/priceService";
 import { buildSurchargeVariant, surchargeRateKey } from "../src/core/dynamicSurcharges";
 
 describe("calculatePlakatyM2 – solwent m² materials", () => {
@@ -452,5 +457,65 @@ describe("Plakaty A4-A3 — dopłaty globalne (core/dynamicSurcharges.ts)", () =
       checkedSurchargeIds: ["inna"],
     });
     expect(result.totalPrice).toBe(base.totalPrice);
+  });
+});
+
+describe("Plakaty A4-A3 — źródło stawki EXPRESS (D-105/PR-5)", () => {
+  afterEach(() => {
+    resetPrices();
+    vi.unstubAllGlobals();
+  });
+
+  function stubExpress(rate: number): void {
+    const storage: Record<string, string> = {
+      [PRICES_STORAGE_KEY]: JSON.stringify({ "modifier-express": rate }),
+    };
+    vi.stubGlobal("localStorage", {
+      getItem: (k: string) => storage[k] ?? null,
+      setItem: (k: string, v: string) => {
+        storage[k] = String(v);
+      },
+      removeItem: (k: string) => {
+        delete storage[k];
+      },
+    });
+  }
+
+  it("M2: modifier-express 0.3 → 70 × 1.3 = 91 zł", () => {
+    stubExpress(0.3);
+    const res = calculatePlakatyM2({ materialId: "200g-polysk", areaM2: 1, express: true });
+    expect(res.totalPrice).toBe(91);
+  });
+
+  it("Format: modifier-express 0.3 → 54 × 1.3 = 70.2 zł", () => {
+    stubExpress(0.3);
+    const res = calculatePlakatyFormat({
+      materialId: "120g-formatowe",
+      formatKey: "841x1189",
+      qty: 1,
+      express: true,
+    });
+    expect(res.totalPrice).toBe(70.2);
+  });
+
+  it("Mały Canon: modifier-express 0.3 → 16 × 1.3 = 20.8 zł", () => {
+    stubExpress(0.3);
+    const res = calculatePlakatyMalyCanon({
+      variantId: "margin-200",
+      format: "A4",
+      qty: 2,
+      express: true,
+    });
+    expect(res.totalPrice).toBe(20.8);
+  });
+
+  it("Duży Canon: modifier-express 0.3 → 52 × 1.3 = 67.6 zł", () => {
+    stubExpress(0.3);
+    const res = calculatePlakatyDuzyCanon({
+      variantId: "a4-200-kreda-200",
+      qty: 10,
+      express: true,
+    });
+    expect(res.totalPrice).toBe(67.6);
   });
 });

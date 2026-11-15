@@ -179,3 +179,62 @@ describe("Canvas — materiał relatywny do formatu STATYCZNEGO z nadpisaną cen
     expect(withSurcharge.totalPrice).toBeCloseTo(base.totalPrice * 1.4, 2);
   });
 });
+
+describe("Canvas — źródło stawki EXPRESS (D-105/PR-5)", () => {
+  afterEach(() => {
+    resetPrices();
+    vi.unstubAllGlobals();
+  });
+
+  function stubExpress(rate: number): void {
+    const storage: Record<string, string> = {
+      [PRICES_STORAGE_KEY]: JSON.stringify({ "modifier-express": rate }),
+    };
+    vi.stubGlobal("localStorage", {
+      getItem: (k: string) => storage[k] ?? null,
+      setItem: (k: string, v: string) => {
+        storage[k] = String(v);
+      },
+      removeItem: (k: string) => {
+        delete storage[k];
+      },
+    });
+  }
+
+  it("format (non-custom): modifier-express 0.3 → 130 × 1.3 = 169 zł", () => {
+    stubExpress(0.3);
+    const result = calculateCanvas({
+      modeId: "unframed",
+      formatId: "100x70",
+      quantity: 1,
+      express: true,
+    });
+    expect(result.totalPrice).toBe(169);
+  });
+
+  it("custom (literał 1.2 zastąpiony): modifier-express 0.3 → 111 × 1.3 = 144.3 zł", () => {
+    const stored: Record<string, string> = {
+      [PRICES_STORAGE_KEY]: JSON.stringify({ "canvas-m2-unframed": 222, "modifier-express": 0.3 }),
+    };
+    vi.stubGlobal("localStorage", {
+      getItem: (k: string) => stored[k] ?? null,
+      setItem: (k: string, v: string) => {
+        stored[k] = String(v);
+      },
+      removeItem: (k: string) => {
+        delete stored[k];
+      },
+    });
+
+    const result = calculateCanvas({
+      modeId: "unframed",
+      formatId: "custom",
+      quantity: 1,
+      widthMm: 1000,
+      heightMm: 500,
+      express: true,
+    });
+    expect(result.isCustom).toBe(true);
+    expect(result.totalPrice).toBe(144.3);
+  });
+});
