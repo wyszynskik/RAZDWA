@@ -5,6 +5,7 @@ import {
   CadUploadFileEntry,
   CAD_PDF_WARN_PAGES,
   CAD_PDF_HARD_PAGES,
+  applyCadUploadExpress,
 } from "../../categories/cad-upload";
 import { formatPLN } from "../../core/money";
 import { resolveStoredPrice } from "../../core/compat";
@@ -857,18 +858,25 @@ export const CadUploadView: View = {
         0
       );
 
-      grandTotalColorVariant =
+      // EXPRESS doliczany jako warstwa od ceny bazowej (CAD Upload nie ma
+      // dopłat globalnych). Gdy tryb wyłączony — cena bez zmian. isExpress
+      // pozycji koszyka jest teraz zgodny z ceną (CU-02).
+      grandTotalColorVariant = applyCadUploadExpress(
         totalPrintColorVariant +
-        totalFoldingColorVariant +
-        emailFee +
-        extraServicesTotal +
-        totalScanColorVariant;
-      grandTotalBwVariant =
+          totalFoldingColorVariant +
+          emailFee +
+          extraServicesTotal +
+          totalScanColorVariant,
+        ctx.expressMode
+      );
+      grandTotalBwVariant = applyCadUploadExpress(
         totalPrintBwVariant +
-        totalFoldingBwVariant +
-        emailFee +
-        extraServicesTotal +
-        totalScanColorVariant;
+          totalFoldingBwVariant +
+          emailFee +
+          extraServicesTotal +
+          totalScanColorVariant,
+        ctx.expressMode
+      );
 
       const totalColorEl = container.querySelector<HTMLElement>("#results-total-color");
       const totalBwEl = container.querySelector<HTMLElement>("#results-total-bw");
