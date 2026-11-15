@@ -91,6 +91,10 @@ export function resolveTierPrice(format: FormatKey, qty: number): number {
   return matching[matching.length - 1].price;
 }
 
+export function broszuryExpressCost(basePrice: number): number {
+  return parseFloat((basePrice * resolveStoredPrice("modifier-express", 0.2)).toFixed(2));
+}
+
 function initBroszuryKatalogi(container: HTMLElement, ctx: ViewContext): void {
   const formatSelect = container.querySelector("#bk-format") as HTMLSelectElement;
   const pagesSelect = container.querySelector("#bk-pages") as HTMLSelectElement;
@@ -183,7 +187,7 @@ function initBroszuryKatalogi(container: HTMLElement, ctx: ViewContext): void {
     const pages = Number.parseInt(pagesSelect.value, 10) || 8;
     const unitPrice = resolveTierPrice(format, qty);
     const basePrice = parseFloat((unitPrice * qty).toFixed(2));
-    const expressCost = ctx.expressMode ? parseFloat((basePrice * 0.2).toFixed(2)) : 0;
+    const expressCost = ctx.expressMode ? broszuryExpressCost(basePrice) : 0;
     const totalPriceBeforeSurcharges = parseFloat((basePrice + expressCost).toFixed(2));
     const checkedSurchargeIds = collectCheckedSurchargeIds(surchargesBox);
     const totalPrice = parseFloat(

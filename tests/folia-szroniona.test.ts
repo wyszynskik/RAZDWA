@@ -271,3 +271,34 @@ describe("Folia Szroniona — usługa/materiał dodana dynamicznie (dynamicMater
     expect(withSurcharge.totalPrice).toBeCloseTo(base.totalPrice * 1.4, 2);
   });
 });
+
+describe("folia-szroniona — źródło stawki EXPRESS (D-105/PR-5)", () => {
+  afterEach(() => {
+    resetPrices();
+    vi.unstubAllGlobals();
+  });
+
+  it("stawka EXPRESS pochodzi z globalnego modifier-express (0.3 → +30%)", () => {
+    const storage: Record<string, string> = {
+      [PRICES_STORAGE_KEY]: JSON.stringify({ "modifier-express": 0.3 }),
+    };
+    vi.stubGlobal("localStorage", {
+      getItem: (k: string) => storage[k] ?? null,
+      setItem: (k: string, v: string) => {
+        storage[k] = String(v);
+      },
+      removeItem: (k: string) => {
+        delete storage[k];
+      },
+    });
+
+    const result = calculateFoliaSzroniona({
+      widthMm: 1000,
+      heightMm: 1000,
+      serviceId: "material-only",
+      express: true,
+    });
+    // 65 * 1.3 = 84.5
+    expect(result.totalPrice).toBe(84.5);
+  });
+});

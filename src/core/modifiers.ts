@@ -24,6 +24,29 @@ export function getExpressRate(): number {
 }
 
 /**
+ * Returns a copy of a category price-table `modifiers` array in which the
+ * `express` modifier's value is sourced from the global `modifier-express`
+ * key (single source of truth, D-105) instead of the category table literal.
+ * The table value is kept only as the resolve default. Any other modifier is
+ * returned unchanged. Input that is not an array is passed through untouched.
+ *
+ * @side-effects reads localStorage + IDB via compat.resolveStoredPrice.
+ */
+export function withResolvedExpress<T extends { id?: string; value?: number }>(
+  modifiers: T[] | undefined
+): T[] | undefined {
+  if (!Array.isArray(modifiers)) return modifiers;
+  return modifiers.map((modifier) =>
+    modifier && modifier.id === "express"
+      ? {
+          ...modifier,
+          value: resolveStoredPrice("modifier-express", modifier.value ?? EXPRESS_RATE),
+        }
+      : modifier
+  );
+}
+
+/**
  * Simple in-memory modifier (name + flat delta).
  * Named ModifierEntry to avoid collision with the full IDB Modifier in src/types/price-schema.ts.
  */

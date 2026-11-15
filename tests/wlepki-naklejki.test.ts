@@ -245,3 +245,34 @@ describe("Wlepki — dopłaty globalne (core/dynamicSurcharges.ts)", () => {
     expect(result.totalPrice).toBe(base.totalPrice);
   });
 });
+
+describe("Wlepki m² — źródło stawki EXPRESS (D-105/PR-5)", () => {
+  afterEach(() => {
+    resetPrices();
+    vi.unstubAllGlobals();
+  });
+
+  it("stawka EXPRESS z globalnego modifier-express, nie wlepki-modifier-express (0.3 → +30%)", () => {
+    const storage: Record<string, string> = {
+      [PRICES_STORAGE_KEY]: JSON.stringify({ "modifier-express": 0.3 }),
+    };
+    vi.stubGlobal("localStorage", {
+      getItem: (k: string) => storage[k] ?? null,
+      setItem: (k: string, v: string) => {
+        storage[k] = String(v);
+      },
+      removeItem: (k: string) => {
+        delete storage[k];
+      },
+    });
+
+    const result = calculateWlepki({
+      groupId: "wlepki_obrys_folia",
+      area: 1,
+      modifiers: [],
+      express: true,
+    });
+    // 67 * 1.3 = 87.1
+    expect(result.totalPrice).toBeCloseTo(87.1);
+  });
+});

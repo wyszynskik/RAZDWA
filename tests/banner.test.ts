@@ -184,3 +184,34 @@ describe("Banner pricing — materiał dodany dynamicznie (dynamicMaterials.ts)"
     expect(withSurcharge.totalPrice).toBeCloseTo(base.totalPrice * 1.4, 2);
   });
 });
+
+describe("Banner — źródło stawki EXPRESS (D-105/PR-5)", () => {
+  afterEach(() => {
+    resetPrices();
+    vi.unstubAllGlobals();
+  });
+
+  it("stawka EXPRESS pochodzi z globalnego modifier-express (0.3 → +30%)", () => {
+    const storage: Record<string, string> = {
+      [PRICES_STORAGE_KEY]: JSON.stringify({ "modifier-express": 0.3 }),
+    };
+    vi.stubGlobal("localStorage", {
+      getItem: (k: string) => storage[k] ?? null,
+      setItem: (k: string, v: string) => {
+        storage[k] = String(v);
+      },
+      removeItem: (k: string) => {
+        delete storage[k];
+      },
+    });
+
+    const result = calculateBanner({
+      material: "powlekany",
+      areaM2: 10,
+      oczkowanie: false,
+      express: true,
+    });
+    // Base 530 + 530 * 0.3 = 689
+    expect(result.totalPrice).toBe(689.0);
+  });
+});

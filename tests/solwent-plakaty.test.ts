@@ -154,3 +154,33 @@ describe("Solwent Plakaty — materiał dodany dynamicznie (dynamicMaterials.ts)
     expect(withSurcharge.totalPrice).toBeCloseTo(base.totalPrice * 1.4, 2);
   });
 });
+
+describe("solwent-plakaty — źródło stawki EXPRESS (D-105/PR-5)", () => {
+  afterEach(() => {
+    resetPrices();
+    vi.unstubAllGlobals();
+  });
+
+  it("stawka EXPRESS pochodzi z globalnego modifier-express (0.3 → +30%)", () => {
+    const storage: Record<string, string> = {
+      [PRICES_STORAGE_KEY]: JSON.stringify({ "modifier-express": 0.3 }),
+    };
+    vi.stubGlobal("localStorage", {
+      getItem: (k: string) => storage[k] ?? null,
+      setItem: (k: string, v: string) => {
+        storage[k] = String(v);
+      },
+      removeItem: (k: string) => {
+        delete storage[k];
+      },
+    });
+
+    const result = calculateSolwentPlakaty({
+      areaM2: 1,
+      material: "Papier 150g półmat",
+      express: true,
+    });
+    // 65 * 1.3 = 84.5
+    expect(result.totalPrice).toBe(84.5);
+  });
+});

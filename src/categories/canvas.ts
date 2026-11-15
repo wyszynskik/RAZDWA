@@ -4,6 +4,7 @@ import { getPrice } from "../services/priceService";
 import { resolveStoredPrice } from "../core/compat";
 import { getCombinedMaterials, type MaterialDefinition } from "../core/dynamicMaterials";
 import { applySurcharges } from "../core/dynamicSurcharges";
+import { withResolvedExpress } from "../core/modifiers";
 
 export interface CanvasOptions {
   modeId: "framed" | "unframed" | "m2-unframed";
@@ -180,7 +181,9 @@ export function calculateCanvas(options: CanvasOptions): CanvasResult {
       }
       const unitPrice = parseFloat((printCostUnit + frameCostUnit).toFixed(2));
       const qty = Math.max(1, options.quantity);
-      const expressMultiplier = options.express ? 1.2 : 1;
+      const expressMultiplier = options.express
+        ? 1 + resolveStoredPrice("modifier-express", 0.2)
+        : 1;
       const totalPriceBeforeSurcharges = parseFloat(
         (unitPrice * qty * expressMultiplier).toFixed(2)
       );
@@ -222,7 +225,7 @@ export function calculateCanvas(options: CanvasOptions): CanvasResult {
         unit: "szt",
         pricing: "per_unit",
         tiers: [{ min: 1, max: null, price: unitPrice }],
-        modifiers: data?.modifiers,
+        modifiers: withResolvedExpress(data?.modifiers),
       };
       formatLabel = material.name;
     }
