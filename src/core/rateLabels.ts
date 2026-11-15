@@ -14,6 +14,18 @@ export function formatRatePercent(rate: number): string {
 }
 
 /**
+ * Formatuje stawkę kwotową (zł) dla etykiety klienta wg konwencji pieniężnej
+ * aplikacji: dwa miejsca po przecinku, separator = przecinek (pl-PL). Sam jednostka
+ * "zł" (oraz ewentualne "/m²") pozostaje literałem w szablonie — tu zwracamy tylko
+ * liczbę (2 → "2,00", 10 → "10,00", 2.5 → "2,50"). Zaokrągla szum
+ * zmiennoprzecinkowy do dwóch miejsc.
+ */
+export function formatRateFixed(rate: number): string {
+  if (!Number.isFinite(rate)) return "0,00";
+  return rate.toFixed(2).replace(".", ",");
+}
+
+/**
  * Ożywia statyczne etykiety procentowe w szablonach: dla każdego elementu z
  * atrybutem data-rate-key czyta żywą stawkę z tego samego klucza, co ścieżka
  * liczenia (resolveStoredPrice), i ustawia jego textContent na sformatowany
@@ -29,5 +41,12 @@ export function hydrateRateLabels(root: ParentNode): void {
     const parsedDefault = Number(el.dataset.rateDefault ?? "0");
     const def = Number.isFinite(parsedDefault) ? parsedDefault : 0;
     el.textContent = formatRatePercent(resolveStoredPrice(key, def));
+  });
+  root.querySelectorAll<HTMLElement>("[data-rate-fixed]").forEach((el) => {
+    const key = el.dataset.rateFixed;
+    if (!key) return;
+    const parsedDefault = Number(el.dataset.rateDefault ?? "0");
+    const def = Number.isFinite(parsedDefault) ? parsedDefault : 0;
+    el.textContent = formatRateFixed(resolveStoredPrice(key, def));
   });
 }

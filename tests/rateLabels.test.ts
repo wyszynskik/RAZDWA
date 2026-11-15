@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { formatRatePercent, hydrateRateLabels } from "../src/core/rateLabels";
+import { formatRatePercent, formatRateFixed, hydrateRateLabels } from "../src/core/rateLabels";
 import { resetPrices, PRICES_STORAGE_KEY } from "../src/services/priceService";
 
 let storageData: Record<string, string> = {};
@@ -51,6 +51,33 @@ describe("formatRatePercent", () => {
   });
 });
 
+describe("formatRateFixed", () => {
+  it("stawka całkowita: 2 → '2,00' (dwa miejsca, przecinek)", () => {
+    expect(formatRateFixed(2)).toBe("2,00");
+  });
+
+  it("10 → '10,00'", () => {
+    expect(formatRateFixed(10)).toBe("10,00");
+  });
+
+  it("stawka niecałkowita: 2.5 → '2,50'", () => {
+    expect(formatRateFixed(2.5)).toBe("2,50");
+  });
+
+  it("2.55 → '2,55' (dwa miejsca zachowane)", () => {
+    expect(formatRateFixed(2.55)).toBe("2,55");
+  });
+
+  it("zaokrągla trzecie miejsce: 2.555 → '2,56'", () => {
+    expect(formatRateFixed(2.555)).toBe("2,56");
+  });
+
+  it("0 → '0,00'; wartość niepoprawna → '0,00'", () => {
+    expect(formatRateFixed(0)).toBe("0,00");
+    expect(formatRateFixed(Number.NaN)).toBe("0,00");
+  });
+});
+
 type FakeEl = { dataset: Record<string, string | undefined>; textContent: string };
 
 function makeRoot(els: FakeEl[]): ParentNode {
@@ -98,5 +125,24 @@ describe("hydrateRateLabels", () => {
     hydrateRateLabels(makeRoot([express, eko]));
     expect(express.textContent).toBe("20");
     expect(eko.textContent).toBe("9");
+  });
+
+  it("data-rate-fixed: wypełnia kwotę z żywej stawki (default gdy brak w localStorage)", () => {
+    const el: FakeEl = {
+      dataset: { rateFixed: "banner-oczkowanie", rateDefault: "2.5" },
+      textContent: "",
+    };
+    hydrateRateLabels(makeRoot([el]));
+    expect(el.textContent).toBe("2,50");
+  });
+
+  it("data-rate-fixed: odczytuje nadpisaną stawkę z localStorage (arkusze 2 → 3,50)", () => {
+    storageData[PRICES_STORAGE_KEY] = JSON.stringify({ "wlepki-modifier-arkusze": 3.5 });
+    const el: FakeEl = {
+      dataset: { rateFixed: "wlepki-modifier-arkusze", rateDefault: "2" },
+      textContent: "2,00",
+    };
+    hydrateRateLabels(makeRoot([el]));
+    expect(el.textContent).toBe("3,50");
   });
 });
