@@ -2,9 +2,7 @@ import { describe, it, expect, afterEach, beforeEach, vi } from "vitest";
 import {
   calculatePlakatyM2,
   calculatePlakatyFormat,
-  calculatePlakatyMalyCanon,
   calculatePlakatyDuzyCanon,
-  getPlakatyMalyCanonLegendPanels,
 } from "../src/categories/plakaty";
 import { getPlakatyA4A3LegendStyles } from "../src/ui/views/plakaty-a4-a3";
 import {
@@ -220,101 +218,6 @@ describe("calculatePlakatyFormat – per-format szt materials", () => {
   });
 });
 
-describe("calculatePlakatyMalyCanon – do 9 szt", () => {
-  it("z marginesem 170g, 1-3 szt -> 7 zł/szt", () => {
-    const res = calculatePlakatyMalyCanon({ variantId: "margin-170", format: "A4", qty: 3 });
-    expect(res.tierPrice).toBe(7);
-    expect(res.totalPrice).toBe(21);
-  });
-
-  it("z marginesem 170g, A3, 1-3 szt -> 8 zł/szt", () => {
-    const res = calculatePlakatyMalyCanon({ variantId: "margin-170", format: "A3", qty: 3 });
-    expect(res.tierPrice).toBe(8);
-    expect(res.totalPrice).toBe(24);
-  });
-
-  it("bez marginesu 200g, A3, 4-9 szt -> 11 zł/szt", () => {
-    const res = calculatePlakatyMalyCanon({ variantId: "no-margin-200", format: "A3", qty: 9 });
-    expect(res.tierPrice).toBe(11);
-    expect(res.totalPrice).toBe(99);
-  });
-
-  it("applies express +20%", () => {
-    const res = calculatePlakatyMalyCanon({
-      variantId: "margin-200",
-      format: "A4",
-      qty: 2,
-      express: true,
-    });
-    // 2 * 8 = 16; +20% = 19.2
-    expect(res.totalPrice).toBe(19.2);
-  });
-
-  it("throws above 9 szt", () => {
-    expect(() =>
-      calculatePlakatyMalyCanon({ variantId: "margin-170", format: "A4", qty: 10 })
-    ).toThrow();
-  });
-});
-
-describe("getPlakatyMalyCanonLegendPanels", () => {
-  it("builds legend panels from pricing data", () => {
-    const panels = getPlakatyMalyCanonLegendPanels();
-    const normalize = (value: string) => value.replace(/\u00a0/g, " ");
-
-    expect(panels.map((panel) => panel.title)).toEqual([
-      "Z marginesem 170g",
-      "Z marginesem 200g",
-      "Bez marginesu 170g",
-      "Bez marginesu 200g",
-    ]);
-    expect({
-      label: "1-3",
-      a4: normalize(panels[0].rows[0].a4),
-      a3: normalize(panels[0].rows[0].a3),
-    }).toEqual({
-      label: "1-3",
-      a4: "7,00 zł",
-      a3: "8,00 zł",
-    });
-    expect(panels[1].title).toBe("Z marginesem 200g");
-    expect(panels[3].rows[panels[3].rows.length - 1]?.label).toBe("4-9");
-  });
-
-  it("reflects stored price overrides for the same keys used by settings", () => {
-    const stored: Record<string, string> = {};
-    const previousLocalStorage = (globalThis as any).localStorage;
-    const mockLocalStorage = {
-      getItem: (key: string) => stored[key] ?? null,
-      setItem: (key: string, value: string) => {
-        stored[key] = value;
-      },
-      removeItem: (key: string) => {
-        delete stored[key];
-      },
-    };
-
-    (globalThis as any).localStorage = mockLocalStorage;
-    try {
-      setPrice("defaultPrices", {
-        "plakaty-maly-canon-margin-170-A4-1-3": 12.34,
-        "plakaty-maly-canon-margin-170-A3-1-3": 56.78,
-      });
-
-      const panels = getPlakatyMalyCanonLegendPanels();
-      expect(panels[0].rows[0].a4.replace(/\u00a0/g, " ")).toBe("12,34 zł");
-      expect(panels[0].rows[0].a3.replace(/\u00a0/g, " ")).toBe("56,78 zł");
-    } finally {
-      if (previousLocalStorage === undefined) {
-        delete (globalThis as any).localStorage;
-      } else {
-        (globalThis as any).localStorage = previousLocalStorage;
-      }
-      resetPrices();
-    }
-  });
-});
-
 describe("getPlakatyA4A3LegendStyles", () => {
   it("uses the requested blue palette, white A3 cells, and consistent no-margin size headers", () => {
     const styles = getPlakatyA4A3LegendStyles();
@@ -400,20 +303,6 @@ describe("Plakaty A4-A3 — dopłaty globalne (core/dynamicSurcharges.ts)", () =
     vi.unstubAllGlobals();
   });
 
-  it("Mały Canon: zaznaczona dopłata +40% dolicza się do totalPrice", () => {
-    setVariantDefinitions([buildSurchargeVariant("dwustronne", "Dwustronne", ["plakaty-a4-a3"])]);
-    setPrice("defaultPrices." + surchargeRateKey("dwustronne"), 0.4);
-
-    const base = calculatePlakatyMalyCanon({ variantId: "margin-170", format: "A4", qty: 3 });
-    const withSurcharge = calculatePlakatyMalyCanon({
-      variantId: "margin-170",
-      format: "A4",
-      qty: 3,
-      checkedSurchargeIds: ["dwustronne"],
-    });
-    expect(withSurcharge.totalPrice).toBeCloseTo(base.totalPrice * 1.4, 2);
-  });
-
   it("Duży Canon: zaznaczona dopłata +40% dolicza się do totalPrice", () => {
     setVariantDefinitions([buildSurchargeVariant("dwustronne", "Dwustronne", ["plakaty-a4-a3"])]);
     setPrice("defaultPrices." + surchargeRateKey("dwustronne"), 0.4);
@@ -449,11 +338,10 @@ describe("Plakaty A4-A3 — dopłaty globalne (core/dynamicSurcharges.ts)", () =
     setVariantDefinitions([buildSurchargeVariant("inna", "Inna", ["wlepki"])]);
     setPrice("defaultPrices." + surchargeRateKey("inna"), 0.5);
 
-    const base = calculatePlakatyMalyCanon({ variantId: "margin-170", format: "A4", qty: 3 });
-    const result = calculatePlakatyMalyCanon({
-      variantId: "margin-170",
-      format: "A4",
-      qty: 3,
+    const base = calculatePlakatyDuzyCanon({ variantId: "a4-170-kreda-130-170", qty: 10 });
+    const result = calculatePlakatyDuzyCanon({
+      variantId: "a4-170-kreda-130-170",
+      qty: 10,
       checkedSurchargeIds: ["inna"],
     });
     expect(result.totalPrice).toBe(base.totalPrice);
@@ -496,17 +384,6 @@ describe("Plakaty A4-A3 — źródło stawki EXPRESS (D-105/PR-5)", () => {
       express: true,
     });
     expect(res.totalPrice).toBe(70.2);
-  });
-
-  it("Mały Canon: modifier-express 0.3 → 16 × 1.3 = 20.8 zł", () => {
-    stubExpress(0.3);
-    const res = calculatePlakatyMalyCanon({
-      variantId: "margin-200",
-      format: "A4",
-      qty: 2,
-      express: true,
-    });
-    expect(res.totalPrice).toBe(20.8);
   });
 
   it("Duży Canon: modifier-express 0.3 → 52 × 1.3 = 67.6 zł", () => {

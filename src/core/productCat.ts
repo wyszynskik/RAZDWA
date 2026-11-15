@@ -66,9 +66,9 @@ export const BASE_PRICE_CATEGORIES: PriceCategory[] = [
     id: "plakaty-a4-a3",
     label: "Plakaty A4-A3",
     icon: "assets/icons/image.svg",
-    prefixes: ["plakaty-maly-canon-", "plakaty-duzy-canon-"],
-    description: "Cenniki plakatów A4-A3 (mały/duży Canon).",
-    newKeyPrefix: "plakaty-maly-canon-",
+    prefixes: ["plakaty-duzy-canon-"],
+    description: "Cenniki plakatów A4-A3 (duży Canon).",
+    newKeyPrefix: "plakaty-duzy-canon-",
   },
   {
     id: "vouchery",
