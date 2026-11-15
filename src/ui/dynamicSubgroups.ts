@@ -54,6 +54,8 @@ export interface RenderableProduct {
   subcategoryPrefix: string;
   subgroupLabel: string;
   label: string;
+  /** D-108: tekst legendy renderowany jako podtytuł karty, osobno od nazwy. */
+  legend: string;
   calcType: ProductCalcType;
   tiers: DynamicSubgroupTier[];
   materialSizeOptions?: MaterialSizeOption[];
@@ -180,6 +182,7 @@ export function getRenderableProducts(categoryId: string): RenderableProduct[] {
         subcategoryPrefix: p.subcategoryPrefix,
         subgroupLabel,
         label,
+        legend: p.legend,
         calcType: p.calcType,
         tiers: toRenderableTiers(p.entries),
         materialSizeOptions: p.materialSizeOptions,
@@ -469,8 +472,18 @@ function renderProductCard(
     ? `<h3 class="dyn-product-title" style="margin:0 0 10px; font-size:16px;">${escapeHtml(cardTitle)}</h3>`
     : "";
 
+  // D-108: legenda jako podtytuł pod nazwą, nie zamiast niej. Nie renderuj,
+  // gdy legenda pokrywa się z nazwą (warianty zapisane starym mechanizmem mają
+  // label === legend — podtytuł byłby duplikatem tytułu).
+  const legendText = (product.legend ?? "").trim();
+  const legendHtml =
+    legendText && legendText !== (product.label ?? "").trim()
+      ? `<div class="dyn-product-legend" style="margin:-4px 0 10px; font-size:13px; color:#64748b;">${escapeHtml(legendText)}</div>`
+      : "";
+
   card.innerHTML = `
     ${cardTitleHtml}
+    ${legendHtml}
     ${renderMaterialSizeInfoHtml(product.materialSizeOptions)}
     ${qtyFieldHtml}
     <div class="dyn-result" style="${isFlatRate ? "" : "display:none;"} margin-top:10px;">

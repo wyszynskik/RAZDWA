@@ -71,6 +71,8 @@ export interface Product {
   subcategoryPrefix: string;
   subgroupLabel: string;
   label: string;
+  /** Opcjonalny tekst legendy (opis pod nazwą) — D-108: osobny od label. */
+  legend: string;
   calcType: ProductCalcType;
   status: ProductStatus;
   visibleInCalculator: boolean;
@@ -411,6 +413,7 @@ export function classifyVariantsIntoProducts(
           subcategoryPrefix,
           subgroupLabel: clusterVariants[0].subgroupLabel || "",
           label: clusterVariants[0].label || clusterVariants[0].subgroupLabel || "",
+          legend: clusterVariants[0].legend || "",
           calcType: "interpolated",
           status: "published",
           visibleInCalculator: clusterVariants[0].visibleInCalculator !== false,
@@ -444,6 +447,7 @@ export function classifyVariantsIntoProducts(
           subcategoryPrefix,
           subgroupLabel: variant.subgroupLabel || "",
           label: variant.label || variant.key,
+          legend: variant.legend || "",
           calcType: effectiveScheme,
           status: "published",
           visibleInCalculator: variant.visibleInCalculator !== false,

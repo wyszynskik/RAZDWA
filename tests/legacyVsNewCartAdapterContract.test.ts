@@ -33,6 +33,7 @@ describe("legacy vs new cart adapter contract", () => {
     subcategoryPrefix: "artykuly-teczka-",
     subgroupLabel: "Teczki",
     label: "Teczka niebieska",
+    legend: "",
     calcType: "flat-per-unit",
     tiers: [{ key: "artykuly-teczka-niebieska", qty: 1, price: unitPrice }],
   };

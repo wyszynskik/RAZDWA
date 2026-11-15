@@ -735,6 +735,7 @@ function makeProduct(overrides: Partial<RenderableProduct>): RenderableProduct {
     subcategoryPrefix: "prefix-",
     subgroupLabel: "Grupa",
     label: "Produkt",
+    legend: "",
     calcType: "flat-per-unit",
     tiers: [{ key: "prefix-item", qty: 1, price: 5 }],
     ...overrides,
