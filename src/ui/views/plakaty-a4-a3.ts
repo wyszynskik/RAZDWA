@@ -7,6 +7,7 @@ import { resolveStoredPrice } from "../../core/compat";
 import {
   renderSurchargeCheckboxesHtml,
   collectCheckedSurchargeIds,
+  formatCheckedSurchargeNames,
 } from "../../core/dynamicSurcharges";
 import {
   setFieldHint,
@@ -303,11 +304,12 @@ export const PlakatyA4A3View: View = {
       const variantId = resolveDuzyCanonVariantId();
       const finish = duzyCanonFinishSelect.value === "blysk" ? "błysk" : "mat";
       const paper = duzyCanonPaperSelect.value;
+      const checkedSurchargeIds = collectCheckedSurchargeIds(surchargesBox);
       const res = calculatePlakatyDuzyCanon({
         variantId,
         qty,
         express: ctx.expressMode,
-        checkedSurchargeIds: collectCheckedSurchargeIds(surchargesBox),
+        checkedSurchargeIds,
       });
       const trimSurcharge = getDuzyCanonTrimSurcharge();
       const totalWithTrim = parseFloat((res.totalPrice + trimSurcharge).toFixed(2));
@@ -324,6 +326,7 @@ export const PlakatyA4A3View: View = {
         finish,
         paper,
         trimSurcharge,
+        checkedSurchargeIds,
       };
 
       unitPriceEl.innerText = formatPLN(res.tierPrice);
@@ -484,7 +487,12 @@ export const PlakatyA4A3View: View = {
         currentOptions.trimSurcharge > 0
           ? `, trymer: +${formatPLN(currentOptions.trimSurcharge)}`
           : "";
-      const hint = `${currentOptions.qty} szt, ${currentOptions.paper}g kreda, ${currentOptions.finish}${trimHint}`;
+      const surchargeNames = formatCheckedSurchargeNames(
+        "plakaty-a4-a3",
+        currentOptions.checkedSurchargeIds ?? []
+      );
+      const surchargeLabel = surchargeNames ? `, ${surchargeNames}` : "";
+      const hint = `${currentOptions.qty} szt, ${currentOptions.paper}g kreda, ${currentOptions.finish}${trimHint}${surchargeLabel}`;
       ctx.cart.addItem({
         id: `plakaty-a4-a3-${Date.now()}`,
         category: "Plakaty A4-A3",

@@ -10,6 +10,7 @@ import { resolveStoredPrice } from "../../core/compat";
 import {
   renderSurchargeCheckboxesHtml,
   collectCheckedSurchargeIds,
+  formatCheckedSurchargeNames,
 } from "../../core/dynamicSurcharges";
 import { setFieldHint, flashFieldHints, setButtonGuarded } from "../viewHelpers";
 
@@ -355,6 +356,11 @@ export const VoucheryView: View = {
           );
         }
         if (currentOptions.express) parts.push("EXPRESS (+20%)");
+        const surchargeNames = formatCheckedSurchargeNames(
+          "vouchery",
+          currentOptions.checkedSurchargeIds ?? []
+        );
+        if (surchargeNames) parts.push(surchargeNames);
 
         ctx.cart.addItem({
           id: `vouchery-${Date.now()}`,

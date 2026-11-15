@@ -16,6 +16,7 @@ import { resolveStoredPrice } from "../../core/compat";
 import {
   renderSurchargeCheckboxesHtml,
   collectCheckedSurchargeIds,
+  formatCheckedSurchargeNames,
 } from "../../core/dynamicSurcharges";
 import { escapeHtml } from "../../core/validation";
 import type { MaterialDefinition } from "../../core/dynamicMaterials";
@@ -230,6 +231,7 @@ export const WlepkiView: View = {
           express?: boolean;
           paperFinish?: "mat" | "blysk";
           foilType?: "biala" | "transparentna";
+          checkedSurchargeIds?: string[];
         }
       | null = null;
     let blockedHints: (HTMLElement | null)[] = [];
@@ -646,6 +648,12 @@ export const WlepkiView: View = {
       }
       if (!currentResult || !currentInput) return;
 
+      const surchargeNames = formatCheckedSurchargeNames(
+        "wlepki",
+        currentInput.checkedSurchargeIds ?? []
+      );
+      const surchargeLabel = surchargeNames ? `, ${surchargeNames}` : "";
+
       if (currentInput.mode === "szt") {
         const selectedTitle =
           pieceTableSelect.options[pieceTableSelect.selectedIndex]?.text ?? "Naklejki sztukowe";
@@ -663,7 +671,7 @@ export const WlepkiView: View = {
           unitPrice: currentResult.unitPrice,
           isExpress: !!currentInput.express,
           totalPrice: currentResult.totalPrice,
-          optionsHint: `${currentResult.requestedQty} szt (próg ${currentResult.chargedQty} szt)${technical.length ? `, ${technical.join(", ")}` : ""}${currentInput.express ? ", EXPRESS" : ""}`,
+          optionsHint: `${currentResult.requestedQty} szt (próg ${currentResult.chargedQty} szt)${technical.length ? `, ${technical.join(", ")}` : ""}${currentInput.express ? ", EXPRESS" : ""}${surchargeLabel}`,
           payload: {
             ...currentResult,
             pieceTableId: currentInput.tableId,
@@ -703,6 +711,7 @@ export const WlepkiView: View = {
           optionsHint: [
             `${currentInputM2.area} m²`,
             ...(modsLabel.length ? modsLabel : ["Standard"]),
+            ...(surchargeNames ? [surchargeNames] : []),
           ].join(", "),
           payload: {
             ...currentResult,

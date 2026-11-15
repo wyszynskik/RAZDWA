@@ -7,6 +7,7 @@ import { getCombinedMaterials } from "../../core/dynamicMaterials";
 import {
   renderSurchargeCheckboxesHtml,
   collectCheckedSurchargeIds,
+  formatCheckedSurchargeNames,
 } from "../../core/dynamicSurcharges";
 import {
   setFieldHint,
@@ -273,6 +274,7 @@ export const FoliaSzronionaView: View = {
           `${currentOptions.widthMm}x${currentOptions.heightMm} mm`,
           `${areaM2.toFixed(2)} m2`,
           ctx.expressMode ? "EXPRESS" : "",
+          formatCheckedSurchargeNames("folia", currentOptions.checkedSurchargeIds ?? []),
         ]
           .filter(Boolean)
           .join(", ");

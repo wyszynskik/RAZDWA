@@ -5,6 +5,7 @@ import { mergeStoredQuantityTable, resolveStoredPrice } from "../../core/compat"
 import {
   renderSurchargeCheckboxesHtml,
   collectCheckedSurchargeIds,
+  formatCheckedSurchargeNames,
 } from "../../core/dynamicSurcharges";
 import { autoCalc } from "../autoCalc";
 import { getPrice } from "../../services/priceService";
@@ -492,6 +493,11 @@ export const WizytowkiView: View = {
             paperLabel,
           ];
           if (currentOptions.express) parts.push("EXPRESS (+20%)");
+          const surchargeNames = formatCheckedSurchargeNames(
+            "wizytowki",
+            currentOptions.checkedSurchargeIds ?? []
+          );
+          if (surchargeNames) parts.push(surchargeNames);
 
           ctx.cart.addItem({
             id: `wizytowki-${Date.now()}`,

@@ -12,6 +12,7 @@ import { resolveStoredPrice } from "../../core/compat";
 import {
   renderSurchargeCheckboxesHtml,
   collectCheckedSurchargeIds,
+  formatCheckedSurchargeNames,
 } from "../../core/dynamicSurcharges";
 import { parseNumericInput } from "../../core/numericInput";
 import { escapeHtml } from "../../core/validation";
@@ -291,6 +292,11 @@ export const RollUpView: View = {
         const formatLabel =
           getRollUpFormats().find((m) => m.id === currentOptions!.format)?.name ??
           currentOptions.format;
+        const surchargeNames = formatCheckedSurchargeNames(
+          "rollup",
+          currentOptions.checkedSurchargeIds ?? []
+        );
+        const surchargeLabel = surchargeNames ? `, ${surchargeNames}` : "";
 
         ctx.cart.addItem({
           id: `rollup-${Date.now()}`,
@@ -301,7 +307,7 @@ export const RollUpView: View = {
           unitPrice: currentResult.totalPrice / currentOptions.qty,
           isExpress: currentOptions.express,
           totalPrice: currentResult.totalPrice,
-          optionsHint: `${formatLabel}, ${currentOptions.qty} szt`,
+          optionsHint: `${formatLabel}, ${currentOptions.qty} szt${surchargeLabel}`,
           payload: currentOptions,
         });
 

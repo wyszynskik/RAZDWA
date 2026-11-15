@@ -8,6 +8,7 @@ import { getCombinedMaterials } from "../../core/dynamicMaterials";
 import {
   renderSurchargeCheckboxesHtml,
   collectCheckedSurchargeIds,
+  formatCheckedSurchargeNames,
 } from "../../core/dynamicSurcharges";
 import { escapeHtml } from "../../core/validation";
 import {
@@ -304,6 +305,7 @@ export const BannerView: View = {
             : `${currentOptions.areaM2} m2`,
           currentOptions.oczkowanie ? "z oczkowaniem" : "bez oczkowania",
           currentOptions.express ? "EXPRESS" : "",
+          formatCheckedSurchargeNames("banner", currentOptions.checkedSurchargeIds ?? []),
         ]
           .filter(Boolean)
           .join(", ");

@@ -7,6 +7,8 @@ import {
   buildSurchargeVariant,
   buildSurchargeAssignmentKey,
   surchargeRateKey,
+  collectCheckedSurchargeLabels,
+  formatCheckedSurchargeNames,
   SURCHARGE_ASSIGNMENT_PREFIX,
 } from "../src/core/dynamicSurcharges";
 import { setVariantDefinitions, setPrice, resetPrices } from "../src/services/priceService";
@@ -144,5 +146,35 @@ describe("dynamicSurcharges", () => {
   it("buildSurchargeAssignmentKey jest stabilny i parsowalny przez prefiks", () => {
     const key = buildSurchargeAssignmentKey("test-id");
     expect(key).toBe(`${SURCHARGE_ASSIGNMENT_PREFIX}test-id`);
+  });
+
+  describe("collectCheckedSurchargeLabels / formatCheckedSurchargeNames (D-109)", () => {
+    beforeEach(() => {
+      setVariantDefinitions([
+        buildSurchargeVariant("dwustronne", "Dwustronne", ["wlepki"]),
+        buildSurchargeVariant("klej", "Łatwo zmywalny klej", ["wlepki"]),
+        buildSurchargeVariant("inna", "Inna kategoria", ["banner"]),
+      ]);
+      setPrice(`defaultPrices.${surchargeRateKey("dwustronne")}`, 0.4);
+      setPrice(`defaultPrices.${surchargeRateKey("klej")}`, 0.1);
+      setPrice(`defaultPrices.${surchargeRateKey("inna")}`, 0.2);
+    });
+
+    it("dwie zaznaczone dopłaty → obie nazwy w kolejności renderu checkboxów", () => {
+      const labels = collectCheckedSurchargeLabels("wlepki", ["klej", "dwustronne"]);
+      expect(labels).toEqual(["Dwustronne", "Łatwo zmywalny klej"]);
+      expect(formatCheckedSurchargeNames("wlepki", ["klej", "dwustronne"])).toBe(
+        "Dwustronne, Łatwo zmywalny klej"
+      );
+    });
+
+    it("ignoruje id spoza kategorii (jak applySurcharges)", () => {
+      expect(formatCheckedSurchargeNames("wlepki", ["dwustronne", "inna"])).toBe("Dwustronne");
+    });
+
+    it("brak zaznaczeń → pusty string / pusta lista", () => {
+      expect(collectCheckedSurchargeLabels("wlepki", [])).toEqual([]);
+      expect(formatCheckedSurchargeNames("wlepki", [])).toBe("");
+    });
   });
 });

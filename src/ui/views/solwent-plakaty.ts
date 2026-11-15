@@ -10,6 +10,7 @@ import { getCombinedMaterials } from "../../core/dynamicMaterials";
 import {
   renderSurchargeCheckboxesHtml,
   collectCheckedSurchargeIds,
+  formatCheckedSurchargeNames,
 } from "../../core/dynamicSurcharges";
 import { escapeHtml } from "../../core/validation";
 import {
@@ -70,6 +71,7 @@ export const SolwentPlakatyView: View = {
     const expressHint = container.querySelector("#express-hint") as HTMLElement;
 
     let currentResult: any = null;
+    let currentSurchargeNames = "";
     let blockedHints: (HTMLElement | null)[] = [];
 
     const ensureLegend = () => {
@@ -144,15 +146,17 @@ export const SolwentPlakatyView: View = {
         blockedHints = [areaHint];
         return;
       }
+      const checkedSurchargeIds = collectCheckedSurchargeIds(surchargesBox);
       const input = {
         material: materialSelect.value,
         areaM2,
         express: ctx.expressMode,
-        checkedSurchargeIds: collectCheckedSurchargeIds(surchargesBox),
+        checkedSurchargeIds,
       };
 
       const result = calculateSolwentPlakaty(input);
       currentResult = result;
+      currentSurchargeNames = formatCheckedSurchargeNames("solwent", checkedSurchargeIds);
 
       unitPriceSpan.innerText = formatPLN(result.tierPrice);
       totalPriceSpan.innerText = formatPLN(result.totalPrice);
@@ -198,7 +202,7 @@ export const SolwentPlakatyView: View = {
           unitPrice: currentResult.tierPrice,
           isExpress: ctx.expressMode,
           totalPrice: currentResult.totalPrice,
-          optionsHint: `${areaInput.value}m2${ctx.expressMode ? ", EXPRESS" : ""}`,
+          optionsHint: `${areaInput.value}m2${ctx.expressMode ? ", EXPRESS" : ""}${currentSurchargeNames ? `, ${currentSurchargeNames}` : ""}`,
           payload: currentResult,
         });
 

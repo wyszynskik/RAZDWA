@@ -14,6 +14,7 @@ import { resolveStoredPrice } from "../../core/compat";
 import {
   renderSurchargeCheckboxesHtml,
   collectCheckedSurchargeIds,
+  formatCheckedSurchargeNames,
 } from "../../core/dynamicSurcharges";
 import { escapeHtml } from "../../core/validation";
 import { mountDynamicSubgroupContainers } from "../dynamicSubgroups";
@@ -305,12 +306,13 @@ export const DyplomyView: View = {
           ? `Satyna ${paperVal.slice(7)}g`
           : `Kreda ${paperVal.slice(6)}g`;
 
+        const checkedSurchargeIds = collectCheckedSurchargeIds(ekoSurchargesBox);
         const result = calculateDyplomyEko({
           format,
           qty,
           isSatin,
           express: ctx.expressMode,
-          checkedSurchargeIds: collectCheckedSurchargeIds(ekoSurchargesBox),
+          checkedSurchargeIds,
         });
 
         const breakdown = [
@@ -365,7 +367,7 @@ export const DyplomyView: View = {
           : "none";
 
         ctx.updateLastCalculated(result.totalPrice, `Dyplomy Ekonomiczny ${format}`);
-        return { format, qty, isSatin, paperLabel, result };
+        return { format, qty, isSatin, paperLabel, result, checkedSurchargeIds };
       };
 
       autoCalc({
@@ -427,7 +429,11 @@ export const DyplomyView: View = {
           flashFieldHints([ekoQtyHint]);
           return;
         }
-        const { format, qty, isSatin, paperLabel, result } = calc;
+        const { format, qty, isSatin, paperLabel, result, checkedSurchargeIds } = calc;
+        const surchargeNames = formatCheckedSurchargeNames(
+          "dyplomy-eko",
+          checkedSurchargeIds ?? []
+        );
 
         ctx.cart.addItem({
           id: `dyp-eko-${Date.now()}`,
@@ -443,6 +449,7 @@ export const DyplomyView: View = {
             format,
             paperLabel,
             ...(ctx.expressMode ? ["EXPRESS (+20%)"] : []),
+            ...(surchargeNames ? [surchargeNames] : []),
           ].join(", "),
           payload: { format, qty, isSatin, express: ctx.expressMode },
         });
@@ -469,6 +476,10 @@ export const DyplomyView: View = {
             : dpv.startsWith("satyna_")
               ? `Satyna ${dpv.slice(7)}g`
               : `Kreda ${dpv.slice(6)}g`;
+        const surchargeNames = formatCheckedSurchargeNames(
+          "dyplomy",
+          options.checkedSurchargeIds ?? []
+        );
 
         ctx.cart.addItem({
           id: `dyp-${Date.now()}`,
@@ -484,6 +495,7 @@ export const DyplomyView: View = {
             `${options.format}`,
             dPaperLabel,
             ...(options.express ? ["EXPRESS (+20%)"] : []),
+            ...(surchargeNames ? [surchargeNames] : []),
           ].join(", "),
           payload: options,
         });
