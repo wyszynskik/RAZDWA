@@ -144,6 +144,28 @@ export function applySurcharges(
   return totalPercent === 0 ? basePrice : basePrice * (1 + totalPercent);
 }
 
+/**
+ * Czytelne nazwy zaznaczonych dopłat przypisanych do `categoryId`, w kolejności
+ * renderu checkboxów (getSurchargesForCategory) — stabilnej i spójnej między
+ * widokami. `checkedIds` spoza tej kategorii są ignorowane, więc wołający może
+ * podać pełną listę ze wspólnego scope, dokładnie jak applySurcharges. Wyłącznie
+ * prezentacja (opis pozycji koszyka) — nie dotyka ceny. Źródłować z TYCH SAMYCH
+ * checkedIds i categoryId, co applySurcharges w danym widoku, żeby nazwa i cena
+ * nigdy się nie rozjechały.
+ */
+export function collectCheckedSurchargeLabels(categoryId: string, checkedIds: string[]): string[] {
+  if (checkedIds.length === 0) return [];
+  const checked = new Set(checkedIds);
+  return getSurchargesForCategory(categoryId)
+    .filter((s) => checked.has(s.id))
+    .map((s) => s.label);
+}
+
+/** Jak collectCheckedSurchargeLabels, ale złączone przecinkiem do opisu pozycji ("" gdy brak). */
+export function formatCheckedSurchargeNames(categoryId: string, checkedIds: string[]): string {
+  return collectCheckedSurchargeLabels(categoryId, checkedIds).join(", ");
+}
+
 export function buildSurchargeVariant(
   surchargeId: string,
   label: string,

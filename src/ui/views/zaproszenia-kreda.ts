@@ -9,6 +9,7 @@ import { resolveStoredPrice, getDefaultPricesMap } from "../../core/compat";
 import {
   renderSurchargeCheckboxesHtml,
   collectCheckedSurchargeIds,
+  formatCheckedSurchargeNames,
 } from "../../core/dynamicSurcharges";
 import { getPrice } from "../../services/priceService";
 import { setFieldHint, flashFieldHints, setButtonGuarded } from "../viewHelpers";
@@ -351,6 +352,13 @@ export const ZaproszeniaKredaView: View = {
                 ]
               : []),
             ...(options.express ? ["EXPRESS (+20%)"] : []),
+            ...(() => {
+              const surchargeNames = formatCheckedSurchargeNames(
+                "zaproszenia",
+                options.checkedSurchargeIds ?? []
+              );
+              return surchargeNames ? [surchargeNames] : [];
+            })(),
           ].join(", "),
           payload: {
             ...options,

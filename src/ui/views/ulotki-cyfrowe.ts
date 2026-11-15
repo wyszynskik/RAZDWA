@@ -12,6 +12,7 @@ import { formatPLN } from "../../core/money";
 import {
   renderSurchargeCheckboxesHtml,
   collectCheckedSurchargeIds,
+  formatCheckedSurchargeNames,
 } from "../../core/dynamicSurcharges";
 import {
   setFieldHint,
@@ -324,6 +325,11 @@ export const UlotkiCyfroweView: View = {
           paperLabel,
         ];
         if (currentOptions.express) parts.push("EXPRESS (+20%)");
+        const surchargeNames = formatCheckedSurchargeNames(
+          "ulotki",
+          currentOptions.checkedSurchargeIds ?? []
+        );
+        if (surchargeNames) parts.push(surchargeNames);
 
         ctx.cart.addItem({
           id: `ulotki-${Date.now()}`,

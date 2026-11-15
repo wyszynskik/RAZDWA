@@ -14,6 +14,7 @@ import { resolveStoredPrice } from "../../core/compat";
 import {
   renderSurchargeCheckboxesHtml,
   collectCheckedSurchargeIds,
+  formatCheckedSurchargeNames,
 } from "../../core/dynamicSurcharges";
 import {
   setFieldHint,
@@ -292,6 +293,7 @@ export const CanvasView: View = {
           ? `${currentResult.areaM2.toFixed(2)} m² / szt`
           : "",
         currentOptions.express ? "EXPRESS" : "",
+        formatCheckedSurchargeNames("canvas", currentOptions.checkedSurchargeIds ?? []),
       ].filter(Boolean);
 
       ctx.cart.addItem({

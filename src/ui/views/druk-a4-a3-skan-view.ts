@@ -7,6 +7,7 @@ import { getPRICE, resolveStoredPrice } from "../../core/compat";
 import {
   renderSurchargeCheckboxesHtml,
   collectCheckedSurchargeIds,
+  formatCheckedSurchargeNames,
 } from "../../core/dynamicSurcharges";
 import {
   setFieldHint,
@@ -435,6 +436,11 @@ export const DrukA4A3SkanView: View = {
         details.push(`koszulka: ${currentOptions.sleeveQty} szt.`);
       }
       if (ctx.expressMode) details.push("EXPRESS");
+      const surchargeNames = formatCheckedSurchargeNames(
+        "druk-a4-a3",
+        currentOptions.checkedSurchargeIds ?? []
+      );
+      if (surchargeNames) details.push(surchargeNames);
 
       const itemNameParts: string[] = [];
       if (hasPrint) itemNameParts.push(`${currentOptions.format.toUpperCase()} ${modeLabel}`);

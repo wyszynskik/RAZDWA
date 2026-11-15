@@ -12,6 +12,7 @@ import { getCombinedMaterials, type MaterialDefinition } from "../../core/dynami
 import {
   renderSurchargeCheckboxesHtml,
   collectCheckedSurchargeIds,
+  formatCheckedSurchargeNames,
 } from "../../core/dynamicSurcharges";
 import { escapeHtml } from "../../core/validation";
 import {
@@ -241,6 +242,11 @@ export const WycinanieFoliiView: View = {
         : "Wycinanie z folii";
       const areaM2 = (currentOptions.widthMm * currentOptions.heightMm) / 1_000_000;
       const colorHint = currentOptions.colorLabel ? `, kolor: ${currentOptions.colorLabel}` : "";
+      const surchargeNames = formatCheckedSurchargeNames(
+        "wycinanie-folii",
+        currentOptions.checkedSurchargeIds ?? []
+      );
+      const surchargeLabel = surchargeNames ? `, ${surchargeNames}` : "";
 
       ctx.cart.addItem({
         id: `wycinanie-${Date.now()}`,
@@ -251,7 +257,7 @@ export const WycinanieFoliiView: View = {
         unitPrice: currentResult.tierPrice,
         isExpress: currentOptions.express,
         totalPrice: currentResult.totalPrice,
-        optionsHint: `${currentOptions.widthMm}x${currentOptions.heightMm} mm, ${areaM2.toFixed(2)} m2${colorHint}${currentOptions.express ? ", EXPRESS" : ""}`,
+        optionsHint: `${currentOptions.widthMm}x${currentOptions.heightMm} mm, ${areaM2.toFixed(2)} m2${colorHint}${currentOptions.express ? ", EXPRESS" : ""}${surchargeLabel}`,
         payload: {
           ...currentOptions,
           ...currentResult,

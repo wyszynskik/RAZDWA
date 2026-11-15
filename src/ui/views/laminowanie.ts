@@ -13,6 +13,7 @@ import { resolveStoredPrice } from "../../core/compat";
 import {
   renderSurchargeCheckboxesHtml,
   collectCheckedSurchargeIds,
+  formatCheckedSurchargeNames,
 } from "../../core/dynamicSurcharges";
 import { getPrice, getVariantDefinitions } from "../../services/priceService";
 import {
@@ -878,6 +879,11 @@ export const LaminowanieView: View = {
       }
       if (currentResult && currentOptions) {
         const expressLabel = currentOptions.express ? ", EXPRESS" : "";
+        const surchargeNames = formatCheckedSurchargeNames(
+          "laminowanie",
+          currentOptions.checkedSurchargeIds ?? []
+        );
+        const surchargeLabel = surchargeNames ? `, ${surchargeNames}` : "";
 
         ctx.cart.addItem({
           id: `laminowanie-${Date.now()}`,
@@ -888,7 +894,7 @@ export const LaminowanieView: View = {
           unitPrice: currentResult.totalPrice / currentOptions.qty,
           isExpress: currentOptions.express,
           totalPrice: currentResult.totalPrice,
-          optionsHint: `${currentOptions.qty} szt, Format ${currentOptions.formatLabel ?? currentOptions.format}${expressLabel}`,
+          optionsHint: `${currentOptions.qty} szt, Format ${currentOptions.formatLabel ?? currentOptions.format}${expressLabel}${surchargeLabel}`,
           payload: currentResult,
         });
 
@@ -1726,6 +1732,7 @@ export const LaminowanieView: View = {
     updateIntroPriceTiers();
 
     let introState: ReturnType<typeof quoteIntroligatornia> | null = null;
+    let introSurchargeNames = "";
     let introBlockedHints: (HTMLElement | null)[] = [];
 
     const recalcIntro = () => {
@@ -1748,14 +1755,16 @@ export const LaminowanieView: View = {
         return;
       }
       setFieldHint(introQtyHint, null);
+      const introCheckedSurchargeIds = collectCheckedSurchargeIds(introSurchargesBox);
       const result = quoteIntroligatornia({
         serviceId: introService.value,
         qty: parseInt(introQty.value, 10) || 1,
         express: false,
-        checkedSurchargeIds: collectCheckedSurchargeIds(introSurchargesBox),
+        checkedSurchargeIds: introCheckedSurchargeIds,
       });
 
       introState = result;
+      introSurchargeNames = formatCheckedSurchargeNames("laminowanie", introCheckedSurchargeIds);
       const serviceName = normalizePolishText(result.serviceName);
       if (introResult) introResult.style.display = "block";
       if (introTotalPrice) introTotalPrice.innerText = formatPLN(result.totalPrice);
@@ -1800,7 +1809,7 @@ export const LaminowanieView: View = {
         unitPrice: introState.totalPrice / introState.qty,
         isExpress: false,
         totalPrice: introState.totalPrice,
-        optionsHint: `${introState.qty} operacji`,
+        optionsHint: `${introState.qty} operacji${introSurchargeNames ? `, ${introSurchargeNames}` : ""}`,
         payload: introState,
       });
 

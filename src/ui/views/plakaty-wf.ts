@@ -14,6 +14,7 @@ import { resolveStoredPrice } from "../../core/compat";
 import {
   renderSurchargeCheckboxesHtml,
   collectCheckedSurchargeIds,
+  formatCheckedSurchargeNames,
 } from "../../core/dynamicSurcharges";
 import { escapeHtml } from "../../core/validation";
 import {
@@ -50,6 +51,7 @@ interface PlakatyWfCalcOptions {
   qty: number;
   customLengthMm: number | undefined;
   trimSurcharge: number;
+  checkedSurchargeIds: string[];
 }
 
 export const PlakatyWFView: View = {
@@ -289,18 +291,19 @@ export const PlakatyWFView: View = {
           ? (parseNumericInput(lengthInput.value) ?? undefined)
           : undefined;
 
+      const checkedSurchargeIds = collectCheckedSurchargeIds(surchargesBox);
       const res = calculatePlakatyFormat({
         materialId: matId,
         formatKey: fmt,
         qty,
         customLengthMm,
         express: ctx.expressMode,
-        checkedSurchargeIds: collectCheckedSurchargeIds(surchargesBox),
+        checkedSurchargeIds,
       });
       currentResult = res;
       const trimSurcharge = getTrimSurcharge();
       const totalWithTrim = parseFloat((res.totalPrice + trimSurcharge).toFixed(2));
-      currentOptions = { matId, fmt, qty, customLengthMm, trimSurcharge };
+      currentOptions = { matId, fmt, qty, customLengthMm, trimSurcharge, checkedSurchargeIds };
 
       unitPriceEl.innerText = formatPLN(res.pricePerPiece);
       totalPriceEl.innerText = formatPLN(totalWithTrim);
@@ -433,7 +436,12 @@ export const PlakatyWFView: View = {
         currentOptions.trimSurcharge > 0
           ? `, trymer: +${formatPLN(currentOptions.trimSurcharge)}`
           : "";
-      const hintBase = `${sizeLabelCart} × ${currentOptions.qty} szt${lengthHint}${trimHint}${ctx.expressMode ? ", EXPRESS" : ""}`;
+      const surchargeNames = formatCheckedSurchargeNames(
+        "solwent",
+        currentOptions.checkedSurchargeIds ?? []
+      );
+      const surchargeLabel = surchargeNames ? `, ${surchargeNames}` : "";
+      const hintBase = `${sizeLabelCart} × ${currentOptions.qty} szt${lengthHint}${trimHint}${ctx.expressMode ? ", EXPRESS" : ""}${surchargeLabel}`;
       const hint = calcHint.length ? `${hintBase} | ${calcHint.join(" ")}` : hintBase;
 
       const totalPrice = parseFloat(

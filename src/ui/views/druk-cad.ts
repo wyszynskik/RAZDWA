@@ -8,6 +8,7 @@ import { resolveStoredPrice } from "../../core/compat";
 import {
   renderSurchargeCheckboxesHtml,
   collectCheckedSurchargeIds,
+  formatCheckedSurchargeNames,
 } from "../../core/dynamicSurcharges";
 import {
   getCombinedCadBase,
@@ -698,6 +699,7 @@ export const DrukCADView: View = {
           optScale?.checked ? "Skalowanie (+50%)" : "",
           optEmail?.checked ? `Wysyłka e-mail (+${formatPLN(emailFeeUnit)})` : "",
           ctx.expressMode ? "EXPRESS" : "",
+          formatCheckedSurchargeNames("druk-cad", currentOptions.checkedSurchargeIds ?? []),
         ]
           .filter(Boolean)
           .join(", ");

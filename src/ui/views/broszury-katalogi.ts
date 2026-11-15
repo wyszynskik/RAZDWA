@@ -5,6 +5,7 @@ import { resolveStoredPrice, mergeStoredNumericTiers } from "../../core/compat";
 import {
   renderSurchargeCheckboxesHtml,
   collectCheckedSurchargeIds,
+  formatCheckedSurchargeNames,
   applySurcharges,
 } from "../../core/dynamicSurcharges";
 import {
@@ -262,7 +263,11 @@ function initBroszuryKatalogi(container: HTMLElement, ctx: ViewContext): void {
     }
     if (!currentResult || !currentOptions) return;
     const formatLabel = FORMAT_LABELS[currentOptions.format as FormatKey];
-    const hint = `${formatLabel}, ${currentOptions.pages} stron, ${currentOptions.qty} szt.${currentOptions.express ? ", EXPRESS" : ""}`;
+    const surchargeNames = formatCheckedSurchargeNames(
+      "broszury-katalogi",
+      currentOptions.checkedSurchargeIds ?? []
+    );
+    const hint = `${formatLabel}, ${currentOptions.pages} stron, ${currentOptions.qty} szt.${currentOptions.express ? ", EXPRESS" : ""}${surchargeNames ? `, ${surchargeNames}` : ""}`;
     ctx.cart.addItem({
       id: `broszury-katalogi-${Date.now()}`,
       category: "Broszury i katalogi",
