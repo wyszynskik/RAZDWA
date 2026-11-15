@@ -7,6 +7,7 @@ import { mountDynamicSubgroupContainers } from "./dynamicSubgroups";
 import { BASE_PRICE_CATEGORIES } from "../core/productCat";
 import { hasNativeSubgroupRenderer } from "../core/variantKeys";
 import { buildRouteToBaseIdMap } from "../core/categoryRegistry";
+import { hydrateRateLabels } from "../core/rateLabels";
 
 /**
  * Route id -> price-category id, for views whose route id doesn't match
@@ -267,6 +268,8 @@ export class Router {
       if (this.currentCategoryPath) {
         this.mountDynamicSubgroupsFor(this.currentCategoryPath);
       }
+      // Etykiety % odświeżają się po zmianie stawki w panelu bez przeładowania.
+      hydrateRateLabels(this.container);
     });
   }
 
@@ -386,6 +389,10 @@ export class Router {
         await view.mount(this.container, this.getCtx());
         this.currentCategoryPath = path;
         this.mountDynamicSubgroupsFor(path);
+        // Ożywienie statycznych etykiet % w szablonie (D-104): czyta żywą
+        // stawkę z tego samego klucza co liczenie. Centralnie po mount, żeby
+        // objąć każdy widok bez wpinania per-kategoria.
+        hydrateRateLabels(this.container);
       } catch (err) {
         console.error("❌ View mount error:", err);
         this.container.innerHTML = `<div class="error">Błąd ładowania widoku: ${this.escapeHtml(String(err))}</div>`;
