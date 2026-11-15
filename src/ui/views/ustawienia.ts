@@ -364,11 +364,13 @@ export function resolveFormPriceFormula(
  * from whatever prefix the admin had selected before switching to this
  * option. Fixes an incident where the previous mechanism (lastBasePrefix,
  * falling back to category.newKeyPrefix) leaked a specific, unrelated
- * product's prefix into a brand-new subgroup's key — e.g. plakaty-a4-a3's
- * newKeyPrefix is "plakaty-maly-canon-" (a specific hardcoded product, not
- * a neutral category root), so even the old fallback chain would have
- * nested "maly-canon" into an independent subgroup's prefix, not just
- * lastBasePrefix.
+ * product's prefix into a brand-new subgroup's key — historically
+ * plakaty-a4-a3's newKeyPrefix was "plakaty-maly-canon-" (a specific
+ * hardcoded product, not a neutral category root), so even the old fallback
+ * chain would have nested "maly-canon" into an independent subgroup's prefix,
+ * not just lastBasePrefix. (Mały Canon was removed in PR-7 / D-205 and the
+ * newKeyPrefix is now the neutral "plakaty-duzy-canon-", but deriving the base
+ * prefix from the category id — as this function does — is the actual fix.)
  *
  * Exported for unit tests only — not part of this module's public API for
  * other views.
@@ -783,22 +785,6 @@ function getAddablePrefixOptions(category: PriceCategory): PrefixOption[] {
       // to dodaje nowy próg.
       const canonSuffix = " — tylko nadpisanie istniejącej ceny progu, NIE dodaje nowej ilości";
       options.push(
-        {
-          value: "plakaty-maly-canon-margin-170-",
-          label: `Mały Canon z marginesem 130/170g${canonSuffix}`,
-        },
-        {
-          value: "plakaty-maly-canon-no-margin-170-",
-          label: `Mały Canon bez marginesu 130/170g${canonSuffix}`,
-        },
-        {
-          value: "plakaty-maly-canon-margin-200-",
-          label: `Mały Canon z marginesem 200g${canonSuffix}`,
-        },
-        {
-          value: "plakaty-maly-canon-no-margin-200-",
-          label: `Mały Canon bez marginesu 200g${canonSuffix}`,
-        },
         {
           value: "plakaty-duzy-canon-a4-170-kreda-130-170-",
           label: `Duży Canon A4 130/170g${canonSuffix}`,
@@ -1371,42 +1357,6 @@ const PRICE_LABELS: Record<string, string> = {
   "plakaty-format-180g-pp-nieformatowe-610x841": "Plakaty 180g PP nieformatowe – A1+",
   "plakaty-format-180g-pp-nieformatowe-841x1189": "Plakaty 180g PP nieformatowe – A0",
   "plakaty-format-180g-pp-nieformatowe-914x1292": "Plakaty 180g PP nieformatowe – A0+",
-  "plakaty-maly-canon-margin-170-1-3": "Plakaty mały Canon z marginesem 130 g/170 g – 1–3 szt.",
-  "plakaty-maly-canon-margin-170-4-9": "Plakaty mały Canon z marginesem 130 g/170 g – 4–9 szt.",
-  "plakaty-maly-canon-margin-170-A4-1-3":
-    "Plakaty mały Canon z marginesem 130 g/170 g (A4) – 1–3 szt.",
-  "plakaty-maly-canon-margin-170-A3-1-3":
-    "Plakaty mały Canon z marginesem 130 g/170 g (A3) – 1–3 szt.",
-  "plakaty-maly-canon-margin-170-A4-4-9":
-    "Plakaty mały Canon z marginesem 130 g/170 g (A4) – 4–9 szt.",
-  "plakaty-maly-canon-margin-170-A3-4-9":
-    "Plakaty mały Canon z marginesem 130 g/170 g (A3) – 4–9 szt.",
-  "plakaty-maly-canon-margin-200-1-3": "Plakaty mały Canon z marginesem 200 g – 1–3 szt.",
-  "plakaty-maly-canon-margin-200-4-9": "Plakaty mały Canon z marginesem 200 g – 4–9 szt.",
-  "plakaty-maly-canon-margin-200-A4-1-3": "Plakaty mały Canon z marginesem 200 g (A4) – 1–3 szt.",
-  "plakaty-maly-canon-margin-200-A3-1-3": "Plakaty mały Canon z marginesem 200 g (A3) – 1–3 szt.",
-  "plakaty-maly-canon-margin-200-A4-4-9": "Plakaty mały Canon z marginesem 200 g (A4) – 4–9 szt.",
-  "plakaty-maly-canon-margin-200-A3-4-9": "Plakaty mały Canon z marginesem 200 g (A3) – 4–9 szt.",
-  "plakaty-maly-canon-no-margin-170-1-3": "Plakaty mały Canon bez marginesu 130 g/170 g – 1–3 szt.",
-  "plakaty-maly-canon-no-margin-170-4-9": "Plakaty mały Canon bez marginesu 130 g/170 g – 4–9 szt.",
-  "plakaty-maly-canon-no-margin-170-A4-1-3":
-    "Plakaty mały Canon bez marginesu 130 g/170 g (A4) – 1–3 szt.",
-  "plakaty-maly-canon-no-margin-170-A3-1-3":
-    "Plakaty mały Canon bez marginesu 130 g/170 g (A3) – 1–3 szt.",
-  "plakaty-maly-canon-no-margin-170-A4-4-9":
-    "Plakaty mały Canon bez marginesu 130 g/170 g (A4) – 4–9 szt.",
-  "plakaty-maly-canon-no-margin-170-A3-4-9":
-    "Plakaty mały Canon bez marginesu 130 g/170 g (A3) – 4–9 szt.",
-  "plakaty-maly-canon-no-margin-200-1-3": "Plakaty mały Canon bez marginesu 200 g – 1–3 szt.",
-  "plakaty-maly-canon-no-margin-200-4-9": "Plakaty mały Canon bez marginesu 200 g – 4–9 szt.",
-  "plakaty-maly-canon-no-margin-200-A4-1-3":
-    "Plakaty mały Canon bez marginesu 200 g (A4) – 1–3 szt.",
-  "plakaty-maly-canon-no-margin-200-A3-1-3":
-    "Plakaty mały Canon bez marginesu 200 g (A3) – 1–3 szt.",
-  "plakaty-maly-canon-no-margin-200-A4-4-9":
-    "Plakaty mały Canon bez marginesu 200 g (A4) – 4–9 szt.",
-  "plakaty-maly-canon-no-margin-200-A3-4-9":
-    "Plakaty mały Canon bez marginesu 200 g (A3) – 4–9 szt.",
   "plakaty-duzy-canon-a4-170-kreda-130-170-10": "Plakaty duży Canon A4 130g/170g – 10 szt.",
   "plakaty-duzy-canon-a4-170-kreda-130-170-20": "Plakaty duży Canon A4 130g/170g – 20 szt.",
   "plakaty-duzy-canon-a4-170-kreda-130-170-30": "Plakaty duży Canon A4 130g/170g – 30 szt.",

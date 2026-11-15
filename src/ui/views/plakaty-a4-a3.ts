@@ -1,7 +1,6 @@
 import { View, ViewContext } from "../types";
 import { autoCalc } from "../autoCalc";
-import { calculatePlakatyMalyCanon, calculatePlakatyDuzyCanon } from "../../categories/plakaty";
-import { getPlakatyMalyCanonLegendPanels } from "../../categories/plakaty";
+import { calculatePlakatyDuzyCanon } from "../../categories/plakaty";
 import { formatPLN } from "../../core/money";
 import { getPrice } from "../../services/priceService";
 import { resolveStoredPrice } from "../../core/compat";
@@ -88,13 +87,6 @@ export const PlakatyA4A3View: View = {
 
   initLogic(container: HTMLElement, ctx: ViewContext) {
     const tableData = data as any;
-    const legendStyles = getPlakatyA4A3LegendStyles();
-
-    const canonVariantSelect = container.querySelector("#pa-canon-variant") as HTMLSelectElement;
-    const canonPaperSelect = container.querySelector("#pa-canon-paper") as HTMLSelectElement;
-    const canonFinishSelect = container.querySelector("#pa-canon-finish") as HTMLSelectElement;
-    const canonFormatSelect = container.querySelector("#pa-canon-format") as HTMLSelectElement;
-    const canonQtyInput = container.querySelector("#pa-canon-qty") as HTMLInputElement;
 
     const duzyCanonPaperSelect = container.querySelector(
       "#pa-duzy-canon-paper"
@@ -133,7 +125,6 @@ export const PlakatyA4A3View: View = {
       surchargesBox.innerHTML = renderSurchargeCheckboxesHtml("plakaty-a4-a3");
     };
     renderSurcharges();
-    const malyQtyHint = container.querySelector("#pa-canon-qty-hint") as HTMLElement | null;
     const duzyQtyHint = container.querySelector("#pa-duzy-canon-qty-hint") as HTMLElement | null;
     const resultBox = container.querySelector("#pa-result-area") as HTMLElement;
     const unitPriceEl = container.querySelector("#pa-unit-price") as HTMLElement;
@@ -142,7 +133,6 @@ export const PlakatyA4A3View: View = {
     const qtyLabel = container.querySelector("#pa-qty-label") as HTMLElement | null;
     const qtyValEl = container.querySelector("#pa-qty-val") as HTMLElement | null;
     const expressHint = container.querySelector("#pa-express-hint") as HTMLElement;
-    const conflictWarning = container.querySelector("#pa-conflict-warning") as HTMLElement | null;
     const calcHintEl = container.querySelector("#pa-calc-hint") as HTMLElement | null;
 
     const ensureLegend = () => {
@@ -157,8 +147,8 @@ export const PlakatyA4A3View: View = {
       }
 
       // Marker for the router's central custom-subgroup mount: custom subgroups
-      // belong directly under the Mały/Duży Canon forms and ABOVE the Canon
-      // reference legend, so anchor the slot just before that legend.
+      // belong directly under the Duży Canon form and ABOVE the Canon reference
+      // legend, so anchor the slot just before that legend.
       if (!container.querySelector("#dyn-subgroups-slot")) {
         const slot = document.createElement("div");
         slot.id = "dyn-subgroups-slot";
@@ -174,70 +164,6 @@ export const PlakatyA4A3View: View = {
         if (!tier) return fallback;
         return formatPLN(resolveStoredPrice(`plakaty-duzy-canon-${variantId}-${qty}`, tier.price));
       };
-
-      const malyCanonPanels = getPlakatyMalyCanonLegendPanels();
-      const formatGroupLabel = (prefix: string, paperLabel: string) => `${prefix}<br>${paperLabel}`;
-      const buildCombinedMalyCanonTable = (
-        marginPanel: (typeof malyCanonPanels)[number],
-        noMarginPanel: (typeof malyCanonPanels)[number],
-        title: string,
-        marginGroupLabel: string,
-        noMarginGroupLabel: string
-      ) => {
-        const rows = marginPanel.rows
-          .map((row, rowIndex) => {
-            const noMarginRow = noMarginPanel.rows[rowIndex] ?? row;
-            return `
-              <tr>
-                <td>${row.label} szt</td>
-                <td style="${legendStyles.priceCell}">${row.a4}</td>
-                <td style="${legendStyles.priceCellA3}">${row.a3}</td>
-                <td style="${legendStyles.priceCell}">${noMarginRow.a4}</td>
-                <td style="${legendStyles.priceCellA3}">${noMarginRow.a3}</td>
-              </tr>
-            `;
-          })
-          .join("");
-
-        return `
-          <div class="plakaty-a4a3-maly-canon-panel">
-            <h5 class="plakaty-a4a3-maly-canon-title" style="${legendStyles.panelTitle}">${title}</h5>
-            <table class="plakaty-a4a3-maly-canon-table">
-              <thead>
-                <tr>
-                  <th rowspan="2" style="${legendStyles.quantityHeader}">Ilość</th>
-                  <th colspan="2" style="${legendStyles.groupHeader}">${marginGroupLabel}</th>
-                  <th colspan="2" style="${legendStyles.groupHeaderStrong}">${noMarginGroupLabel}</th>
-                </tr>
-                <tr>
-                  <th style="${legendStyles.sizeHeader}">A4</th>
-                  <th style="${legendStyles.sizeHeader}">A3</th>
-                  <th style="${legendStyles.priceHeaderStrong}">A4</th>
-                  <th style="${legendStyles.priceHeaderStrong}">A3</th>
-                </tr>
-              </thead>
-              <tbody>${rows}</tbody>
-            </table>
-          </div>
-        `;
-      };
-
-      const malyCanonPanelsHtml = [
-        buildCombinedMalyCanonTable(
-          malyCanonPanels[0],
-          malyCanonPanels[2],
-          "130 g/170 g",
-          formatGroupLabel("Z marginesem", "130/170g"),
-          formatGroupLabel("Bez marginesu", "130/170g")
-        ),
-        buildCombinedMalyCanonTable(
-          malyCanonPanels[1],
-          malyCanonPanels[3],
-          "200 g",
-          formatGroupLabel("Z marginesem", "200g"),
-          formatGroupLabel("Bez marginesu", "200g")
-        ),
-      ].join("");
 
       const duzyQuantities = ((findDuzyVariant("a4-170-kreda-130-170")?.tiers ?? []) as any[]).map(
         (tier) => tier.qty
@@ -268,11 +194,7 @@ export const PlakatyA4A3View: View = {
         .join("");
 
       legend.innerHTML = `
-        <h4 style="margin:10px 0 6px;">Mały Canon</h4>
-        <div class="plakaty-a4a3-maly-canon-grid">
-          ${malyCanonPanelsHtml}
-        </div>
-        <h4 style="margin:16px 0 6px;">Duży Canon 170g</h4>
+        <h4 style="margin:10px 0 6px;">Duży Canon 170g</h4>
         <table>
           <thead>
             <tr>
@@ -296,11 +218,6 @@ export const PlakatyA4A3View: View = {
         </table>
       `;
     };
-
-    canonVariantSelect.innerHTML = `
-      <option value="margin">Z marginesem</option>
-      <option value="no-margin">Bez marginesu</option>
-    `;
 
     const duzyVariants = (tableData.duzyCanon?.variants ?? [
       { id: "a4-170-kreda-130-170", name: "A4 170g kreda 130/170" },
@@ -350,12 +267,6 @@ export const PlakatyA4A3View: View = {
       return `${size}-${paper}`;
     };
 
-    const resolveMalyCanonVariantId = () => {
-      const type = canonVariantSelect.value === "no-margin" ? "no-margin" : "margin";
-      const mappedPaper = canonPaperSelect.value === "200" ? "200" : "170";
-      return `${type}-${mappedPaper}`;
-    };
-
     const parsePositiveInt = (value: string): number | null => {
       const parsed = Number.parseInt(value, 10);
       return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
@@ -376,116 +287,16 @@ export const PlakatyA4A3View: View = {
 
     let currentResult: any = null;
     let currentOptions: any = null;
-    let activeCanonInput: "maly" | "duzy" = "maly";
     let blockedHints: (HTMLElement | null)[] = [];
 
-    type ClearReasonTarget = "both" | "maly" | "duzy" | "none";
-
-    const clearResult = (
-      reason: string | null = "Podaj ilość sztuk w Mały Canon lub Duży Canon.",
-      target: ClearReasonTarget = "both"
-    ) => {
+    const clearResult = (reason: string | null = "Podaj ilość sztuk w Duży Canon.") => {
       resultBox.style.display = "none";
       const paBreakdownBox = container.querySelector<HTMLElement>("#pa-breakdown-display");
       if (paBreakdownBox) paBreakdownBox.style.display = "none";
       setButtonGuarded(addBtn, false);
-      setFieldHint(malyQtyHint, target === "maly" || target === "both" ? reason : null);
-      setFieldHint(duzyQtyHint, target === "duzy" || target === "both" ? reason : null);
-      blockedHints =
-        target === "maly"
-          ? [malyQtyHint]
-          : target === "duzy"
-            ? [duzyQtyHint]
-            : target === "both"
-              ? [malyQtyHint, duzyQtyHint]
-              : [];
+      setFieldHint(duzyQtyHint, reason);
+      blockedHints = reason ? [duzyQtyHint] : [];
       if (discountRow) discountRow.style.display = "none";
-    };
-
-    const showConflictWarning = (message: string | null) => {
-      if (!conflictWarning) return;
-      if (!message) {
-        conflictWarning.style.display = "none";
-        conflictWarning.textContent = "";
-        return;
-      }
-      conflictWarning.textContent = message;
-      conflictWarning.style.display = "block";
-    };
-
-    const calcMalyCanon = (qty: number) => {
-      const fmt = (canonFormatSelect.value === "A3" ? "A3" : "A4") as "A4" | "A3";
-      const matId = resolveMalyCanonVariantId();
-      const finish = canonFinishSelect.value === "blysk" ? "błysk" : "mat";
-      const paper = canonPaperSelect.value;
-
-      const res = calculatePlakatyMalyCanon({
-        variantId: matId,
-        format: fmt,
-        qty,
-        express: ctx.expressMode,
-        checkedSurchargeIds: collectCheckedSurchargeIds(surchargesBox),
-      });
-      const trimSurcharge = getDuzyCanonTrimSurcharge();
-      const totalWithTrim = parseFloat((res.totalPrice + trimSurcharge).toFixed(2));
-
-      currentResult = {
-        ...res,
-        totalPrice: totalWithTrim,
-        trimSurcharge,
-      };
-      currentOptions = { type: "canon", matId, fmt, qty, finish, paper, trimSurcharge };
-
-      unitPriceEl.innerText = formatPLN(res.tierPrice);
-      totalPriceEl.innerText = formatPLN(totalWithTrim);
-
-      if (discountRow) {
-        discountRow.style.display = "none";
-      }
-
-      if (qtyLabel) qtyLabel.innerText = "Ilość:";
-      if (qtyValEl) qtyValEl.innerText = `${qty} szt, ${fmt}, ${paper}g kreda, ${finish}`;
-
-      if (calcHintEl) {
-        calcHintEl.style.display = "none";
-        calcHintEl.innerText = "";
-      }
-
-      // Build detailed breakdown similar to Dyplomy
-      const paBreakdownBox = container.querySelector<HTMLElement>("#pa-breakdown-display");
-      const paBreakdownLines = container.querySelector<HTMLElement>("#pa-breakdown-lines");
-      if (paBreakdownBox && paBreakdownLines) {
-        const breakdown: BreakdownRow[] = [
-          {
-            label: "Parametry",
-            value: `${qty} szt, format ${fmt}, papier ${paper}, wykończenie ${finish}`,
-          },
-          { label: "Cena za szt.", value: formatPLN(res.tierPrice) },
-          {
-            label: "Cena bazowa",
-            value: `${qty} szt × ${formatPLN(res.tierPrice)} = ${formatPLN(res.basePrice)}`,
-          },
-        ];
-        if (trimSurcharge > 0) {
-          breakdown.push({ label: "Trymer", value: formatPLN(trimSurcharge) });
-        }
-        breakdown.push({
-          label: "Razem",
-          value: formatPLN(totalWithTrim),
-          separatorTop: true,
-          strongValue: true,
-        });
-        renderBreakdownRows(paBreakdownLines, breakdown);
-        paBreakdownBox.style.display = "block";
-      }
-
-      if (expressHint) expressHint.style.display = "none";
-      resultBox.style.display = "block";
-      setButtonGuarded(addBtn, true);
-      setFieldHint(malyQtyHint, null);
-      setFieldHint(duzyQtyHint, null);
-      blockedHints = [];
-      ctx.updateLastCalculated(totalWithTrim, "Plakaty A4-A3 (Mały Canon)");
     };
 
     const calcDuzyCanon = (qty: number) => {
@@ -582,41 +393,13 @@ export const PlakatyA4A3View: View = {
       if (expressHint) expressHint.style.display = "none";
       resultBox.style.display = "block";
       setButtonGuarded(addBtn, true);
-      setFieldHint(malyQtyHint, null);
       setFieldHint(duzyQtyHint, null);
       blockedHints = [];
       ctx.updateLastCalculated(currentResult.totalPrice, "Plakaty A4-A3 (Duży Canon)");
     };
 
     const recalculate = () => {
-      const malyQty = parsePositiveInt(canonQtyInput.value);
       const duzyQty = parsePositiveInt(duzyCanonQtyInput.value);
-
-      if (malyQty && duzyQty) {
-        showConflictWarning(
-          activeCanonInput === "duzy"
-            ? "USUŃ ILOŚĆ SZTUK Z MAŁY CANON"
-            : "USUŃ ILOŚĆ SZTUK Z DUŻY CANON"
-        );
-        clearResult(null, "none");
-        return;
-      }
-
-      showConflictWarning(null);
-
-      if (malyQty) {
-        try {
-          calcMalyCanon(malyQty);
-        } catch (err) {
-          clearResult(
-            err instanceof Error
-              ? err.message
-              : "Nie udało się obliczyć ceny — spróbuj inną ilość.",
-            "maly"
-          );
-        }
-        return;
-      }
 
       if (duzyQty) {
         try {
@@ -625,8 +408,7 @@ export const PlakatyA4A3View: View = {
           clearResult(
             err instanceof Error
               ? err.message
-              : "Nie udało się obliczyć ceny — spróbuj inną ilość.",
-            "duzy"
+              : "Nie udało się obliczyć ceny — spróbuj inną ilość."
           );
         }
         return;
@@ -634,14 +416,6 @@ export const PlakatyA4A3View: View = {
 
       clearResult();
     };
-
-    canonQtyInput.addEventListener("input", () => {
-      activeCanonInput = "maly";
-    });
-
-    duzyCanonQtyInput.addEventListener("input", () => {
-      activeCanonInput = "duzy";
-    });
 
     autoCalc({ root: container, calc: recalculate, cancelOn: [addBtn] });
 
@@ -708,44 +482,23 @@ export const PlakatyA4A3View: View = {
       }
       if (!currentResult || !currentOptions) return;
 
-      if (currentOptions.type === "canon") {
-        const canonTypeName = canonVariantSelect.options[canonVariantSelect.selectedIndex].text;
-        const trimHint =
-          currentOptions.trimSurcharge > 0
-            ? `, trymer: +${formatPLN(currentOptions.trimSurcharge)}`
-            : "";
-        const hint = `${currentOptions.fmt} × ${currentOptions.qty} szt, ${currentOptions.paper}g kreda, ${currentOptions.finish}${trimHint}`;
-        ctx.cart.addItem({
-          id: `plakaty-a4-a3-${Date.now()}`,
-          category: "Plakaty A4-A3",
-          name: `${canonTypeName} (${currentOptions.paper}g, ${currentOptions.finish}, mały Canon)`,
-          quantity: currentOptions.qty,
-          unit: "szt",
-          unitPrice: currentResult.tierPrice,
-          isExpress: ctx.expressMode,
-          totalPrice: currentResult.totalPrice,
-          optionsHint: hint,
-          payload: currentResult,
-        });
-      } else {
-        const trimHint =
-          currentOptions.trimSurcharge > 0
-            ? `, trymer: +${formatPLN(currentOptions.trimSurcharge)}`
-            : "";
-        const hint = `${currentOptions.qty} szt, ${currentOptions.paper}g kreda, ${currentOptions.finish}${trimHint}`;
-        ctx.cart.addItem({
-          id: `plakaty-a4-a3-${Date.now()}`,
-          category: "Plakaty A4-A3",
-          name: `${currentOptions.paper}g kreda (${currentOptions.finish}, duży Canon)`,
-          quantity: currentOptions.qty,
-          unit: "szt",
-          unitPrice: currentResult.tierPrice,
-          isExpress: ctx.expressMode,
-          totalPrice: currentResult.totalPrice,
-          optionsHint: hint,
-          payload: currentResult,
-        });
-      }
+      const trimHint =
+        currentOptions.trimSurcharge > 0
+          ? `, trymer: +${formatPLN(currentOptions.trimSurcharge)}`
+          : "";
+      const hint = `${currentOptions.qty} szt, ${currentOptions.paper}g kreda, ${currentOptions.finish}${trimHint}`;
+      ctx.cart.addItem({
+        id: `plakaty-a4-a3-${Date.now()}`,
+        category: "Plakaty A4-A3",
+        name: `${currentOptions.paper}g kreda (${currentOptions.finish}, duży Canon)`,
+        quantity: currentOptions.qty,
+        unit: "szt",
+        unitPrice: currentResult.tierPrice,
+        isExpress: ctx.expressMode,
+        totalPrice: currentResult.totalPrice,
+        optionsHint: hint,
+        payload: currentResult,
+      });
 
       clearResult();
       currentResult = null;
