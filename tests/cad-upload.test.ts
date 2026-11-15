@@ -10,9 +10,10 @@ import {
   updateCadFileEntry,
   CAD_PDF_WARN_PAGES,
   CAD_PDF_HARD_PAGES,
+  applyCadUploadExpress,
 } from "../src/categories/cad-upload";
 import { calculateDrukCAD } from "../src/categories/druk-cad";
-import { setPrice, resetPrices } from "../src/services/priceService";
+import { setPrice, resetPrices, PRICES_STORAGE_KEY } from "../src/services/priceService";
 import { getPrice } from "../src/services/priceService";
 
 async function makePdfFile(pageCount: number): Promise<File> {
@@ -455,5 +456,26 @@ describe("compat.ts — ceny CAD czytane na żywo, nie zamrożone przy imporcie"
 
     const updated = calculateCadPrintPrice("A0", false);
     expect(updated).toBe(original + 100);
+  });
+});
+
+// ─── applyCadUploadExpress (CU-02) ────────────────────────────────────────────
+describe("applyCadUploadExpress — EXPRESS doliczany do ceny CAD Upload", () => {
+  it("EXPRESS off → cena bazowa bez zmian", () => {
+    expect(applyCadUploadExpress(100, false)).toBe(100);
+  });
+
+  it("EXPRESS on (domyślnie 0.2) → base × 1.2", () => {
+    expect(applyCadUploadExpress(100, true)).toBe(120);
+  });
+
+  it("wrażliwość: modifier-express 0.3 → base × 1.3", () => {
+    storageData[PRICES_STORAGE_KEY] = JSON.stringify({ "modifier-express": 0.3 });
+    expect(applyCadUploadExpress(100, true)).toBe(130);
+  });
+
+  it("off niezależnie od stawki → base (brak zmiany wyniku)", () => {
+    storageData[PRICES_STORAGE_KEY] = JSON.stringify({ "modifier-express": 0.3 });
+    expect(applyCadUploadExpress(250, false)).toBe(250);
   });
 });

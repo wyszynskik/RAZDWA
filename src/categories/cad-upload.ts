@@ -195,6 +195,17 @@ export function calculateCadUpload(options: {
 }
 
 /**
+ * Dolicza EXPRESS do ceny pozycji CAD Upload. Stawka z globalnego klucza
+ * modifier-express (to samo źródło co pozostałe kategorie, D-105). CAD Upload
+ * nie ma dopłat globalnych, więc EXPRESS liczy się wprost od ceny bazowej.
+ * Gdy tryb EXPRESS wyłączony — zwraca cenę bez zmian (brak zmiany wyniku).
+ */
+export function applyCadUploadExpress(basePrice: number, expressMode: boolean): number {
+  if (!expressMode) return basePrice;
+  return parseFloat((basePrice * (1 + resolveStoredPrice("modifier-express", 0.2))).toFixed(2));
+}
+
+/**
  * Calculate print price for CAD file.
  * Uses formatowe vs metr-bieżący pricing.
  */
