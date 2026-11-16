@@ -25,6 +25,7 @@ import {
   flashFieldHints,
   setButtonGuarded,
   isButtonGuardDisabled,
+  mountInOptionsRegion,
 } from "../viewHelpers";
 
 type BreakdownRow = {
@@ -136,7 +137,7 @@ export const WlepkiView: View = {
     const addBtn = container.querySelector("#btn-add-to-cart") as HTMLButtonElement;
     const surchargesBox = document.createElement("div");
     surchargesBox.id = "wlepki-surcharges";
-    addBtn.insertAdjacentElement("beforebegin", surchargesBox);
+    mountInOptionsRegion(surchargesBox, container, addBtn);
     const renderSurcharges = (): void => {
       surchargesBox.innerHTML = renderSurchargeCheckboxesHtml("wlepki");
     };
