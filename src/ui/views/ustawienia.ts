@@ -3336,12 +3336,7 @@ export const UstawieniaView: View = {
       let previousBindowanieSubgroup = "";
       let isBoldGroup = false;
 
-      // Draft nadpisuje committed (ten sam klucz, późniejszy wpis wygrywa w Map)
-      // — dzięki temu niezapisane edycje etykiety (i inne staged zmiany wariantu)
-      // są widoczne w tabeli od razu, nie dopiero po „Zapisz cennik”.
-      const variantsByKey = new Map(
-        [...getVariantDefinitions(), ..._draftVariantDefs].map((v) => [v.key, v])
-      );
+      const variantsByKey = new Map(getVariantDefinitions().map((v) => [v.key, v]));
 
       // Wiersze z priceFormula (żywa cena relatywna) pokazują świeżo wyliczoną
       // wartość, nie prices[key] wprost — ten sam rezolwer co kalkulator
@@ -3539,7 +3534,17 @@ export const UstawieniaView: View = {
           }
         }
 
-        const label = resolveDisplayLabel(variantsByKey.get(key)?.label, getPriceLabel(key));
+        // Niezapisana edycja nazwy (flushInputs stage'uje do _draftVariantDefs)
+        // musi być widoczna po re-renderze tabeli, zanim admin kliknie „Zapisz
+        // cennik”. Nadpisujemy WYŁĄCZNIE wyświetlaną etykietę z draftu — reszta
+        // (priceFormula, materialSizeOptions, liveResolved) celowo czyta
+        // committed variantsByKey, żeby nieczyszczony draft (np. offline / błąd
+        // GAS) nie zafałszował ceny relatywnej.
+        const draftVariantLabel = _draftVariantDefs.find((d) => d.key === key)?.label;
+        const label = resolveDisplayLabel(
+          draftVariantLabel ?? variantsByKey.get(key)?.label,
+          getPriceLabel(key)
+        );
         if (
           active.id !== "druk-cad" &&
           active.id !== "druk-a4-a3" &&
