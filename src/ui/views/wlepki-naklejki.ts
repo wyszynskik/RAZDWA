@@ -17,6 +17,7 @@ import {
   renderSurchargeCheckboxesHtml,
   collectCheckedSurchargeIds,
   formatCheckedSurchargeNames,
+  formatCheckedSurchargeSummary,
 } from "../../core/dynamicSurcharges";
 import { escapeHtml } from "../../core/validation";
 import type { MaterialDefinition } from "../../core/dynamicMaterials";
@@ -26,6 +27,7 @@ import {
   setButtonGuarded,
   isButtonGuardDisabled,
   mountInOptionsRegion,
+  updateSurchargeSummary,
 } from "../viewHelpers";
 
 type BreakdownRow = {
@@ -608,6 +610,11 @@ export const WlepkiView: View = {
         }
 
         totalPriceEl.textContent = formatPLN(currentResult.totalPrice);
+        updateSurchargeSummary(
+          container,
+          resultDiv,
+          formatCheckedSurchargeSummary("wlepki", currentInput?.checkedSurchargeIds ?? [])
+        );
         if (resultDiv) resultDiv.style.display = "block";
         if (detailedBreakdownDisplay) detailedBreakdownDisplay.style.display = "block";
         setButtonGuarded(addBtn, true);

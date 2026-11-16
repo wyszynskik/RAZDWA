@@ -32,6 +32,7 @@
  */
 import { getVariantDefinitions, type VariantDefinition } from "../services/priceService";
 import { resolveStoredPrice } from "./compat";
+import { formatRatePercent } from "./rateLabels";
 
 export const SURCHARGE_ASSIGNMENT_PREFIX = "__surcharge__";
 
@@ -153,17 +154,39 @@ export function applySurcharges(
  * checkedIds i categoryId, co applySurcharges w danym widoku, żeby nazwa i cena
  * nigdy się nie rozjechały.
  */
-export function collectCheckedSurchargeLabels(categoryId: string, checkedIds: string[]): string[] {
+/**
+ * Zaznaczone dopłaty przypisane do `categoryId`, w kolejności renderu
+ * checkboxów (getSurchargesForCategory) — jedno źródło prawdy dla etykiety
+ * (nazwa koszyka) i żywego podsumowania, żeby nigdy się nie rozjechały.
+ */
+export function collectCheckedSurcharges(
+  categoryId: string,
+  checkedIds: string[]
+): SurchargeDefinition[] {
   if (checkedIds.length === 0) return [];
   const checked = new Set(checkedIds);
-  return getSurchargesForCategory(categoryId)
-    .filter((s) => checked.has(s.id))
-    .map((s) => s.label);
+  return getSurchargesForCategory(categoryId).filter((s) => checked.has(s.id));
+}
+
+export function collectCheckedSurchargeLabels(categoryId: string, checkedIds: string[]): string[] {
+  return collectCheckedSurcharges(categoryId, checkedIds).map((s) => s.label);
 }
 
 /** Jak collectCheckedSurchargeLabels, ale złączone przecinkiem do opisu pozycji ("" gdy brak). */
 export function formatCheckedSurchargeNames(categoryId: string, checkedIds: string[]): string {
   return collectCheckedSurchargeLabels(categoryId, checkedIds).join(", ");
+}
+
+/**
+ * Linie do żywego podsumowania (data-region="summary", ADR-I §2.5): dla każdej
+ * zaznaczonej dopłaty „+ {nazwa} ({procent}%)" ze stawki żywej (formatRatePercent,
+ * konwencja D-104). Nazwa pochodzi z TEGO SAMEGO źródła co opis koszyka
+ * (collectCheckedSurcharges), więc podsumowanie i koszyk nie mogą się rozjechać.
+ */
+export function formatCheckedSurchargeSummary(categoryId: string, checkedIds: string[]): string[] {
+  return collectCheckedSurcharges(categoryId, checkedIds).map(
+    (s) => `+ ${s.label} (${formatRatePercent(s.percent)}%)`
+  );
 }
 
 export function buildSurchargeVariant(
