@@ -20,8 +20,7 @@ import {
   setButtonGuarded,
   isButtonGuardDisabled,
 } from "../viewHelpers";
-
-const SATIN_MULTIPLIER = 1.12;
+import { resolveStoredPrice } from "../../core/compat";
 
 type BreakdownRow = {
   label: string;
@@ -124,8 +123,10 @@ export const UlotkiCyfroweView: View = {
 
     const renderBreakdown = (result: any, options: any) => {
       const basePrice = result.basePrice;
-      const satinAmount = result.isSatin ? parseFloat((basePrice * 0.12).toFixed(2)) : 0;
-      const expressAmount = options.express ? parseFloat((basePrice * 0.2).toFixed(2)) : 0;
+      const satinRate = resolveStoredPrice("modifier-satyna", 0.12);
+      const expressRate = resolveStoredPrice("modifier-express", 0.2);
+      const satinAmount = result.isSatin ? parseFloat((basePrice * satinRate).toFixed(2)) : 0;
+      const expressAmount = options.express ? parseFloat((basePrice * expressRate).toFixed(2)) : 0;
 
       const lines: BreakdownRow[] = [
         { label: "Parametry", value: `${options.qty} szt, ${options.format}, ${options.sides}` },
@@ -135,14 +136,14 @@ export const UlotkiCyfroweView: View = {
       if (result.isSatin) {
         lines.push({
           label: "Satyna",
-          value: `12% × ${formatPLN(basePrice)} = ${formatPLN(satinAmount)}`,
+          value: `${Math.round(satinRate * 100)}% × ${formatPLN(basePrice)} = ${formatPLN(satinAmount)}`,
         });
       }
 
       if (options.express) {
         lines.push({
           label: "EXPRESS",
-          value: `20% × ${formatPLN(basePrice)} = ${formatPLN(expressAmount)}`,
+          value: `${Math.round(expressRate * 100)}% × ${formatPLN(basePrice)} = ${formatPLN(expressAmount)}`,
         });
       }
 
@@ -168,7 +169,7 @@ export const UlotkiCyfroweView: View = {
       const sides = getSelectedSides();
       const paperVal = paperSelect.value;
       const isSatin = paperVal.startsWith("satyna");
-      const factor = isSatin ? SATIN_MULTIPLIER : 1;
+      const factor = isSatin ? 1 + resolveStoredPrice("modifier-satyna", 0.12) : 1;
       const formatOrder: Array<"A5" | "A6" | "DL" | "A4"> = ["A5", "A6", "DL", "A4"];
 
       const priceByFormatByQty: Record<string, Record<number, number>> = {};
@@ -260,6 +261,7 @@ export const UlotkiCyfroweView: View = {
         qty: parseInt(qtySelect.value, 10),
         express: ctx.expressMode,
         sides,
+        isSatin,
         checkedSurchargeIds: collectCheckedSurchargeIds(surchargesBox),
       };
 
@@ -269,15 +271,13 @@ export const UlotkiCyfroweView: View = {
             ? quoteUlotkiDwustronne(currentOptions)
             : quoteJednostronne(currentOptions);
 
-        const totalPrice = isSatin
-          ? parseFloat((result.totalPrice * SATIN_MULTIPLIER).toFixed(2))
-          : result.totalPrice;
+        const totalPrice = result.totalPrice;
         currentResult = { ...result, totalPrice, isSatin };
 
         totalPriceSpan.innerText = formatPLN(totalPrice);
         if (unitPriceSpan) unitPriceSpan.innerText = formatPLN(totalPrice / currentOptions.qty);
         if (tierHint)
-          tierHint.innerText = `${currentOptions.qty} szt, ${currentOptions.format}, ${paperVal.replace("_", " ")} — cena bazowa: ${formatPLN(result.totalPrice)}`;
+          tierHint.innerText = `${currentOptions.qty} szt, ${currentOptions.format}, ${paperVal.replace("_", " ")} — cena bazowa: ${formatPLN(result.basePrice)}`;
         if (expressHint) expressHint.style.display = ctx.expressMode ? "block" : "none";
         if (satinHint) satinHint.style.display = isSatin ? "block" : "none";
         renderBreakdown(currentResult, currentOptions);
