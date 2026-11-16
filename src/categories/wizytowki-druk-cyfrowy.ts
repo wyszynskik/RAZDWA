@@ -1,7 +1,6 @@
 import { calculateBusinessCards } from "../core/compat-logic";
 import { CalculationResult } from "../core/types";
-import { resolveStoredPrice } from "../core/compat";
-import { applySurcharges } from "../core/dynamicSurcharges";
+import { finalizeSatynaPrice } from "../core/satynaPricing";
 
 export interface WizytowkiOptions {
   family?: "standard" | "deluxe";
@@ -11,6 +10,7 @@ export interface WizytowkiOptions {
   deluxeOpt?: "uv3d_softtouch" | "uv3d_gold_softtouch";
   qty: number;
   express: boolean;
+  isSatin?: boolean;
   checkedSurchargeIds?: string[];
 }
 
@@ -32,18 +32,20 @@ export function quoteWizytowki(options: WizytowkiOptions): CalculationResult {
     qty: options.qty,
   });
 
-  let totalPrice = res.total;
-  if (options.express) {
-    totalPrice = res.total * (1 + resolveStoredPrice("modifier-express", 0.2));
-  }
-  totalPrice = applySurcharges("wizytowki", totalPrice, options.checkedSurchargeIds ?? []);
+  const { total, expressRate } = finalizeSatynaPrice({
+    base: res.total,
+    isSatin: options.isSatin ?? false,
+    categoryId: "wizytowki",
+    checkedSurchargeIds: options.checkedSurchargeIds ?? [],
+    express: options.express,
+  });
 
   return {
-    totalPrice: parseFloat(totalPrice.toFixed(2)),
+    totalPrice: total,
     basePrice: res.total,
     effectiveQuantity: options.qty,
     tierPrice: res.total / res.qtyBilled, // approximate
-    modifiersTotal: options.express ? res.total * resolveStoredPrice("modifier-express", 0.2) : 0,
+    modifiersTotal: options.express ? res.total * expressRate : 0,
     appliedModifiers: options.express ? ["TRYB EXPRESS"] : [],
     qtyBilled: res.qtyBilled,
   } as any;

@@ -3,12 +3,13 @@ import { calculatePrice } from "../core/pricing";
 
 import { PriceTable, CalculationResult } from "../core/types";
 import { mergeStoredNumericTiers, resolveStoredPrice } from "../core/compat";
-import { applySurcharges } from "../core/dynamicSurcharges";
+import { finalizeSatynaPrice } from "../core/satynaPricing";
 
 export interface UlotkiJednostronneOptions {
   qty: number;
   format: string;
   express: boolean;
+  isSatin?: boolean;
   checkedSurchargeIds?: string[];
 }
 
@@ -53,12 +54,16 @@ export function getUlotkiJednostronneTable(formatKey: string): PriceTable {
 
 export function quoteJednostronne(options: UlotkiJednostronneOptions): CalculationResult {
   const table = getUlotkiJednostronneTable(options.format);
-  const activeModifiers: string[] = [];
-  if (options.express) activeModifiers.push("express");
+  const result = calculatePrice(table, options.qty, []);
 
-  const result = calculatePrice(table, options.qty, activeModifiers);
-  result.totalPrice = parseFloat(
-    applySurcharges("ulotki", result.totalPrice, options.checkedSurchargeIds ?? []).toFixed(2)
-  );
+  const { total } = finalizeSatynaPrice({
+    base: result.basePrice,
+    isSatin: options.isSatin ?? false,
+    categoryId: "ulotki",
+    checkedSurchargeIds: options.checkedSurchargeIds ?? [],
+    express: options.express,
+  });
+  result.totalPrice = total;
+  result.appliedModifiers = options.express ? ["TRYB EXPRESS"] : [];
   return result;
 }

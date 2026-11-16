@@ -18,8 +18,6 @@ import {
   isButtonGuardDisabled,
 } from "../viewHelpers";
 
-const SATIN_MULTIPLIER = 1.12;
-
 type BreakdownRow = {
   label: string;
   value: string;
@@ -434,14 +432,13 @@ export const WizytowkiView: View = {
         finish: isSofttouch ? "softtouch" : undefined,
         qty,
         express: ctx.expressMode,
+        isSatin,
         checkedSurchargeIds: collectCheckedSurchargeIds(surchargesBox),
       };
 
       try {
         const result = quoteWizytowki(currentOptions);
-        const totalPrice = isSatin
-          ? parseFloat((result.totalPrice * SATIN_MULTIPLIER).toFixed(2))
-          : result.totalPrice;
+        const totalPrice = result.totalPrice;
         currentResult = { ...result, totalPrice, isSatin };
 
         if (totalPriceSpan) totalPriceSpan.innerText = formatPLN(totalPrice);
