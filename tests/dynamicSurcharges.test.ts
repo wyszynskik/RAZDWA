@@ -9,6 +9,7 @@ import {
   surchargeRateKey,
   collectCheckedSurchargeLabels,
   formatCheckedSurchargeNames,
+  formatCheckedSurchargeSummary,
   SURCHARGE_ASSIGNMENT_PREFIX,
 } from "../src/core/dynamicSurcharges";
 import { setVariantDefinitions, setPrice, resetPrices } from "../src/services/priceService";
@@ -175,6 +176,40 @@ describe("dynamicSurcharges", () => {
     it("brak zaznaczeń → pusty string / pusta lista", () => {
       expect(collectCheckedSurchargeLabels("wlepki", [])).toEqual([]);
       expect(formatCheckedSurchargeNames("wlepki", [])).toBe("");
+    });
+  });
+
+  describe("formatCheckedSurchargeSummary (ADR-I §2.5 — żywe podsumowanie)", () => {
+    beforeEach(() => {
+      setVariantDefinitions([
+        buildSurchargeVariant("dwustronne", "Dwustronne", ["wlepki"]),
+        buildSurchargeVariant("klej", "Łatwo zmywalny klej", ["wlepki"]),
+        buildSurchargeVariant("inna", "Inna kategoria", ["banner"]),
+      ]);
+      setPrice(`defaultPrices.${surchargeRateKey("dwustronne")}`, 0.4);
+      setPrice(`defaultPrices.${surchargeRateKey("klej")}`, 0.125);
+      setPrice(`defaultPrices.${surchargeRateKey("inna")}`, 0.2);
+    });
+
+    it("linia „+ {nazwa} ({procent}%)” ze stawki żywej (format D-104, przecinek dziesiętny)", () => {
+      expect(formatCheckedSurchargeSummary("wlepki", ["dwustronne"])).toEqual([
+        "+ Dwustronne (40%)",
+      ]);
+      // 0.125 → 12,5 (formatRatePercent, nie zaokrąglone do 13 jak etykieta checkboxa)
+      expect(formatCheckedSurchargeSummary("wlepki", ["klej"])).toEqual([
+        "+ Łatwo zmywalny klej (12,5%)",
+      ]);
+    });
+
+    it("kolejność i filtr kategorii == collectCheckedSurchargeLabels (wspólne źródło nazw)", () => {
+      const summary = formatCheckedSurchargeSummary("wlepki", ["klej", "dwustronne", "inna"]);
+      const labels = collectCheckedSurchargeLabels("wlepki", ["klej", "dwustronne", "inna"]);
+      expect(summary).toEqual(["+ Dwustronne (40%)", "+ Łatwo zmywalny klej (12,5%)"]);
+      expect(summary.map((l) => l.replace(/^\+ | \(.*\)$/g, ""))).toEqual(labels);
+    });
+
+    it("brak zaznaczeń → pusta lista", () => {
+      expect(formatCheckedSurchargeSummary("wlepki", [])).toEqual([]);
     });
   });
 });

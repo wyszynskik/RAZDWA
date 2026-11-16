@@ -25,7 +25,10 @@ import {
   renderSurchargeCheckboxesHtml,
   collectCheckedSurchargeIds,
   applySurcharges,
+  formatCheckedSurchargeNames,
+  formatCheckedSurchargeSummary,
 } from "../core/dynamicSurcharges";
+import { updateSurchargeSummary } from "./viewHelpers";
 import { interpolatePrice } from "../categories/plakaty";
 import { formatPLN } from "../core/money";
 import { escapeHtml } from "../core/validation";
@@ -486,7 +489,7 @@ function renderProductCard(
     ${legendHtml}
     ${renderMaterialSizeInfoHtml(product.materialSizeOptions)}
     ${qtyFieldHtml}
-    <div class="dyn-result" style="${isFlatRate ? "" : "display:none;"} margin-top:10px;">
+    <div class="dyn-result" data-region="summary" style="${isFlatRate ? "" : "display:none;"} margin-top:10px;">
       <div class="price-line">Cena za szt.: <span class="dyn-unit">-</span></div>
       <div class="price-line highlight">SUMA: <span class="dyn-total">-</span></div>
       <div class="express-hint" style="display:none;">W tym dopłata EXPRESS +${Math.round(getExpressRate() * 100)}%</div>
@@ -608,6 +611,11 @@ export function mountDynamicSubgroupContainers(
         unitEl.textContent = formatPLN(currentComputation.unitPrice);
         totalEl.textContent = formatPLN(currentComputation.totalPrice);
         expressHintEl.style.display = ctx.expressMode ? "block" : "none";
+        updateSurchargeSummary(
+          resultBox,
+          resultBox,
+          formatCheckedSurchargeSummary(categoryId, checkedSurchargeIds)
+        );
         resultBox.style.display = "block";
         addBtn.disabled = false;
       };
@@ -641,6 +649,12 @@ export function mountDynamicSubgroupContainers(
             checkedSurchargeIds
           );
           cartItem.unitPrice = parseFloat((cartItem.totalPrice / cartItem.quantity).toFixed(2));
+          const surchargeNames = formatCheckedSurchargeNames(categoryId, checkedSurchargeIds);
+          if (surchargeNames) {
+            cartItem.optionsHint = cartItem.optionsHint
+              ? `${cartItem.optionsHint}, ${surchargeNames}`
+              : surchargeNames;
+          }
         }
 
         ctx.cart.addItem(cartItem);
