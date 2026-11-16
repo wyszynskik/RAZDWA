@@ -109,7 +109,7 @@ test.describe("Ustawienia: ręczne nadpisanie etykiety ceny", () => {
     await expect(labelInputAfterReset).toHaveValue("Ulotki jednostronne A4 – 10 szt.");
   });
 
-  test("wiersze podkategorii custom (variant.label) NIE dostają pola edycji etykiety", async ({
+  test("wiersze podkategorii custom (variant.label) DOSTAJĄ edytowalne pole nazwy, a edycja persystuje (D-108/PR-10b)", async ({
     page,
   }) => {
     await page.goto("/#/ustawienia");
@@ -123,8 +123,23 @@ test.describe("Ustawienia: ręczne nadpisanie etykiety ceny", () => {
     await page.click("#btn-save");
     await expect(page.locator("#save-msg")).toBeVisible();
 
-    const customRow = page.locator("tr[data-key]", { hasText: "10 szt." }).last();
-    await expect(customRow.locator('input[data-field="label"]')).toHaveCount(0);
-    await expect(customRow.locator(".settings-product-label")).toBeVisible();
+    // Wariant custom-subgroup ma teraz edytowalny input nazwy (nie <span>).
+    // hasText nie widzi wartości inputu, więc lokalizujemy po atrybucie value.
+    const variantLabelInput = page.locator('input[data-label-target="variant"][value="10 szt."]');
+    await expect(variantLabelInput).toHaveCount(1);
+    await expect(variantLabelInput).toHaveValue("10 szt.");
+    const dataKey = await variantLabelInput.evaluate((el) =>
+      el.closest("tr")?.getAttribute("data-key")
+    );
+
+    // Edycja nazwy + zapis → variant.label zmieniony, utrzymany po re-renderze.
+    await variantLabelInput.fill("Ulotki ekonomiczne 10 szt.");
+    await page.click("#btn-save");
+    await expect(page.locator("#save-msg")).toBeVisible();
+
+    const sameRowInput = page.locator(
+      `tr[data-key="${dataKey}"] input[data-label-target="variant"]`
+    );
+    await expect(sameRowInput).toHaveValue("Ulotki ekonomiczne 10 szt.");
   });
 });

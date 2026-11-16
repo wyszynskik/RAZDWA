@@ -3004,6 +3004,7 @@ export const UstawieniaView: View = {
     }
 
     function flushInputs(): void {
+      let variantLabelStaged = false;
       container.querySelectorAll<HTMLTableRowElement>("tbody tr[data-key]").forEach((row) => {
         const priceInput = row.querySelector<HTMLInputElement>("input[data-field='unitPrice']");
         const key = row.dataset.key ?? "";
@@ -3016,18 +3017,46 @@ export const UstawieniaView: View = {
           prices[key] = nextPrice;
         }
 
-        // Tylko klucze natywne mają pole etykiety w DOM (zob. renderTable) —
-        // podkategorie custom trzymają etykietę w variant.label, nie tutaj.
         const labelInput = row.querySelector<HTMLInputElement>("input[data-field='label']");
         if (key && labelInput) {
           const rawLabel = labelInput.value.trim();
-          if (rawLabel === "" || rawLabel === getAutoPriceLabel(key)) {
-            delete customPriceLabels[key];
+          if (labelInput.dataset.labelTarget === "variant") {
+            // Podkategoria custom: nazwa mieszka w variant.label. Edycję
+            // stage'ujemy do _draftVariantDefs (ten sam kanał, który „Zapisz
+            // cennik" commituje i synchronizuje z arkuszem). Stage tylko gdy
+            // pole faktycznie zmienione (vs data-orig) i gdy nowa wartość różni
+            // się od obecnej — inaczej każdy flush (przełączenie zakładki)
+            // oznaczałby zmiany jako niezapisane bez powodu.
+            const orig = (labelInput.dataset.orig ?? "").trim();
+            if (rawLabel !== orig) {
+              const current =
+                _draftVariantDefs.find((d) => d.key === key) ??
+                getVariantDefinitions().find((v) => v.key === key);
+              if (current) {
+                // Puste pole (lub wpisana dokładnie etykieta automatyczna) → powrót
+                // do etykiety generowanej automatycznie (label=""), spójnie z
+                // trybem natywnym poniżej.
+                const nextLabel =
+                  rawLabel === "" || rawLabel === getAutoPriceLabel(key) ? "" : rawLabel;
+                if ((current.label ?? "") !== nextLabel) {
+                  _draftVariantDefs = _draftVariantDefs
+                    .filter((d) => d.key !== key)
+                    .concat({ ...current, label: nextLabel, updatedAt: new Date().toISOString() });
+                  variantLabelStaged = true;
+                }
+              }
+            }
           } else {
-            customPriceLabels[key] = rawLabel;
+            // Klucz natywny: etykieta w customPriceLabels (nadpisanie auto).
+            if (rawLabel === "" || rawLabel === getAutoPriceLabel(key)) {
+              delete customPriceLabels[key];
+            } else {
+              customPriceLabels[key] = rawLabel;
+            }
           }
         }
       });
+      if (variantLabelStaged) updateDraftIndicator();
     }
 
     function renderTabs(): void {
@@ -3307,7 +3336,12 @@ export const UstawieniaView: View = {
       let previousBindowanieSubgroup = "";
       let isBoldGroup = false;
 
-      const variantsByKey = new Map(getVariantDefinitions().map((v) => [v.key, v]));
+      // Draft nadpisuje committed (ten sam klucz, późniejszy wpis wygrywa w Map)
+      // — dzięki temu niezapisane edycje etykiety (i inne staged zmiany wariantu)
+      // są widoczne w tabeli od razu, nie dopiero po „Zapisz cennik”.
+      const variantsByKey = new Map(
+        [...getVariantDefinitions(), ..._draftVariantDefs].map((v) => [v.key, v])
+      );
 
       // Wiersze z priceFormula (żywa cena relatywna) pokazują świeżo wyliczoną
       // wartość, nie prices[key] wprost — ten sam rezolwer co kalkulator
@@ -3571,7 +3605,7 @@ export const UstawieniaView: View = {
           <td class="settings-td-product">
             ${
               variantsByKey.get(key) && !isWizytowkiNativeKey
-                ? `<span class="settings-product-label${useAltLabel ? " settings-product-label--alt" : ""}" title="${escapeHtml(label)}">${escapeHtml(label)}</span>`
+                ? `<input type="text" data-field="label" data-label-target="variant" data-orig="${escapeHtml(label)}" value="${escapeHtml(label)}" title="Nazwa wariantu — edytuj, aby zmienić etykietę pozycji. Legenda (opis pod nazwą) pozostaje osobno. Wyczyść pole, żeby wrócić do automatycznej." class="settings-input settings-input--label settings-product-label${useAltLabel ? " settings-product-label--alt" : ""}">`
                 : `<input type="text" data-field="label" value="${escapeHtml(label)}" title="Etykieta generowana automatycznie — edytuj, aby nadpisać. Wyczyść pole, żeby wrócić do automatycznej." class="settings-input settings-input--label settings-product-label${useAltLabel ? " settings-product-label--alt" : ""}">`
             }
             ${materialSizeText ? `<span class="settings-product-materialsize" style="display:block; font-size:0.8em; color:#7a8a9a;">${escapeHtml(materialSizeText)}</span>` : ""}
