@@ -130,7 +130,6 @@ export const PlakatyA4A3View: View = {
     const resultBox = container.querySelector("#pa-result-area") as HTMLElement;
     const unitPriceEl = container.querySelector("#pa-unit-price") as HTMLElement;
     const totalPriceEl = container.querySelector("#pa-total-price") as HTMLElement;
-    const discountRow = container.querySelector("#pa-discount-row") as HTMLElement | null;
     const qtyLabel = container.querySelector("#pa-qty-label") as HTMLElement | null;
     const qtyValEl = container.querySelector("#pa-qty-val") as HTMLElement | null;
     const expressHint = container.querySelector("#pa-express-hint") as HTMLElement;
@@ -297,7 +296,6 @@ export const PlakatyA4A3View: View = {
       setButtonGuarded(addBtn, false);
       setFieldHint(duzyQtyHint, reason);
       blockedHints = reason ? [duzyQtyHint] : [];
-      if (discountRow) discountRow.style.display = "none";
     };
 
     const calcDuzyCanon = (qty: number) => {
@@ -331,10 +329,6 @@ export const PlakatyA4A3View: View = {
 
       unitPriceEl.innerText = formatPLN(res.tierPrice);
       totalPriceEl.innerText = formatPLN(totalWithTrim);
-
-      if (discountRow) {
-        discountRow.style.display = "none";
-      }
 
       if (qtyLabel) qtyLabel.innerText = "Ilość:";
       if (qtyValEl) qtyValEl.innerText = `${res.qty} szt, ${paper}g kreda, ${finish}`;
