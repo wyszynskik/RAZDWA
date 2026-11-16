@@ -1939,82 +1939,8 @@ a[href] {
 .cennik-table:not(.pricing-legend) { display: none; }
 
 /* ===== PLAKATY A4-A3 ===== */
-.plakaty-a4a3-inner-grid {
-  --pa-left-shift: 7px;
-  --pa-right-trim: 5px;
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 16px;
-  align-items: start;
-  box-sizing: border-box;
-  margin-left: calc(var(--pa-left-shift) * -1);
-  width: calc(100% - var(--pa-right-trim));
-  max-width: 100%;
-}
-
 .plakaty-a4a3-legend {
   overflow-x: auto;
-}
-
-.plakaty-a4a3-maly-canon-grid {
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 10px;
-}
-
-.plakaty-a4a3-maly-canon-panel {
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  padding: 8px;
-  background: rgba(255, 255, 255, 0.55);
-  min-width: 0;
-  overflow: hidden;
-}
-
-.plakaty-a4a3-maly-canon-title {
-  margin: 0 0 6px;
-  font-size: 12px;
-  color: var(--primary);
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
-}
-
-.plakaty-a4a3-maly-canon-table {
-  width: 100%;
-  table-layout: fixed;
-  margin: 0;
-  min-width: 0;
-}
-
-.plakaty-a4a3-maly-canon-table th,
-.plakaty-a4a3-maly-canon-table td {
-  padding: 6px 5px;
-}
-
-.plakaty-a4a3-maly-canon-table thead th {
-  font-size: 11px;
-  line-height: 1.2;
-  overflow-wrap: anywhere;
-  white-space: normal;
-}
-
-.plakaty-a4a3-maly-canon-table thead th span {
-  display: inline-block;
-  font-size: 10px;
-  font-weight: 600;
-  color: var(--text-secondary);
-}
-
-.plakaty-a4a3-maly-canon-table tbody td {
-  font-size: 11px;
-}
-
-.plakaty-a4a3-maly-canon-table tbody td:first-child {
-  font-size: 12px;
-}
-
-.plakaty-a4a3-maly-canon-table tbody td:not(:first-child) {
-  white-space: nowrap;
 }
 
 /* ===== FOLIA SZRONIONA (legend width fix) ===== */
@@ -4028,13 +3954,6 @@ details[open] > .settings-wizard-header--collapsible::after {
   }
 }
 
-@media (max-width: 960px) {
-  .plakaty-a4a3-inner-grid {
-    grid-template-columns: minmax(0, 1fr);
-    max-width: 100%;
-  }
-}
-
 @media (max-width: 768px) {
   /* layout */
   .app-grid {
@@ -4122,12 +4041,6 @@ details[open] > .settings-wizard-header--collapsible::after {
   }
   .settings-th-key {
     min-width: 200px;
-  }
-
-  /* plakaty */
-  .plakaty-a4a3-inner-grid {
-    --pa-left-shift: 0px;
-    --pa-right-trim: 0px;
   }
 
   /* folia */
