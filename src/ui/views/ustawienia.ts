@@ -115,7 +115,11 @@ import {
 } from "../../services/catalogSync";
 import { writeAppliedRevision, writeAppliedUpdatedAt } from "../../services/catalogRevision";
 import { warmPriceCache, getZeroPriceLabels, getZeroPriceDefaults } from "../../core/compat";
-import { classifyVariantsIntoProducts } from "../../core/productModel";
+import {
+  classifyVariantsIntoProducts,
+  runMigrationDryRun,
+  formatMigrationSummary,
+} from "../../core/productModel";
 import type { PriceRecord } from "../../types/price-schema";
 import {
   pushPricesToGas,
@@ -3286,7 +3290,51 @@ export const UstawieniaView: View = {
       }
     }
 
+    // H17: podgrupy odrzucone przez klasyfikację (needsReview/skipped) znikały
+    // bez śladu — admin nie wiedział, że coś się nie załadowało. Tylko
+    // prezentacja: czyta żywy katalog (runMigrationDryRun), nie zmienia logiki
+    // klasyfikacji ani nie naprawia odrzuconych. Tekst z formatMigrationSummary
+    // (jedno źródło), wstawiany przez textContent — żadna etykieta/sufiks z
+    // katalogu nie trafia do innerHTML (model zagrożeń jak Z-01).
+    function refreshNeedsReviewWarning(): void {
+      const box = container.querySelector<HTMLElement>("#needsreview-warning");
+      if (!box) return;
+
+      const report = runMigrationDryRun();
+      const total = report.needsReview.length + report.skipped.length;
+      if (total === 0) {
+        box.style.display = "none";
+        box.replaceChildren();
+        return;
+      }
+
+      const headline = document.createElement("strong");
+      headline.textContent = `⚠️ ${total} podgrup nie załadowano do panelu: ${report.needsReview.length} do przeglądu, ${report.skipped.length} pominięte`;
+
+      const details = document.createElement("details");
+      details.style.marginTop = "6px";
+      const summary = document.createElement("summary");
+      summary.style.cursor = "pointer";
+      summary.textContent = "Szczegóły (co i dlaczego)";
+      const pre = document.createElement("pre");
+      pre.style.whiteSpace = "pre-wrap";
+      pre.style.margin = "6px 0 0";
+      pre.style.fontSize = "12px";
+      pre.textContent = formatMigrationSummary(report);
+      details.append(summary, pre);
+
+      const note = document.createElement("div");
+      note.style.marginTop = "6px";
+      note.style.opacity = ".85";
+      note.textContent =
+        "Nic nie naprawiono automatycznie — sprawdź klucze/sufiksy w cenniku lub GAS.";
+
+      box.replaceChildren(headline, details, note);
+      box.style.display = "";
+    }
+
     function renderTable(): void {
+      refreshNeedsReviewWarning();
       const active = getActiveCategory();
       const keys = getCategoryKeys(prices, active);
       const tbody = container.querySelector<HTMLElement>("#prices-tbody");
@@ -4080,6 +4128,8 @@ export const UstawieniaView: View = {
             <button id="settings-btn-logout" type="button" class="btn-secondary idb-sync-btn">🔒 Wyloguj</button>
           </div>
         </div>
+
+        <div id="needsreview-warning" class="settings-warning" style="display:none; margin:12px 0; padding:8px 10px; border-radius:6px; border:1px solid #f59e0b; background:#fffbeb; color:#92400e; font-size:13px;"></div>
 
         <div id="idb-panel" style="display:none">
           <div id="idb-status" class="idb-status" style="display:none"></div>

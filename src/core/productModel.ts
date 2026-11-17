@@ -517,9 +517,12 @@ export function formatMigrationSummary(
     `  interpolated: ${report.migrated.filter((p) => p.calcType === "interpolated").length}`,
     `  flat-per-unit: ${report.migrated.filter((p) => p.calcType === "flat-per-unit").length}`,
     `  flat-rate: ${report.migrated.filter((p) => p.calcType === "flat-rate").length}`,
-    `Pominięte klastry: ${report.skipped.length}`,
-    `Wymagające przeglądu (needs-review): ${report.needsReview.length}`
+    `Pominięte klastry: ${report.skipped.length}`
   );
+  for (const sk of report.skipped) {
+    lines.push(`  - ${sk.categoryId}/${sk.subcategoryPrefix}: ${sk.reason}`);
+  }
+  lines.push(`Wymagające przeglądu (needs-review): ${report.needsReview.length}`);
   for (const nr of report.needsReview) {
     lines.push(
       `  - ${nr.categoryId}/${nr.subcategoryPrefix} (${nr.keys.length} kluczy): ${nr.reason}`

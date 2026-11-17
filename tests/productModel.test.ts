@@ -572,6 +572,24 @@ describe("formatMigrationSummary", () => {
     );
   });
 
+  it("itemizuje pominięte klastry (H17: które i dlaczego, nie tylko licznik)", () => {
+    const report = classifyVariantsIntoProducts(
+      [makeVariant({ key: "banner-x", categoryId: "banner", subcategoryPrefix: "" })],
+      { "banner-x": 5 }
+    );
+    expect(report.skipped.length).toBeGreaterThan(0);
+
+    const summary = formatMigrationSummary(report);
+    expect(summary).toContain(`Pominięte klastry: ${report.skipped.length}`);
+    expect(summary).toContain(`  - banner/: ${report.skipped[0].reason}`);
+
+    // Pozycje pominiętych pojawiają się PRZED sekcją needs-review (kolejność).
+    const idxSkipped = summary.indexOf("  - banner/:");
+    const idxNeedsReview = summary.indexOf("Wymagające przeglądu");
+    expect(idxSkipped).toBeGreaterThan(-1);
+    expect(idxSkipped).toBeLessThan(idxNeedsReview);
+  });
+
   it("includes totalPriceKeys/totalVariants lines only when supplied", () => {
     const withTotals = formatMigrationSummary(baseReport, {
       totalPriceKeys: 120,
