@@ -1,5 +1,6 @@
 import { test, expect, type Page } from "@playwright/test";
 import { join } from "node:path";
+import { waitForCadViewReady } from "./helpers/waitForViewReady";
 
 /**
  * Regresja: router potrafi wywołać mount() na tym widoku więcej niż raz dla
@@ -60,7 +61,7 @@ test.describe("CAD upload — checkboxy 'zaznacz wszystkie' z wieloma plikami", 
     });
 
     await page.goto("/#/cad-upload");
-    await page.waitForSelector("#cadFileInput", { state: "attached", timeout: 10000 });
+    await waitForCadViewReady(page);
 
     await page.setInputFiles("#cadFileInput", files);
     await expect(page.locator("#results-body tr[data-file-id]")).toHaveCount(6);

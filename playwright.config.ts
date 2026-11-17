@@ -5,7 +5,10 @@ export default defineConfig({
   timeout: 20_000,
   expect: { timeout: 6_000 },
   fullyParallel: true,
-  retries: 0,
+  // Jeden retry w CI, widoczny w raporcie (reporter list + html pokazują status
+  // „flaky"), żeby realny flake środowiskowy nie blokował bramki, ale NIE był
+  // wyciszony — wzorzec retry jest sygnałem do zbadania, nie do zamiecenia.
+  retries: process.env.CI ? 1 : 0,
   reporter: [["list"], ["html", { open: "never", outputFolder: "playwright-report" }]],
   use: {
     baseURL: "http://localhost:8081",

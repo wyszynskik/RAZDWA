@@ -18,10 +18,43 @@ type ParseResult =
 
 // Helper to load extra CAD options from JSON
 async function loadCadExtraOptions(): Promise<any[]> {
-  const resp = await fetch("data/normalized/cad-upload.json");
-  if (!resp.ok) return [];
-  const data = await resp.json();
-  return data.items || [];
+  // Usługi dodatkowe są niekrytyczne. Błąd sieci NIE może odrzucić initLogic —
+  // inaczej osłona inicjalizacji (disabled input + komunikat) nigdy by się nie
+  // zdjęła i widok zostałby trwale zablokowany (Z-03 Gap 2).
+  try {
+    const resp = await fetch("data/normalized/cad-upload.json");
+    if (!resp.ok) return [];
+    const data = await resp.json();
+    return data.items || [];
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Zdejmuje osłonę okna inicjalizacji CAD (Z-03): aktywuje input plików, usuwa
+ * aria-busy i czyści komunikat „Wczytywanie widoku…". Wywoływane z finally
+ * initLogic, więc osłona opada też przy wyjątku dowolnego kroku po await.
+ * `mountIsCurrent` = false oznacza mount wyparty (DOM martwy) → nic nie rusza.
+ * Refy null-guarded, bo wczesny return przy braku elementów też przechodzi przez
+ * finally. Komunikat czyści TYLKO gdy nadal pokazuje tekst inicjalizacji — nie
+ * nadpisuje komunikatu biznesowego (np. „Dodano N plików."). Zwraca, czy osłona
+ * została zdjęta (caller ustawia wtedy initReady).
+ */
+export function applyCadInitGuardRelease(
+  mountIsCurrent: boolean,
+  fileInput: HTMLInputElement | null,
+  dropZone: HTMLElement | null,
+  statusEl: HTMLElement | null
+): boolean {
+  if (!mountIsCurrent) return false;
+  if (fileInput) fileInput.disabled = false;
+  if (dropZone) dropZone.removeAttribute("aria-busy");
+  if (statusEl && statusEl.textContent === "Wczytywanie widoku…") {
+    statusEl.textContent = "";
+    statusEl.style.display = "none";
+  }
+  return true;
 }
 
 /**
@@ -82,17 +115,70 @@ export const CadUploadView: View = {
     const optFill = container.querySelector<HTMLInputElement>("#optZapelnienie");
     const optScale = container.querySelector<HTMLInputElement>("#optPowieksz");
     const optEmail = container.querySelector<HTMLInputElement>("#optEmail");
-    // Dynamically render extra CAD options from JSON
-    const extraOptions = await loadCadExtraOptions();
-    if (container.dataset.cadMountGen !== mountToken) return; // superseded while awaiting — do not wire up listeners on a DOM state we no longer own
-    // Render extra options in the UI
-    const extraRow = container.querySelector<HTMLElement>(".cad-extra-services-row");
-    if (extraRow) {
-      extraRow.innerHTML =
-        `<strong style=\"width:100%;margin-bottom:4px;\">Usługi dodatkowe</strong>` +
-        extraOptions
-          .map(
-            (opt) => `
+
+    // Z-03/Z-04 — osłona okna inicjalizacji. Handlery wejścia plików (change na
+    // #cadFileInput, drop na #cadDropZone) podpinają się dopiero PO await
+    // poniżej. Bez osłony plik wybrany w tym oknie przepada po cichu (change bez
+    // odbiorcy), a plik upuszczony bez preventDefault przeładowuje stronę na jego
+    // podgląd (brak globalnego guardu drag&drop). Do czasu pełnego podpięcia:
+    // input wyłączony, drop/dragover neutralizowane, widoczny komunikat. Flaga
+    // initReady zdejmuje osłonę na końcu initLogic — wcześniej bound wczesne
+    // handlery stają się no-op, więc nie kolidują z prawdziwymi (linie ~1101+).
+    let initReady = false;
+    const initStatusEl = container.querySelector<HTMLElement>("#cadUploadStatus");
+    const showInitLoading = (): void => {
+      if (!initStatusEl) return;
+      initStatusEl.textContent = "Wczytywanie widoku…";
+      initStatusEl.style.display = "block";
+      initStatusEl.style.background = "#e8f5e9";
+      initStatusEl.style.border = "2px solid #4caf50";
+      initStatusEl.style.color = "#1b5e20";
+    };
+    const preventDragDuringInit = (e: Event): void => {
+      if (!initReady) e.preventDefault();
+    };
+    const swallowDropDuringInit = (e: Event): void => {
+      if (initReady) return;
+      e.preventDefault();
+      showInitLoading();
+    };
+    if (fileInput) fileInput.disabled = true;
+    if (dropZone) {
+      dropZone.setAttribute("aria-busy", "true");
+      dropZone.addEventListener("dragover", preventDragDuringInit);
+      dropZone.addEventListener("drop", swallowDropDuringInit);
+    }
+    showInitLoading();
+
+    // Zwolnienie osłony wywoływane z finally — gwarancja, że input NIE zostaje
+    // trwale zablokowany, nawet gdy dowolny krok po await rzuci. Domyka
+    // initStatusEl (zadeklarowany PRZED try), nie statusEl (deklarowany dalej —
+    // byłby w TDZ przy rzucie przed jego linią → ReferenceError maskowałby
+    // oryginalny wyjątek). Token-check najpierw: gdy mount został wyparty, DOM
+    // jest martwy i zwolnienia nie wykonujemy. fileInput/dropZone null-guarded,
+    // bo wczesny return przy braku elementów też przechodzi przez finally.
+    const releaseInitGuard = (): void => {
+      const released = applyCadInitGuardRelease(
+        container.dataset.cadMountGen === mountToken,
+        fileInput,
+        dropZone,
+        initStatusEl
+      );
+      if (released) initReady = true;
+    };
+
+    try {
+      // Dynamically render extra CAD options from JSON
+      const extraOptions = await loadCadExtraOptions();
+      if (container.dataset.cadMountGen !== mountToken) return; // superseded while awaiting — do not wire up listeners on a DOM state we no longer own
+      // Render extra options in the UI
+      const extraRow = container.querySelector<HTMLElement>(".cad-extra-services-row");
+      if (extraRow) {
+        extraRow.innerHTML =
+          `<strong style=\"width:100%;margin-bottom:4px;\">Usługi dodatkowe</strong>` +
+          extraOptions
+            .map(
+              (opt) => `
           <div class=\"cad-extra-option\">
             <label class=\"cad-option-item\">
               <input type=\"checkbox\" id=\"cad-opt-${opt.id}\">
@@ -104,139 +190,140 @@ export const CadUploadView: View = {
             </div>
           </div>
         `
-          )
-          .join("");
-    }
-
-    // Get references to option checkboxes and qty inputs
-    const optKlientSkladanie = container.querySelector<HTMLInputElement>("#optKlientSkladanie");
-    const cadUploadKlientSkladanieQtyRow = container.querySelector<HTMLElement>(
-      "#cad-upload-klient-skladanie-qty-row"
-    );
-    const cadUploadKlientSkladanieQty = container.querySelector<HTMLInputElement>(
-      "#cadUploadKlientSkladanieQty"
-    );
-    const cadUploadKlientSkladanieAdd = container.querySelector<HTMLButtonElement>(
-      "#cadUploadKlientSkladanieAdd"
-    );
-    const cadUploadKlientSkladaniePriceLine = container.querySelector<HTMLElement>(
-      "#cad-upload-klient-skladanie-price"
-    );
-    const optNieformatoweSkladanie = container.querySelector<HTMLInputElement>(
-      "#optNieformatoweSkladanie"
-    );
-    const cadUploadNieformatoweSkladanieQtyRow = container.querySelector<HTMLElement>(
-      "#cad-upload-nieformatowe-skladanie-qty-row"
-    );
-    const cadUploadNieformatoweSkladanieQty = container.querySelector<HTMLInputElement>(
-      "#cadUploadNieformatoweSkladanieQty"
-    );
-    const cadUploadNieformatoweSkladanieAdd = container.querySelector<HTMLButtonElement>(
-      "#cadUploadNieformatoweSkladanieAdd"
-    );
-    const cadUploadNieformatoweSkladaniePriceLine = container.querySelector<HTMLElement>(
-      "#cad-upload-nieformatowe-skladanie-price"
-    );
-    const optPaskiWzmacniajace = container.querySelector<HTMLInputElement>("#optPaskiWzmacniajace");
-    const cadUploadPaskiWzmacniajaceQtyRow = container.querySelector<HTMLElement>(
-      "#cad-upload-paski-wzmacniajace-qty-row"
-    );
-    const cadUploadPaskiWzmacniajaceQty = container.querySelector<HTMLInputElement>(
-      "#cadUploadPaskiWzmacniajaceQty"
-    );
-    const cadUploadPaskiWzmacniajaceAdd = container.querySelector<HTMLButtonElement>(
-      "#cadUploadPaskiWzmacniajaceAdd"
-    );
-    const cadUploadPaskiWzmacniajacePriceLine = container.querySelector<HTMLElement>(
-      "#cad-upload-paski-wzmacniajace-price"
-    );
-    const colorToggle =
-      container.querySelector<HTMLElement>("#colorToggle") ||
-      container.querySelector<HTMLElement>("#cadColorToggle");
-    const colorSwitch = container.querySelector<HTMLElement>("#colorSwitch");
-    const resultsContainer = container.querySelector<HTMLElement>("#results-container");
-    const tableBody =
-      container.querySelector<HTMLElement>("#results-body") ||
-      container.querySelector<HTMLElement>("#filesTableBody") ||
-      container.querySelector<HTMLElement>("#cadTableBody");
-    const summaryPanel =
-      container.querySelector<HTMLElement>("#summaryPanel") ||
-      container.querySelector<HTMLElement>("#cadSummary");
-    const summaryGrid = container.querySelector<HTMLElement>("#summaryGrid");
-    const grandTotal = container.querySelector<HTMLElement>("#grandTotal");
-    const foldAllCheck = container.querySelector<HTMLInputElement>("#foldAllCheck");
-    const scanAllCheck = container.querySelector<HTMLInputElement>("#scanAllCheck");
-    const warningEl = container.querySelector<HTMLElement>("#cadWarning");
-    const statusEl = container.querySelector<HTMLElement>("#cadUploadStatus");
-    let statusHideTimer: ReturnType<typeof setTimeout> | null = null;
-    const calculationsList = container.querySelector<HTMLElement>("#obliczeniaLista");
-    const ekranObliczen = container.querySelector<HTMLElement>("#ekranObliczen");
-
-    if (!dropZone || !fileInput || !tableBody) {
-      console.error("❌ CAD Upload: Missing required elements");
-      return;
-    }
-
-    // State
-    let files: CadUploadFileEntry[] = [];
-    let isColor = (modeSelect?.value || "color") === "color";
-    let dpi = 300;
-    let grandTotalColorVariant = 0;
-    let grandTotalBwVariant = 0;
-    const cadPricing: any = getPrice("drukCAD");
-
-    const renderLegend = () => {
-      if (!ekranObliczen || !cadPricing?.price) return;
-
-      let legend = container.querySelector<HTMLElement>("#cad-upload-legend");
-      if (!legend) {
-        legend = document.createElement("div");
-        legend.id = "cad-upload-legend";
-        legend.className = "cennik-table pricing-legend";
-        legend.style.marginTop = "16px";
-        ekranObliczen.appendChild(legend);
+            )
+            .join("");
       }
 
-      const displayCadFormat = (format: string): string => {
-        if (format === "A0p") return "A0+";
-        if (format === "A1p") return "A1+";
-        if (format === "R1067") return "Rolka 1067";
-        return format;
-      };
+      // Get references to option checkboxes and qty inputs
+      const optKlientSkladanie = container.querySelector<HTMLInputElement>("#optKlientSkladanie");
+      const cadUploadKlientSkladanieQtyRow = container.querySelector<HTMLElement>(
+        "#cad-upload-klient-skladanie-qty-row"
+      );
+      const cadUploadKlientSkladanieQty = container.querySelector<HTMLInputElement>(
+        "#cadUploadKlientSkladanieQty"
+      );
+      const cadUploadKlientSkladanieAdd = container.querySelector<HTMLButtonElement>(
+        "#cadUploadKlientSkladanieAdd"
+      );
+      const cadUploadKlientSkladaniePriceLine = container.querySelector<HTMLElement>(
+        "#cad-upload-klient-skladanie-price"
+      );
+      const optNieformatoweSkladanie = container.querySelector<HTMLInputElement>(
+        "#optNieformatoweSkladanie"
+      );
+      const cadUploadNieformatoweSkladanieQtyRow = container.querySelector<HTMLElement>(
+        "#cad-upload-nieformatowe-skladanie-qty-row"
+      );
+      const cadUploadNieformatoweSkladanieQty = container.querySelector<HTMLInputElement>(
+        "#cadUploadNieformatoweSkladanieQty"
+      );
+      const cadUploadNieformatoweSkladanieAdd = container.querySelector<HTMLButtonElement>(
+        "#cadUploadNieformatoweSkladanieAdd"
+      );
+      const cadUploadNieformatoweSkladaniePriceLine = container.querySelector<HTMLElement>(
+        "#cad-upload-nieformatowe-skladanie-price"
+      );
+      const optPaskiWzmacniajace =
+        container.querySelector<HTMLInputElement>("#optPaskiWzmacniajace");
+      const cadUploadPaskiWzmacniajaceQtyRow = container.querySelector<HTMLElement>(
+        "#cad-upload-paski-wzmacniajace-qty-row"
+      );
+      const cadUploadPaskiWzmacniajaceQty = container.querySelector<HTMLInputElement>(
+        "#cadUploadPaskiWzmacniajaceQty"
+      );
+      const cadUploadPaskiWzmacniajaceAdd = container.querySelector<HTMLButtonElement>(
+        "#cadUploadPaskiWzmacniajaceAdd"
+      );
+      const cadUploadPaskiWzmacniajacePriceLine = container.querySelector<HTMLElement>(
+        "#cad-upload-paski-wzmacniajace-price"
+      );
+      const colorToggle =
+        container.querySelector<HTMLElement>("#colorToggle") ||
+        container.querySelector<HTMLElement>("#cadColorToggle");
+      const colorSwitch = container.querySelector<HTMLElement>("#colorSwitch");
+      const resultsContainer = container.querySelector<HTMLElement>("#results-container");
+      const tableBody =
+        container.querySelector<HTMLElement>("#results-body") ||
+        container.querySelector<HTMLElement>("#filesTableBody") ||
+        container.querySelector<HTMLElement>("#cadTableBody");
+      const summaryPanel =
+        container.querySelector<HTMLElement>("#summaryPanel") ||
+        container.querySelector<HTMLElement>("#cadSummary");
+      const summaryGrid = container.querySelector<HTMLElement>("#summaryGrid");
+      const grandTotal = container.querySelector<HTMLElement>("#grandTotal");
+      const foldAllCheck = container.querySelector<HTMLInputElement>("#foldAllCheck");
+      const scanAllCheck = container.querySelector<HTMLInputElement>("#scanAllCheck");
+      const warningEl = container.querySelector<HTMLElement>("#cadWarning");
+      const statusEl = container.querySelector<HTMLElement>("#cadUploadStatus");
+      let statusHideTimer: ReturnType<typeof setTimeout> | null = null;
+      const calculationsList = container.querySelector<HTMLElement>("#obliczeniaLista");
+      const ekranObliczen = container.querySelector<HTMLElement>("#ekranObliczen");
 
-      const collectRowsForMode = (mode: "bw" | "color", modeLabel: string) => {
-        const modeKey = mode === "bw" ? "bw" : "kolor";
-        const fmtMap = cadPricing.price?.[mode]?.formatowe ?? {};
-        const mbMap = cadPricing.price?.[mode]?.mb ?? {};
-        const allFormats = Array.from(new Set([...Object.keys(fmtMap), ...Object.keys(mbMap)]));
+      if (!dropZone || !fileInput || !tableBody) {
+        console.error("❌ CAD Upload: Missing required elements");
+        return;
+      }
 
-        return allFormats
-          .map((format) => {
-            const normalized = String(format)
-              .toLowerCase()
-              .replace("0p", "0plus")
-              .replace("1p", "1plus")
-              .replace("r1067", "mb1067");
-            const fmtBase = Number((fmtMap as any)[format] ?? 0);
-            const mbBase = Number((mbMap as any)[format] ?? 0);
-            const fmtKey = `druk-cad-${modeKey}-fmt-${normalized}`;
-            const mbKey = `druk-cad-${modeKey}-mb-${normalized}`;
-            const fmtPrice =
-              (fmtMap as any)[format] == null
-                ? "-"
-                : formatPLN(resolveStoredPrice(fmtKey, fmtBase));
-            const mbPrice =
-              (mbMap as any)[format] == null ? "-" : formatPLN(resolveStoredPrice(mbKey, mbBase));
+      // State
+      let files: CadUploadFileEntry[] = [];
+      let isColor = (modeSelect?.value || "color") === "color";
+      let dpi = 300;
+      let grandTotalColorVariant = 0;
+      let grandTotalBwVariant = 0;
+      const cadPricing: any = getPrice("drukCAD");
 
-            return `<tr><td>${modeLabel}</td><td>${displayCadFormat(String(format))}</td><td>${fmtPrice}</td><td>${mbPrice}</td></tr>`;
-          })
-          .join("");
-      };
+      const renderLegend = () => {
+        if (!ekranObliczen || !cadPricing?.price) return;
 
-      const bwRows = collectRowsForMode("bw", "Czarno-biały");
-      const colorRows = collectRowsForMode("color", "Kolorowy");
+        let legend = container.querySelector<HTMLElement>("#cad-upload-legend");
+        if (!legend) {
+          legend = document.createElement("div");
+          legend.id = "cad-upload-legend";
+          legend.className = "cennik-table pricing-legend";
+          legend.style.marginTop = "16px";
+          ekranObliczen.appendChild(legend);
+        }
 
-      legend.innerHTML = `        <div class="legend-head">
+        const displayCadFormat = (format: string): string => {
+          if (format === "A0p") return "A0+";
+          if (format === "A1p") return "A1+";
+          if (format === "R1067") return "Rolka 1067";
+          return format;
+        };
+
+        const collectRowsForMode = (mode: "bw" | "color", modeLabel: string) => {
+          const modeKey = mode === "bw" ? "bw" : "kolor";
+          const fmtMap = cadPricing.price?.[mode]?.formatowe ?? {};
+          const mbMap = cadPricing.price?.[mode]?.mb ?? {};
+          const allFormats = Array.from(new Set([...Object.keys(fmtMap), ...Object.keys(mbMap)]));
+
+          return allFormats
+            .map((format) => {
+              const normalized = String(format)
+                .toLowerCase()
+                .replace("0p", "0plus")
+                .replace("1p", "1plus")
+                .replace("r1067", "mb1067");
+              const fmtBase = Number((fmtMap as any)[format] ?? 0);
+              const mbBase = Number((mbMap as any)[format] ?? 0);
+              const fmtKey = `druk-cad-${modeKey}-fmt-${normalized}`;
+              const mbKey = `druk-cad-${modeKey}-mb-${normalized}`;
+              const fmtPrice =
+                (fmtMap as any)[format] == null
+                  ? "-"
+                  : formatPLN(resolveStoredPrice(fmtKey, fmtBase));
+              const mbPrice =
+                (mbMap as any)[format] == null ? "-" : formatPLN(resolveStoredPrice(mbKey, mbBase));
+
+              return `<tr><td>${modeLabel}</td><td>${displayCadFormat(String(format))}</td><td>${fmtPrice}</td><td>${mbPrice}</td></tr>`;
+            })
+            .join("");
+        };
+
+        const bwRows = collectRowsForMode("bw", "Czarno-biały");
+        const colorRows = collectRowsForMode("color", "Kolorowy");
+
+        legend.innerHTML = `        <div class="legend-head">
           <div>
             <h4>CENNIK CAD WIELKOFORMATOWY</h4>
             <p class="legend-subtitle">Ceny za metr bieżący (MB) oraz formatowo. Inne usługi dostępne poniżej.</p>
@@ -253,345 +340,347 @@ export const CadUploadView: View = {
           <tr><td colspan="2">Doklejanie pasków wzmacniających</td><td colspan="2">${formatPLN(resolveStoredPrice("cad-paski-wzmacniajace", 0.8))} / szt</td></tr>
         </table>
       `;
-    };
+      };
 
-    // Helpers
-    function pxToMm(px: number): number {
-      return px * (25.4 / dpi);
-    }
-
-    function getMode(): "bw" | "color" {
-      return isColor ? "color" : "bw";
-    }
-
-    function formatLabel(fmt: string): string {
-      if (fmt === "A0p") return "A0+";
-      if (fmt === "A1p") return "A1+";
-      if (fmt === "R1067") return "Rolka 1067";
-      return fmt;
-    }
-
-    function formatPlikCount(count: number): string {
-      const abs = Math.abs(Math.trunc(count));
-      const mod10 = abs % 10;
-      const mod100 = abs % 100;
-
-      if (abs === 1) return `${abs} plik`;
-      if (mod10 >= 2 && mod10 <= 4 && !(mod100 >= 12 && mod100 <= 14)) {
-        return `${abs} pliki`;
+      // Helpers
+      function pxToMm(px: number): number {
+        return px * (25.4 / dpi);
       }
-      return `${abs} plików`;
-    }
 
-    function calcSurchargeMultiplier(): number {
-      let m = 1;
-      if (optFill?.checked) m += resolveStoredPrice("modifier-druk-zadruk25", 0.5);
-      if (optScale?.checked) m += 0.5;
-      return m;
-    }
-
-    const klientUnitPrice = resolveStoredPrice("cad-klient-skladanie", 4.0);
-    const nieformatoweUnitPrice = resolveStoredPrice("cad-nieformatowe-skladanie", 2.5);
-    const paskiUnitPrice = resolveStoredPrice("cad-paski-wzmacniajace", 0.8);
-
-    const parsePositiveQty = (input: HTMLInputElement | null, unit: "szt" | "m²"): number => {
-      if (!input) return 0;
-      const raw = (input.value || "").trim().replace(",", ".");
-      if (!raw) return 0;
-      const parsed = unit === "m²" ? parseFloat(raw) : parseInt(raw, 10);
-      if (!Number.isFinite(parsed) || parsed <= 0) return 0;
-      return parsed;
-    };
-
-    const updateExtraServicePriceLine = (
-      checkbox: HTMLInputElement | null,
-      qtyInput: HTMLInputElement | null,
-      priceLine: HTMLElement | null,
-      unitPrice: number,
-      unit: "szt" | "m²"
-    ) => {
-      if (!priceLine) return;
-      const qty = parsePositiveQty(qtyInput, unit);
-      const shouldShow = !!checkbox?.checked && qty > 0;
-      priceLine.style.display = shouldShow ? "block" : "none";
-      if (!shouldShow) {
-        priceLine.textContent = "";
-        return;
+      function getMode(): "bw" | "color" {
+        return isColor ? "color" : "bw";
       }
-      const total = parseFloat((unitPrice * qty).toFixed(2));
-      priceLine.textContent = `Cena: ${formatPLN(total)}`;
-    };
 
-    const addExtraServiceToCart = (params: {
-      id: string;
-      name: string;
-      unit: "szt" | "m²";
-      qtyInput: HTMLInputElement | null;
-      checkbox: HTMLInputElement | null;
-      qtyRow: HTMLElement | null;
-      priceLine: HTMLElement | null;
-      unitPrice: number;
-    }) => {
-      const qty = parsePositiveQty(params.qtyInput, params.unit);
-      if (qty <= 0) return;
+      function formatLabel(fmt: string): string {
+        if (fmt === "A0p") return "A0+";
+        if (fmt === "A1p") return "A1+";
+        if (fmt === "R1067") return "Rolka 1067";
+        return fmt;
+      }
 
-      const totalPrice = parseFloat((params.unitPrice * qty).toFixed(2));
-      ctx.cart.addItem({
-        id: `cad-upload-extra-${params.id}-${Date.now()}`,
-        category: "CAD Upload",
-        name: params.name,
-        quantity: qty,
-        unit: params.unit,
-        unitPrice: params.unitPrice,
-        isExpress: false,
-        totalPrice,
-        optionsHint: `${qty} ${params.unit}`,
-        payload: {
-          type: "cad-upload-extra-service",
-          serviceId: params.id,
+      function formatPlikCount(count: number): string {
+        const abs = Math.abs(Math.trunc(count));
+        const mod10 = abs % 10;
+        const mod100 = abs % 100;
+
+        if (abs === 1) return `${abs} plik`;
+        if (mod10 >= 2 && mod10 <= 4 && !(mod100 >= 12 && mod100 <= 14)) {
+          return `${abs} pliki`;
+        }
+        return `${abs} plików`;
+      }
+
+      function calcSurchargeMultiplier(): number {
+        let m = 1;
+        if (optFill?.checked) m += resolveStoredPrice("modifier-druk-zadruk25", 0.5);
+        if (optScale?.checked) m += 0.5;
+        return m;
+      }
+
+      const klientUnitPrice = resolveStoredPrice("cad-klient-skladanie", 4.0);
+      const nieformatoweUnitPrice = resolveStoredPrice("cad-nieformatowe-skladanie", 2.5);
+      const paskiUnitPrice = resolveStoredPrice("cad-paski-wzmacniajace", 0.8);
+
+      const parsePositiveQty = (input: HTMLInputElement | null, unit: "szt" | "m²"): number => {
+        if (!input) return 0;
+        const raw = (input.value || "").trim().replace(",", ".");
+        if (!raw) return 0;
+        const parsed = unit === "m²" ? parseFloat(raw) : parseInt(raw, 10);
+        if (!Number.isFinite(parsed) || parsed <= 0) return 0;
+        return parsed;
+      };
+
+      const updateExtraServicePriceLine = (
+        checkbox: HTMLInputElement | null,
+        qtyInput: HTMLInputElement | null,
+        priceLine: HTMLElement | null,
+        unitPrice: number,
+        unit: "szt" | "m²"
+      ) => {
+        if (!priceLine) return;
+        const qty = parsePositiveQty(qtyInput, unit);
+        const shouldShow = !!checkbox?.checked && qty > 0;
+        priceLine.style.display = shouldShow ? "block" : "none";
+        if (!shouldShow) {
+          priceLine.textContent = "";
+          return;
+        }
+        const total = parseFloat((unitPrice * qty).toFixed(2));
+        priceLine.textContent = `Cena: ${formatPLN(total)}`;
+      };
+
+      const addExtraServiceToCart = (params: {
+        id: string;
+        name: string;
+        unit: "szt" | "m²";
+        qtyInput: HTMLInputElement | null;
+        checkbox: HTMLInputElement | null;
+        qtyRow: HTMLElement | null;
+        priceLine: HTMLElement | null;
+        unitPrice: number;
+      }) => {
+        const qty = parsePositiveQty(params.qtyInput, params.unit);
+        if (qty <= 0) return;
+
+        const totalPrice = parseFloat((params.unitPrice * qty).toFixed(2));
+        ctx.cart.addItem({
+          id: `cad-upload-extra-${params.id}-${Date.now()}`,
+          category: "CAD Upload",
+          name: params.name,
           quantity: qty,
           unit: params.unit,
           unitPrice: params.unitPrice,
+          isExpress: false,
           totalPrice,
-        },
-      });
-
-      ctx.updateLastCalculated(totalPrice, `CAD Upload - ${params.name}`);
-
-      if (params.qtyInput) params.qtyInput.value = "";
-      if (params.checkbox) params.checkbox.checked = false;
-      if (params.qtyRow) params.qtyRow.style.display = "none";
-      if (params.priceLine) {
-        params.priceLine.textContent = "";
-        params.priceLine.style.display = "none";
-      }
-
-      renderFiles();
-    };
-
-    function getExtraServicesTotal(): number {
-      let total = 0;
-
-      if (optKlientSkladanie?.checked) {
-        const qty = parseInt(cadUploadKlientSkladanieQty?.value || "0", 10);
-        if (!isNaN(qty) && qty > 0) {
-          total += klientUnitPrice * qty;
-        }
-      }
-
-      if (optNieformatoweSkladanie?.checked) {
-        const qty = parseFloat((cadUploadNieformatoweSkladanieQty?.value || "0").replace(",", "."));
-        if (!isNaN(qty) && qty > 0) {
-          total += nieformatoweUnitPrice * qty;
-        }
-      }
-
-      if (optPaskiWzmacniajace?.checked) {
-        const qty = parseInt(cadUploadPaskiWzmacniajaceQty?.value || "0", 10);
-        if (!isNaN(qty) && qty > 0) {
-          total += paskiUnitPrice * qty;
-        }
-      }
-
-      return parseFloat(total.toFixed(2));
-    }
-
-    function showStatus(message: string, isWarning = false): void {
-      if (!statusEl) return;
-      if (statusHideTimer) {
-        clearTimeout(statusHideTimer);
-        statusHideTimer = null;
-      }
-      statusEl.textContent = message;
-      statusEl.style.display = message ? "block" : "none";
-      statusEl.style.background = isWarning ? "#fff3cd" : "#e8f5e9";
-      statusEl.style.border = isWarning ? "2px solid #ffc107" : "2px solid #4caf50";
-      statusEl.style.color = isWarning ? "#856404" : "#1b5e20";
-
-      // Bez auto-ukrycia komunikat wisi bezterminowo i wygląda jak zawieszony
-      // stan UI, nie jak informacja o zakończonym przetwarzaniu.
-      if (message) {
-        statusHideTimer = setTimeout(
-          () => {
-            if (statusEl) statusEl.style.display = "none";
-            statusHideTimer = null;
+          optionsHint: `${qty} ${params.unit}`,
+          payload: {
+            type: "cad-upload-extra-service",
+            serviceId: params.id,
+            quantity: qty,
+            unit: params.unit,
+            unitPrice: params.unitPrice,
+            totalPrice,
           },
-          isWarning ? 7000 : 5000
-        );
-      }
-    }
+        });
 
-    function syncSequentialIds(): void {
-      files = files.map((file, index) => ({ ...file, id: index + 1 }));
-    }
+        ctx.updateLastCalculated(totalPrice, `CAD Upload - ${params.name}`);
 
-    // MAX_CAD_FILES limituje WGRANE PLIKI, nie wiersze tabeli — jeden plik z
-    // mixem A3+A4 daje 2 wiersze, ale to wciąż 1 plik względem tego limitu.
-    function sourceFileCount(): number {
-      return new Set(files.map((f) => f.sourceFileId)).size;
-    }
-
-    function getAllowedFiles(fileList: FileList): File[] {
-      const remainingSlots = Math.max(0, MAX_CAD_FILES - sourceFileCount());
-      if (warningEl) {
-        warningEl.style.display = sourceFileCount() >= MAX_CAD_FILES ? "block" : "none";
-      }
-
-      if (remainingSlots <= 0) {
-        showStatus(`Można dodać maksymalnie ${MAX_CAD_FILES} plików.`, true);
-        return [];
-      }
-
-      const incoming = Array.from(fileList);
-      const withinSize = incoming.filter((file) => file.size <= CAD_FILE_HARD_BYTES);
-      const oversized = incoming.length - withinSize.length;
-
-      const accepted = withinSize.slice(0, remainingSlots);
-      const skippedLimit = withinSize.length - accepted.length;
-      const heavy = accepted.filter((file) => file.size > CAD_FILE_WARN_BYTES).length;
-
-      const messages: string[] = [];
-      messages.push(`Dodano ${accepted.length} plików.`);
-      if (oversized > 0) {
-        messages.push(`Pominięto ${oversized} (> ${CAD_FILE_HARD_MB} MB).`);
-      }
-      if (skippedLimit > 0) {
-        messages.push(`Pominięto ${skippedLimit} (limit ${MAX_CAD_FILES}).`);
-      }
-      if (heavy > 0) {
-        messages.push(
-          `${heavy} ciężkich (${CAD_FILE_WARN_MB}–${CAD_FILE_HARD_MB} MB) – przetwarzanie może potrwać dłużej.`
-        );
-      }
-
-      if (oversized > 0 || skippedLimit > 0 || heavy > 0) {
-        showStatus(messages.join(" "), true);
-      } else {
-        showStatus("");
-      }
-
-      return accepted;
-    }
-
-    async function mapWithConcurrency<T, U>(
-      items: T[],
-      concurrency: number,
-      worker: (item: T, index: number) => Promise<U>
-    ): Promise<U[]> {
-      if (items.length === 0) return [];
-      const results: U[] = new Array(items.length);
-      let nextIndex = 0;
-
-      const runWorker = async () => {
-        while (nextIndex < items.length) {
-          const current = nextIndex++;
-          results[current] = await worker(items[current], current);
+        if (params.qtyInput) params.qtyInput.value = "";
+        if (params.checkbox) params.checkbox.checked = false;
+        if (params.qtyRow) params.qtyRow.style.display = "none";
+        if (params.priceLine) {
+          params.priceLine.textContent = "";
+          params.priceLine.style.display = "none";
         }
+
+        renderFiles();
       };
 
-      const workers = Array.from({ length: Math.min(concurrency, items.length) }, () =>
-        runWorker()
-      );
+      function getExtraServicesTotal(): number {
+        let total = 0;
 
-      await Promise.all(workers);
-      return results;
-    }
+        if (optKlientSkladanie?.checked) {
+          const qty = parseInt(cadUploadKlientSkladanieQty?.value || "0", 10);
+          if (!isNaN(qty) && qty > 0) {
+            total += klientUnitPrice * qty;
+          }
+        }
 
-    function calculateVariantPrint(file: CadUploadFileEntry, mode: "color" | "bw"): number {
-      const recalculated = updateCadFileEntry({ ...file, mode }, mode);
-      return recalculated.printPrice;
-    }
+        if (optNieformatoweSkladanie?.checked) {
+          const qty = parseFloat(
+            (cadUploadNieformatoweSkladanieQty?.value || "0").replace(",", ".")
+          );
+          if (!isNaN(qty) && qty > 0) {
+            total += nieformatoweUnitPrice * qty;
+          }
+        }
 
-    /**
-     * A4 w CAD Upload używa TEJ SAMEJ tabeli cen co kategoria "Druk A4/A3"
-     * (drukA4A3.print.{bw|color}.A4, progi ilościowe z prices.json) — ten sam
-     * klucz resolveStoredPrice, żeby edycja ceny w jednym miejscu działała
-     * wszędzie. Cena liczona od SUMY stron A4 w całej tabeli (nie per wiersz),
-     * bo próg cenowy zależy od łącznego nakładu — dorzucenie kolejnego pliku
-     * z A4 lub zwiększenie Ilości przelicza cenę WSZYSTKICH stron A4 do nowego,
-     * obowiązującego progu. Nakład = Σ (strony × Ilość), więc kopie też liczą
-     * się do progu i do sumy.
-     */
-    function calculateA4Total(mode: "color" | "bw"): number {
-      const totalA4Pages = files
-        .filter((f) => f.format === "A4")
-        .reduce((sum, f) => sum + f.pageCount * (f.printQty || 1), 0);
-      if (totalA4Pages <= 0) return 0;
+        if (optPaskiWzmacniajace?.checked) {
+          const qty = parseInt(cadUploadPaskiWzmacniajaceQty?.value || "0", 10);
+          if (!isNaN(qty) && qty > 0) {
+            total += paskiUnitPrice * qty;
+          }
+        }
 
-      return calculateSimplePrint({
-        mode,
-        format: "A4",
-        pages: totalA4Pages,
-        email: false,
-        ink25: false,
-        ink25Qty: 0,
-      }).grandTotal;
-    }
+        return parseFloat(total.toFixed(2));
+      }
 
-    /**
-     * Cena za 1 stronę A4 przy aktualnym progu (z sumy stron A4 w całej
-     * tabeli). Używana do pokazania realnej kwoty PER WIERSZ — ten sam próg
-     * co calculateA4Total, więc suma cen wierszy = calculateA4Total.
-     */
-    function calculateA4UnitPrice(mode: "color" | "bw"): number {
-      const totalA4Pages = files
-        .filter((f) => f.format === "A4")
-        .reduce((sum, f) => sum + f.pageCount * (f.printQty || 1), 0);
-      if (totalA4Pages <= 0) return 0;
+      function showStatus(message: string, isWarning = false): void {
+        if (!statusEl) return;
+        if (statusHideTimer) {
+          clearTimeout(statusHideTimer);
+          statusHideTimer = null;
+        }
+        statusEl.textContent = message;
+        statusEl.style.display = message ? "block" : "none";
+        statusEl.style.background = isWarning ? "#fff3cd" : "#e8f5e9";
+        statusEl.style.border = isWarning ? "2px solid #ffc107" : "2px solid #4caf50";
+        statusEl.style.color = isWarning ? "#856404" : "#1b5e20";
 
-      return calculateSimplePrint({
-        mode,
-        format: "A4",
-        pages: totalA4Pages,
-        email: false,
-        ink25: false,
-        ink25Qty: 0,
-      }).unitPrice;
-    }
+        // Bez auto-ukrycia komunikat wisi bezterminowo i wygląda jak zawieszony
+        // stan UI, nie jak informacja o zakończonym przetwarzaniu.
+        if (message) {
+          statusHideTimer = setTimeout(
+            () => {
+              if (statusEl) statusEl.style.display = "none";
+              statusHideTimer = null;
+            },
+            isWarning ? 7000 : 5000
+          );
+        }
+      }
 
-    function calculateA4RowPrice(file: CadUploadFileEntry, mode: "color" | "bw"): number {
-      return calculateA4UnitPrice(mode) * file.pageCount * (file.printQty || 1);
-    }
+      function syncSequentialIds(): void {
+        files = files.map((file, index) => ({ ...file, id: index + 1 }));
+      }
 
-    function calculateRowTotal(
-      file: CadUploadFileEntry,
-      mode: "color" | "bw",
-      surcharge: number
-    ): number {
-      const recalculated = updateCadFileEntry({ ...file, mode }, mode);
-      const print = recalculated.printPrice * surcharge;
-      const printQty = file.printQty || 1;
-      return (print + recalculated.foldingPrice + recalculated.scanPrice) * printQty;
-    }
+      // MAX_CAD_FILES limituje WGRANE PLIKI, nie wiersze tabeli — jeden plik z
+      // mixem A3+A4 daje 2 wiersze, ale to wciąż 1 plik względem tego limitu.
+      function sourceFileCount(): number {
+        return new Set(files.map((f) => f.sourceFileId)).size;
+      }
 
-    function renderCalculations(): void {
-      if (!calculationsList) return;
+      function getAllowedFiles(fileList: FileList): File[] {
+        const remainingSlots = Math.max(0, MAX_CAD_FILES - sourceFileCount());
+        if (warningEl) {
+          warningEl.style.display = sourceFileCount() >= MAX_CAD_FILES ? "block" : "none";
+        }
 
-      if (files.length === 0) {
-        calculationsList.innerHTML = `
+        if (remainingSlots <= 0) {
+          showStatus(`Można dodać maksymalnie ${MAX_CAD_FILES} plików.`, true);
+          return [];
+        }
+
+        const incoming = Array.from(fileList);
+        const withinSize = incoming.filter((file) => file.size <= CAD_FILE_HARD_BYTES);
+        const oversized = incoming.length - withinSize.length;
+
+        const accepted = withinSize.slice(0, remainingSlots);
+        const skippedLimit = withinSize.length - accepted.length;
+        const heavy = accepted.filter((file) => file.size > CAD_FILE_WARN_BYTES).length;
+
+        const messages: string[] = [];
+        messages.push(`Dodano ${accepted.length} plików.`);
+        if (oversized > 0) {
+          messages.push(`Pominięto ${oversized} (> ${CAD_FILE_HARD_MB} MB).`);
+        }
+        if (skippedLimit > 0) {
+          messages.push(`Pominięto ${skippedLimit} (limit ${MAX_CAD_FILES}).`);
+        }
+        if (heavy > 0) {
+          messages.push(
+            `${heavy} ciężkich (${CAD_FILE_WARN_MB}–${CAD_FILE_HARD_MB} MB) – przetwarzanie może potrwać dłużej.`
+          );
+        }
+
+        if (oversized > 0 || skippedLimit > 0 || heavy > 0) {
+          showStatus(messages.join(" "), true);
+        } else {
+          showStatus("");
+        }
+
+        return accepted;
+      }
+
+      async function mapWithConcurrency<T, U>(
+        items: T[],
+        concurrency: number,
+        worker: (item: T, index: number) => Promise<U>
+      ): Promise<U[]> {
+        if (items.length === 0) return [];
+        const results: U[] = new Array(items.length);
+        let nextIndex = 0;
+
+        const runWorker = async () => {
+          while (nextIndex < items.length) {
+            const current = nextIndex++;
+            results[current] = await worker(items[current], current);
+          }
+        };
+
+        const workers = Array.from({ length: Math.min(concurrency, items.length) }, () =>
+          runWorker()
+        );
+
+        await Promise.all(workers);
+        return results;
+      }
+
+      function calculateVariantPrint(file: CadUploadFileEntry, mode: "color" | "bw"): number {
+        const recalculated = updateCadFileEntry({ ...file, mode }, mode);
+        return recalculated.printPrice;
+      }
+
+      /**
+       * A4 w CAD Upload używa TEJ SAMEJ tabeli cen co kategoria "Druk A4/A3"
+       * (drukA4A3.print.{bw|color}.A4, progi ilościowe z prices.json) — ten sam
+       * klucz resolveStoredPrice, żeby edycja ceny w jednym miejscu działała
+       * wszędzie. Cena liczona od SUMY stron A4 w całej tabeli (nie per wiersz),
+       * bo próg cenowy zależy od łącznego nakładu — dorzucenie kolejnego pliku
+       * z A4 lub zwiększenie Ilości przelicza cenę WSZYSTKICH stron A4 do nowego,
+       * obowiązującego progu. Nakład = Σ (strony × Ilość), więc kopie też liczą
+       * się do progu i do sumy.
+       */
+      function calculateA4Total(mode: "color" | "bw"): number {
+        const totalA4Pages = files
+          .filter((f) => f.format === "A4")
+          .reduce((sum, f) => sum + f.pageCount * (f.printQty || 1), 0);
+        if (totalA4Pages <= 0) return 0;
+
+        return calculateSimplePrint({
+          mode,
+          format: "A4",
+          pages: totalA4Pages,
+          email: false,
+          ink25: false,
+          ink25Qty: 0,
+        }).grandTotal;
+      }
+
+      /**
+       * Cena za 1 stronę A4 przy aktualnym progu (z sumy stron A4 w całej
+       * tabeli). Używana do pokazania realnej kwoty PER WIERSZ — ten sam próg
+       * co calculateA4Total, więc suma cen wierszy = calculateA4Total.
+       */
+      function calculateA4UnitPrice(mode: "color" | "bw"): number {
+        const totalA4Pages = files
+          .filter((f) => f.format === "A4")
+          .reduce((sum, f) => sum + f.pageCount * (f.printQty || 1), 0);
+        if (totalA4Pages <= 0) return 0;
+
+        return calculateSimplePrint({
+          mode,
+          format: "A4",
+          pages: totalA4Pages,
+          email: false,
+          ink25: false,
+          ink25Qty: 0,
+        }).unitPrice;
+      }
+
+      function calculateA4RowPrice(file: CadUploadFileEntry, mode: "color" | "bw"): number {
+        return calculateA4UnitPrice(mode) * file.pageCount * (file.printQty || 1);
+      }
+
+      function calculateRowTotal(
+        file: CadUploadFileEntry,
+        mode: "color" | "bw",
+        surcharge: number
+      ): number {
+        const recalculated = updateCadFileEntry({ ...file, mode }, mode);
+        const print = recalculated.printPrice * surcharge;
+        const printQty = file.printQty || 1;
+        return (print + recalculated.foldingPrice + recalculated.scanPrice) * printQty;
+      }
+
+      function renderCalculations(): void {
+        if (!calculationsList) return;
+
+        if (files.length === 0) {
+          calculationsList.innerHTML = `
           <div class="obliczenie-item">
             <strong>Brak plików</strong>
             <div class="obliczenie-text">Dodaj pliki, aby zobaczyć szczegóły kalkulacji.</div>
           </div>
         `;
-        return;
-      }
+          return;
+        }
 
-      const surcharge = calcSurchargeMultiplier();
-      const surchargePct = Math.round((surcharge - 1) * 100);
+        const surcharge = calcSurchargeMultiplier();
+        const surchargePct = Math.round((surcharge - 1) * 100);
 
-      calculationsList.innerHTML = files
-        .map((file) => {
-          if (file.format === "A4") {
-            const totalA4Pages = files
-              .filter((f) => f.format === "A4")
-              .reduce((sum, f) => sum + f.pageCount, 0);
-            const a4UnitColor = calculateA4UnitPrice("color");
-            const a4UnitBw = calculateA4UnitPrice("bw");
-            const a4RowColor = calculateA4RowPrice(file, "color");
-            const a4RowBw = calculateA4RowPrice(file, "bw");
+        calculationsList.innerHTML = files
+          .map((file) => {
+            if (file.format === "A4") {
+              const totalA4Pages = files
+                .filter((f) => f.format === "A4")
+                .reduce((sum, f) => sum + f.pageCount, 0);
+              const a4UnitColor = calculateA4UnitPrice("color");
+              const a4UnitBw = calculateA4UnitPrice("bw");
+              const a4RowColor = calculateA4RowPrice(file, "color");
+              const a4RowBw = calculateA4RowPrice(file, "bw");
 
-            return `
+              return `
             <div class="obliczenie-item">
               <strong>${file.id}. ${escapeHtml(file.name)}</strong>
               <div class="obliczenie-text">
@@ -610,40 +699,40 @@ export const CadUploadView: View = {
               ${buildSourceFileBreakdownHtml(file)}
             </div>
           `;
-          }
+            }
 
-          const lengthMeters = Math.max(file.widthMm, file.heightMm) / 1000;
-          const isMb = !file.isFormatowy;
+            const lengthMeters = Math.max(file.widthMm, file.heightMm) / 1000;
+            const isMb = !file.isFormatowy;
 
-          const colorPrintBase = calculateVariantPrint(file, "color");
-          const bwPrintBase = calculateVariantPrint(file, "bw");
-          const colorUnit = isMb
-            ? lengthMeters > 0 && file.pageCount > 0
-              ? colorPrintBase / (lengthMeters * file.pageCount)
-              : 0
-            : file.pageCount > 0
-              ? colorPrintBase / file.pageCount
-              : 0;
-          const bwUnit = isMb
-            ? lengthMeters > 0 && file.pageCount > 0
-              ? bwPrintBase / (lengthMeters * file.pageCount)
-              : 0
-            : file.pageCount > 0
-              ? bwPrintBase / file.pageCount
-              : 0;
-          const colorPrintAfterSurcharge = colorPrintBase * surcharge;
-          const bwPrintAfterSurcharge = bwPrintBase * surcharge;
+            const colorPrintBase = calculateVariantPrint(file, "color");
+            const bwPrintBase = calculateVariantPrint(file, "bw");
+            const colorUnit = isMb
+              ? lengthMeters > 0 && file.pageCount > 0
+                ? colorPrintBase / (lengthMeters * file.pageCount)
+                : 0
+              : file.pageCount > 0
+                ? colorPrintBase / file.pageCount
+                : 0;
+            const bwUnit = isMb
+              ? lengthMeters > 0 && file.pageCount > 0
+                ? bwPrintBase / (lengthMeters * file.pageCount)
+                : 0
+              : file.pageCount > 0
+                ? bwPrintBase / file.pageCount
+                : 0;
+            const colorPrintAfterSurcharge = colorPrintBase * surcharge;
+            const bwPrintAfterSurcharge = bwPrintBase * surcharge;
 
-          const rowColor = colorPrintAfterSurcharge + file.foldingPrice + file.scanPrice;
-          const rowBw = bwPrintAfterSurcharge + file.foldingPrice + file.scanPrice;
+            const rowColor = colorPrintAfterSurcharge + file.foldingPrice + file.scanPrice;
+            const rowBw = bwPrintAfterSurcharge + file.foldingPrice + file.scanPrice;
 
-          const methodText = isMb
-            ? `MB: ${lengthMeters.toFixed(3)} m × stawka × ${file.pageCount} str.`
-            : `Formatowe: stawka × ${file.pageCount} str.`;
+            const methodText = isMb
+              ? `MB: ${lengthMeters.toFixed(3)} m × stawka × ${file.pageCount} str.`
+              : `Formatowe: stawka × ${file.pageCount} str.`;
 
-          const surchargeText = surchargePct > 0 ? `, dopłata opcji +${surchargePct}%` : "";
+            const surchargeText = surchargePct > 0 ? `, dopłata opcji +${surchargePct}%` : "";
 
-          return `
+            return `
             <div class="obliczenie-item">
               <strong>${file.id}. ${escapeHtml(file.name)}</strong>
               <div class="obliczenie-text">
@@ -665,122 +754,124 @@ export const CadUploadView: View = {
               ${buildSourceFileBreakdownHtml(file)}
             </div>
           `;
-        })
-        .join("");
-    }
+          })
+          .join("");
+      }
 
-    /**
-     * Rozwijana (domyślnie otwarta, zwijalna <summary>/<details>) lista
-     * formatów składających się na jeden wgrany plik — pusty string gdy
-     * plik nie został rozbity (1 wiersz = brak sensu pokazywać breakdown).
-     */
-    function buildSourceFileBreakdownHtml(file: CadUploadFileEntry): string {
-      const sameSourceRows = files.filter((f) => f.sourceFileId === file.sourceFileId);
-      if (sameSourceRows.length <= 1) return "";
+      /**
+       * Rozwijana (domyślnie otwarta, zwijalna <summary>/<details>) lista
+       * formatów składających się na jeden wgrany plik — pusty string gdy
+       * plik nie został rozbity (1 wiersz = brak sensu pokazywać breakdown).
+       */
+      function buildSourceFileBreakdownHtml(file: CadUploadFileEntry): string {
+        const sameSourceRows = files.filter((f) => f.sourceFileId === file.sourceFileId);
+        if (sameSourceRows.length <= 1) return "";
 
-      const totalPages = sameSourceRows.reduce((sum, f) => sum + f.pageCount, 0);
-      const surcharge = calcSurchargeMultiplier();
-      const rows = sameSourceRows
-        .map((f) => {
-          const isFA4 = f.format === "A4";
-          const fColor = isFA4
-            ? calculateA4RowPrice(f, "color")
-            : calculateRowTotal(f, "color", surcharge);
-          const fBw = isFA4 ? calculateA4RowPrice(f, "bw") : calculateRowTotal(f, "bw", surcharge);
-          return `<div class="cad-source-breakdown-row">${escapeHtml(formatLabel(f.format))}: ${f.pageCount} str. — 🎨 ${formatPLN(fColor)} / ⚫ ${formatPLN(fBw)}</div>`;
-        })
-        .join("");
+        const totalPages = sameSourceRows.reduce((sum, f) => sum + f.pageCount, 0);
+        const surcharge = calcSurchargeMultiplier();
+        const rows = sameSourceRows
+          .map((f) => {
+            const isFA4 = f.format === "A4";
+            const fColor = isFA4
+              ? calculateA4RowPrice(f, "color")
+              : calculateRowTotal(f, "color", surcharge);
+            const fBw = isFA4
+              ? calculateA4RowPrice(f, "bw")
+              : calculateRowTotal(f, "bw", surcharge);
+            return `<div class="cad-source-breakdown-row">${escapeHtml(formatLabel(f.format))}: ${f.pageCount} str. — 🎨 ${formatPLN(fColor)} / ⚫ ${formatPLN(fBw)}</div>`;
+          })
+          .join("");
 
-      return `
+        return `
         <details class="cad-source-breakdown" open>
           <summary>Plik łącznie: ${totalPages} str.</summary>
           ${rows}
         </details>
       `;
-    }
-
-    function formatSizeLabel(file: CadUploadFileEntry): string {
-      const w = Number.isFinite(file.widthMm) ? Math.round(file.widthMm) : 0;
-      const h = Number.isFinite(file.heightMm) ? Math.round(file.heightMm) : 0;
-      const pages = Math.max(1, file.pageCount || 1);
-      return `${formatLabel(file.format)}|${w}x${h}mm|${pages}`;
-    }
-
-    function recalculateFile(file: CadUploadFileEntry): CadUploadFileEntry {
-      return updateCadFileEntry(
-        {
-          id: file.id,
-          sourceFileId: file.sourceFileId,
-          name: file.name,
-          widthPx: file.widthPx,
-          heightPx: file.heightPx,
-          widthMm: pxToMm(file.widthPx),
-          heightMm: pxToMm(file.heightPx),
-          format: file.format,
-          isFormatowy: file.isFormatowy,
-          isStandardWidth: file.isStandardWidth,
-          pageCount: file.pageCount,
-          isPdf: file.isPdf,
-          mode: getMode(),
-          folding: file.folding,
-          scanning: file.scanning,
-          printQty: file.printQty || 1,
-        },
-        getMode()
-      );
-    }
-
-    function syncHeaderChecks(): void {
-      const foldCount = files.filter((file) => file.folding).length;
-      const scanCount = files.filter((file) => file.scanning).length;
-      const hasFiles = files.length > 0;
-
-      if (foldAllCheck) {
-        foldAllCheck.disabled = !hasFiles;
-        foldAllCheck.checked = hasFiles && foldCount === files.length;
-        foldAllCheck.indeterminate = hasFiles && foldCount > 0 && foldCount < files.length;
       }
 
-      if (scanAllCheck) {
-        scanAllCheck.disabled = !hasFiles;
-        scanAllCheck.checked = hasFiles && scanCount === files.length;
-        scanAllCheck.indeterminate = hasFiles && scanCount > 0 && scanCount < files.length;
-      }
-    }
-
-    function renderFiles(): void {
-      if (!tableBody) return;
-
-      if (files.length === 0) {
-        tableBody.innerHTML = "";
-        if (summaryPanel) summaryPanel.style.display = "none";
-        if (resultsContainer) resultsContainer.style.display = "none";
-        syncHeaderChecks();
-        return;
+      function formatSizeLabel(file: CadUploadFileEntry): string {
+        const w = Number.isFinite(file.widthMm) ? Math.round(file.widthMm) : 0;
+        const h = Number.isFinite(file.heightMm) ? Math.round(file.heightMm) : 0;
+        const pages = Math.max(1, file.pageCount || 1);
+        return `${formatLabel(file.format)}|${w}x${h}mm|${pages}`;
       }
 
-      if (resultsContainer) resultsContainer.style.display = "block";
-      const surcharge = calcSurchargeMultiplier();
-      tableBody.innerHTML = files
-        .map((file) => {
-          const isA4 = file.format === "A4";
-          // A4 nie korzysta z surcharge CAD (zapełnienie/powiększenie) — jego
-          // cena idzie progami kategorii Druk A4/A3, niezależnie od tych opcji.
-          const rowColor = isA4
-            ? calculateA4RowPrice(file, "color")
-            : calculateRowTotal(file, "color", surcharge);
-          const rowBw = isA4
-            ? calculateA4RowPrice(file, "bw")
-            : calculateRowTotal(file, "bw", surcharge);
-          const [paperFormat, dims, pagesRaw] = formatSizeLabel(file).split("|");
-          const pages = Number(pagesRaw || "1");
+      function recalculateFile(file: CadUploadFileEntry): CadUploadFileEntry {
+        return updateCadFileEntry(
+          {
+            id: file.id,
+            sourceFileId: file.sourceFileId,
+            name: file.name,
+            widthPx: file.widthPx,
+            heightPx: file.heightPx,
+            widthMm: pxToMm(file.widthPx),
+            heightMm: pxToMm(file.heightPx),
+            format: file.format,
+            isFormatowy: file.isFormatowy,
+            isStandardWidth: file.isStandardWidth,
+            pageCount: file.pageCount,
+            isPdf: file.isPdf,
+            mode: getMode(),
+            folding: file.folding,
+            scanning: file.scanning,
+            printQty: file.printQty || 1,
+          },
+          getMode()
+        );
+      }
 
-          // Jeden wgrany plik rozbity na kilka wierszy (mix formatów) — przy
-          // każdym z nich pokazujemy łączną liczbę stron CAŁEGO pliku, nie
-          // tylko stron w tym jednym wierszu/formacie.
-          const sourceFileNote = buildSourceFileBreakdownHtml(file);
+      function syncHeaderChecks(): void {
+        const foldCount = files.filter((file) => file.folding).length;
+        const scanCount = files.filter((file) => file.scanning).length;
+        const hasFiles = files.length > 0;
 
-          return `
+        if (foldAllCheck) {
+          foldAllCheck.disabled = !hasFiles;
+          foldAllCheck.checked = hasFiles && foldCount === files.length;
+          foldAllCheck.indeterminate = hasFiles && foldCount > 0 && foldCount < files.length;
+        }
+
+        if (scanAllCheck) {
+          scanAllCheck.disabled = !hasFiles;
+          scanAllCheck.checked = hasFiles && scanCount === files.length;
+          scanAllCheck.indeterminate = hasFiles && scanCount > 0 && scanCount < files.length;
+        }
+      }
+
+      function renderFiles(): void {
+        if (!tableBody) return;
+
+        if (files.length === 0) {
+          tableBody.innerHTML = "";
+          if (summaryPanel) summaryPanel.style.display = "none";
+          if (resultsContainer) resultsContainer.style.display = "none";
+          syncHeaderChecks();
+          return;
+        }
+
+        if (resultsContainer) resultsContainer.style.display = "block";
+        const surcharge = calcSurchargeMultiplier();
+        tableBody.innerHTML = files
+          .map((file) => {
+            const isA4 = file.format === "A4";
+            // A4 nie korzysta z surcharge CAD (zapełnienie/powiększenie) — jego
+            // cena idzie progami kategorii Druk A4/A3, niezależnie od tych opcji.
+            const rowColor = isA4
+              ? calculateA4RowPrice(file, "color")
+              : calculateRowTotal(file, "color", surcharge);
+            const rowBw = isA4
+              ? calculateA4RowPrice(file, "bw")
+              : calculateRowTotal(file, "bw", surcharge);
+            const [paperFormat, dims, pagesRaw] = formatSizeLabel(file).split("|");
+            const pages = Number(pagesRaw || "1");
+
+            // Jeden wgrany plik rozbity na kilka wierszy (mix formatów) — przy
+            // każdym z nich pokazujemy łączną liczbę stron CAŁEGO pliku, nie
+            // tylko stron w tym jednym wierszu/formacie.
+            const sourceFileNote = buildSourceFileBreakdownHtml(file);
+
+            return `
         <tr data-file-id="${file.id}">
           <td class="col-lp">${file.id}</td>
           <td class="col-name" style="word-break: break-word; overflow-wrap: anywhere; white-space: normal;">
@@ -812,121 +903,125 @@ export const CadUploadView: View = {
           </td>
         </tr>
       `;
-        })
-        .join("");
+          })
+          .join("");
 
-      renderSummary();
-      renderCalculations();
-      syncHeaderChecks();
-    }
-
-    function renderSummary(): void {
-      const surcharge = calcSurchargeMultiplier();
-
-      let totalPrintColorVariant = 0;
-      let totalFoldingColorVariant = 0;
-
-      for (const file of files) {
-        const printQty = file.printQty || 1;
-        totalPrintColorVariant += calculateVariantPrint(file, "color") * printQty;
-        totalFoldingColorVariant += file.foldingPrice * printQty;
-      }
-      totalPrintColorVariant *= surcharge;
-
-      let totalPrintBwVariant = 0;
-      let totalFoldingBwVariant = 0;
-
-      for (const file of files) {
-        const printQty = file.printQty || 1;
-        totalPrintBwVariant += calculateVariantPrint(file, "bw") * printQty;
-        totalFoldingBwVariant += file.foldingPrice * printQty;
-      }
-      totalPrintBwVariant *= surcharge;
-
-      // A4 liczone progami z kategorii "Druk A4/A3", nie przez surcharge CAD
-      // (ten mnożnik dotyczy tylko opcji CAD typu zapełnienie/powiększenie)
-      // — dlatego dodawane PO pomnożeniu przez surcharge powyżej.
-      const a4ColorSubtotal = calculateA4Total("color");
-      const a4BwSubtotal = calculateA4Total("bw");
-      totalPrintColorVariant += a4ColorSubtotal;
-      totalPrintBwVariant += a4BwSubtotal;
-
-      const emailFee = optEmail?.checked ? resolveStoredPrice("druk-email", 1) : 0;
-      const extraServicesTotal = getExtraServicesTotal();
-      const totalScanColorVariant = files.reduce(
-        (sum, f) => sum + (f.scanning ? f.scanPrice * (f.printQty || 1) : 0),
-        0
-      );
-
-      // EXPRESS doliczany jako warstwa od ceny bazowej (CAD Upload nie ma
-      // dopłat globalnych). Gdy tryb wyłączony — cena bez zmian. isExpress
-      // pozycji koszyka jest teraz zgodny z ceną (CU-02).
-      grandTotalColorVariant = applyCadUploadExpress(
-        totalPrintColorVariant +
-          totalFoldingColorVariant +
-          emailFee +
-          extraServicesTotal +
-          totalScanColorVariant,
-        ctx.expressMode
-      );
-      grandTotalBwVariant = applyCadUploadExpress(
-        totalPrintBwVariant +
-          totalFoldingBwVariant +
-          emailFee +
-          extraServicesTotal +
-          totalScanColorVariant,
-        ctx.expressMode
-      );
-
-      const totalColorEl = container.querySelector<HTMLElement>("#results-total-color");
-      const totalBwEl = container.querySelector<HTMLElement>("#results-total-bw");
-
-      if (totalColorEl) {
-        totalColorEl.textContent = formatPLN(grandTotalColorVariant);
-        const colorRow = totalColorEl.closest("tr") as HTMLElement;
-        if (colorRow) colorRow.style.display = files.length > 0 ? "" : "none";
-      }
-      if (totalBwEl) {
-        totalBwEl.textContent = formatPLN(grandTotalBwVariant);
-        const bwRow = totalBwEl.closest("tr") as HTMLElement;
-        if (bwRow) bwRow.style.display = files.length > 0 ? "" : "none";
+        renderSummary();
+        renderCalculations();
+        syncHeaderChecks();
       }
 
-      const selectColorPrice = container.querySelector<HTMLElement>("#selectColorPrice");
-      const selectBwPrice = container.querySelector<HTMLElement>("#selectBwPrice");
-      const selectColorBtn = container.querySelector<HTMLButtonElement>("#selectColor");
-      const selectBwBtn = container.querySelector<HTMLButtonElement>("#selectBw");
+      function renderSummary(): void {
+        const surcharge = calcSurchargeMultiplier();
 
-      if (selectColorPrice) selectColorPrice.textContent = formatPLN(grandTotalColorVariant);
-      if (selectBwPrice) selectBwPrice.textContent = formatPLN(grandTotalBwVariant);
+        let totalPrintColorVariant = 0;
+        let totalFoldingColorVariant = 0;
 
-      if (selectColorBtn) selectColorBtn.style.display = files.length > 0 ? "" : "none";
-      if (selectBwBtn) selectBwBtn.style.display = files.length > 0 ? "" : "none";
+        for (const file of files) {
+          const printQty = file.printQty || 1;
+          totalPrintColorVariant += calculateVariantPrint(file, "color") * printQty;
+          totalFoldingColorVariant += file.foldingPrice * printQty;
+        }
+        totalPrintColorVariant *= surcharge;
 
-      // Update skan/skladanie monitor
-      const cadExtrasMonitor = container.querySelector<HTMLElement>("#cadExtrasMonitor");
-      const monitorSkanSum = container.querySelector<HTMLElement>("#monitorSkanSum");
-      const monitorSkladanieSum = container.querySelector<HTMLElement>("#monitorSkladanieSum");
-      const totalSkanDisplay = totalScanColorVariant;
-      let totalSkladanieDisplay = totalFoldingColorVariant;
-      // Add extra services folding totals
-      if (optKlientSkladanie?.checked) {
-        const qty = parseInt(cadUploadKlientSkladanieQty?.value || "0", 10);
-        totalSkladanieDisplay += resolveStoredPrice("cad-klient-skladanie", 4.0) * qty;
-      }
-      if (optNieformatoweSkladanie?.checked) {
-        const qty = parseFloat((cadUploadNieformatoweSkladanieQty?.value || "0").replace(",", "."));
-        totalSkladanieDisplay += resolveStoredPrice("cad-nieformatowe-skladanie", 2.5) * qty;
-      }
-      if (cadExtrasMonitor) {
-        cadExtrasMonitor.style.display =
-          files.length > 0 && (totalSkanDisplay > 0 || totalSkladanieDisplay > 0) ? "flex" : "none";
-      }
-      if (monitorSkanSum) monitorSkanSum.textContent = formatPLN(totalSkanDisplay);
-      if (monitorSkladanieSum) monitorSkladanieSum.textContent = formatPLN(totalSkladanieDisplay);
+        let totalPrintBwVariant = 0;
+        let totalFoldingBwVariant = 0;
 
-      if (summaryGrid) {
-        summaryGrid.innerHTML = `
+        for (const file of files) {
+          const printQty = file.printQty || 1;
+          totalPrintBwVariant += calculateVariantPrint(file, "bw") * printQty;
+          totalFoldingBwVariant += file.foldingPrice * printQty;
+        }
+        totalPrintBwVariant *= surcharge;
+
+        // A4 liczone progami z kategorii "Druk A4/A3", nie przez surcharge CAD
+        // (ten mnożnik dotyczy tylko opcji CAD typu zapełnienie/powiększenie)
+        // — dlatego dodawane PO pomnożeniu przez surcharge powyżej.
+        const a4ColorSubtotal = calculateA4Total("color");
+        const a4BwSubtotal = calculateA4Total("bw");
+        totalPrintColorVariant += a4ColorSubtotal;
+        totalPrintBwVariant += a4BwSubtotal;
+
+        const emailFee = optEmail?.checked ? resolveStoredPrice("druk-email", 1) : 0;
+        const extraServicesTotal = getExtraServicesTotal();
+        const totalScanColorVariant = files.reduce(
+          (sum, f) => sum + (f.scanning ? f.scanPrice * (f.printQty || 1) : 0),
+          0
+        );
+
+        // EXPRESS doliczany jako warstwa od ceny bazowej (CAD Upload nie ma
+        // dopłat globalnych). Gdy tryb wyłączony — cena bez zmian. isExpress
+        // pozycji koszyka jest teraz zgodny z ceną (CU-02).
+        grandTotalColorVariant = applyCadUploadExpress(
+          totalPrintColorVariant +
+            totalFoldingColorVariant +
+            emailFee +
+            extraServicesTotal +
+            totalScanColorVariant,
+          ctx.expressMode
+        );
+        grandTotalBwVariant = applyCadUploadExpress(
+          totalPrintBwVariant +
+            totalFoldingBwVariant +
+            emailFee +
+            extraServicesTotal +
+            totalScanColorVariant,
+          ctx.expressMode
+        );
+
+        const totalColorEl = container.querySelector<HTMLElement>("#results-total-color");
+        const totalBwEl = container.querySelector<HTMLElement>("#results-total-bw");
+
+        if (totalColorEl) {
+          totalColorEl.textContent = formatPLN(grandTotalColorVariant);
+          const colorRow = totalColorEl.closest("tr") as HTMLElement;
+          if (colorRow) colorRow.style.display = files.length > 0 ? "" : "none";
+        }
+        if (totalBwEl) {
+          totalBwEl.textContent = formatPLN(grandTotalBwVariant);
+          const bwRow = totalBwEl.closest("tr") as HTMLElement;
+          if (bwRow) bwRow.style.display = files.length > 0 ? "" : "none";
+        }
+
+        const selectColorPrice = container.querySelector<HTMLElement>("#selectColorPrice");
+        const selectBwPrice = container.querySelector<HTMLElement>("#selectBwPrice");
+        const selectColorBtn = container.querySelector<HTMLButtonElement>("#selectColor");
+        const selectBwBtn = container.querySelector<HTMLButtonElement>("#selectBw");
+
+        if (selectColorPrice) selectColorPrice.textContent = formatPLN(grandTotalColorVariant);
+        if (selectBwPrice) selectBwPrice.textContent = formatPLN(grandTotalBwVariant);
+
+        if (selectColorBtn) selectColorBtn.style.display = files.length > 0 ? "" : "none";
+        if (selectBwBtn) selectBwBtn.style.display = files.length > 0 ? "" : "none";
+
+        // Update skan/skladanie monitor
+        const cadExtrasMonitor = container.querySelector<HTMLElement>("#cadExtrasMonitor");
+        const monitorSkanSum = container.querySelector<HTMLElement>("#monitorSkanSum");
+        const monitorSkladanieSum = container.querySelector<HTMLElement>("#monitorSkladanieSum");
+        const totalSkanDisplay = totalScanColorVariant;
+        let totalSkladanieDisplay = totalFoldingColorVariant;
+        // Add extra services folding totals
+        if (optKlientSkladanie?.checked) {
+          const qty = parseInt(cadUploadKlientSkladanieQty?.value || "0", 10);
+          totalSkladanieDisplay += resolveStoredPrice("cad-klient-skladanie", 4.0) * qty;
+        }
+        if (optNieformatoweSkladanie?.checked) {
+          const qty = parseFloat(
+            (cadUploadNieformatoweSkladanieQty?.value || "0").replace(",", ".")
+          );
+          totalSkladanieDisplay += resolveStoredPrice("cad-nieformatowe-skladanie", 2.5) * qty;
+        }
+        if (cadExtrasMonitor) {
+          cadExtrasMonitor.style.display =
+            files.length > 0 && (totalSkanDisplay > 0 || totalSkladanieDisplay > 0)
+              ? "flex"
+              : "none";
+        }
+        if (monitorSkanSum) monitorSkanSum.textContent = formatPLN(totalSkanDisplay);
+        if (monitorSkladanieSum) monitorSkladanieSum.textContent = formatPLN(totalSkladanieDisplay);
+
+        if (summaryGrid) {
+          summaryGrid.innerHTML = `
           ${
             files.length > 0
               ? `
@@ -992,499 +1087,508 @@ export const CadUploadView: View = {
             return lines;
           })()}
         `;
+        }
+
+        if (grandTotal) {
+          grandTotal.textContent = formatPLN(
+            getMode() === "color" ? grandTotalColorVariant : grandTotalBwVariant
+          );
+        }
+
+        if (summaryPanel) {
+          summaryPanel.style.display = files.length > 0 ? "block" : "none";
+        }
       }
 
-      if (grandTotal) {
-        grandTotal.textContent = formatPLN(
-          getMode() === "color" ? grandTotalColorVariant : grandTotalBwVariant
-        );
-      }
+      async function addFiles(fileList: FileList): Promise<void> {
+        const acceptedFiles = getAllowedFiles(fileList);
+        if (acceptedFiles.length === 0) {
+          return;
+        }
 
-      if (summaryPanel) {
-        summaryPanel.style.display = files.length > 0 ? "block" : "none";
-      }
-    }
+        showStatus(`Przetwarzanie ${acceptedFiles.length} plików...`);
 
-    async function addFiles(fileList: FileList): Promise<void> {
-      const acceptedFiles = getAllowedFiles(fileList);
-      if (acceptedFiles.length === 0) {
-        return;
-      }
-
-      showStatus(`Przetwarzanie ${acceptedFiles.length} plików...`);
-
-      const results = await mapWithConcurrency<File, ParseResult>(
-        acceptedFiles,
-        CAD_UPLOAD_CONCURRENCY,
-        async (file, index) => {
-          try {
-            // Jeden plik może dać kilka pozycji (mix formatów, np. A3+A4 w
-            // jednym PDF) — entries, nie entry.
-            const entries = await updateCadFileEntry(file, isColor);
-            showStatus(`Przetwarzanie: ${index + 1}/${acceptedFiles.length}`);
-            return { ok: true, entries };
-          } catch (err) {
-            showStatus(`Przetwarzanie: ${index + 1}/${acceptedFiles.length}`);
-            return { ok: false, name: file.name, cause: (err as Error).message };
+        const results = await mapWithConcurrency<File, ParseResult>(
+          acceptedFiles,
+          CAD_UPLOAD_CONCURRENCY,
+          async (file, index) => {
+            try {
+              // Jeden plik może dać kilka pozycji (mix formatów, np. A3+A4 w
+              // jednym PDF) — entries, nie entry.
+              const entries = await updateCadFileEntry(file, isColor);
+              showStatus(`Przetwarzanie: ${index + 1}/${acceptedFiles.length}`);
+              return { ok: true, entries };
+            } catch (err) {
+              showStatus(`Przetwarzanie: ${index + 1}/${acceptedFiles.length}`);
+              return { ok: false, name: file.name, cause: (err as Error).message };
+            }
           }
+        );
+
+        const okResults = results.filter(
+          (r): r is { ok: true; entries: CadUploadFileEntry[] } => r.ok
+        );
+        const validFiles = okResults.flatMap((r) =>
+          r.entries.map((entry) => ({ ...entry, mode: getMode() }))
+        );
+
+        const failedFiles = results.filter(
+          (r): r is { ok: false; name: string; cause: string } => !r.ok
+        );
+
+        files.push(...validFiles);
+        syncSequentialIds();
+
+        if (warningEl) {
+          warningEl.style.display = sourceFileCount() > MAX_CAD_FILES ? "block" : "none";
         }
-      );
 
-      const okResults = results.filter(
-        (r): r is { ok: true; entries: CadUploadFileEntry[] } => r.ok
-      );
-      const validFiles = okResults.flatMap((r) =>
-        r.entries.map((entry) => ({ ...entry, mode: getMode() }))
-      );
+        const messages: string[] = [];
 
-      const failedFiles = results.filter(
-        (r): r is { ok: false; name: string; cause: string } => !r.ok
-      );
+        if (okResults.length > 0) {
+          const splitNote =
+            validFiles.length > okResults.length ? ` (${validFiles.length} pozycji)` : "";
+          messages.push(
+            `Dodano ${okResults.length} plików${splitNote}. Łącznie: ${sourceFileCount()}/${MAX_CAD_FILES}.`
+          );
+        }
 
-      files.push(...validFiles);
-      syncSequentialIds();
+        if (failedFiles.length > 0) {
+          const failList = failedFiles
+            .map((f) => {
+              const causeText =
+                f.cause === "FORMAT_UNSUPPORTED"
+                  ? "niezgodny format"
+                  : f.cause === "PAGES_LIMIT"
+                    ? `za dużo stron (limit: ${CAD_PDF_HARD_PAGES})`
+                    : "plik uszkodzony / nie do odczytu";
+              return `${f.name} (${causeText})`;
+            })
+            .join(", ");
+          messages.push(`Pominięto: ${failList}.`);
+        }
 
-      if (warningEl) {
-        warningEl.style.display = sourceFileCount() > MAX_CAD_FILES ? "block" : "none";
-      }
-
-      const messages: string[] = [];
-
-      if (okResults.length > 0) {
-        const splitNote =
-          validFiles.length > okResults.length ? ` (${validFiles.length} pozycji)` : "";
-        messages.push(
-          `Dodano ${okResults.length} plików${splitNote}. Łącznie: ${sourceFileCount()}/${MAX_CAD_FILES}.`
+        // Próg ostrzeżenia liczony od sumy stron CAŁEGO pliku (wszystkie
+        // formaty razem), nie od stron pojedynczej wyodrębnionej pozycji —
+        // inaczej mix A3+A4 nigdy by nie przekroczył progu mimo długiego PDF.
+        const warnPageFiles = okResults.filter(
+          (r) => r.entries.reduce((sum, e) => sum + e.pageCount, 0) >= CAD_PDF_WARN_PAGES
         );
+        if (warnPageFiles.length > 0) {
+          messages.push(
+            `${warnPageFiles.length} plik(ów) ma ≥${CAD_PDF_WARN_PAGES} stron – przetwarzanie mogło potrwać dłużej.`
+          );
+        }
+
+        const isWarn = failedFiles.length > 0 || warnPageFiles.length > 0;
+        showStatus(messages.join(" "), isWarn);
+
+        renderFiles();
       }
 
-      if (failedFiles.length > 0) {
-        const failList = failedFiles
-          .map((f) => {
-            const causeText =
-              f.cause === "FORMAT_UNSUPPORTED"
-                ? "niezgodny format"
-                : f.cause === "PAGES_LIMIT"
-                  ? `za dużo stron (limit: ${CAD_PDF_HARD_PAGES})`
-                  : "plik uszkodzony / nie do odczytu";
-            return `${f.name} (${causeText})`;
-          })
-          .join(", ");
-        messages.push(`Pominięto: ${failList}.`);
-      }
+      // Event listeners
+      if (dropZone) {
+        dropZone.addEventListener("click", () => fileInput.click());
 
-      // Próg ostrzeżenia liczony od sumy stron CAŁEGO pliku (wszystkie
-      // formaty razem), nie od stron pojedynczej wyodrębnionej pozycji —
-      // inaczej mix A3+A4 nigdy by nie przekroczył progu mimo długiego PDF.
-      const warnPageFiles = okResults.filter(
-        (r) => r.entries.reduce((sum, e) => sum + e.pageCount, 0) >= CAD_PDF_WARN_PAGES
-      );
-      if (warnPageFiles.length > 0) {
-        messages.push(
-          `${warnPageFiles.length} plik(ów) ma ≥${CAD_PDF_WARN_PAGES} stron – przetwarzanie mogło potrwać dłużej.`
-        );
-      }
+        dropZone.addEventListener("dragenter", (e) => {
+          e.preventDefault();
+          dropZone.classList.add("drag-over");
+        });
 
-      const isWarn = failedFiles.length > 0 || warnPageFiles.length > 0;
-      showStatus(messages.join(" "), isWarn);
+        dropZone.addEventListener("dragover", (e) => {
+          e.preventDefault();
+          dropZone.classList.add("drag-over");
+        });
 
-      renderFiles();
-    }
+        dropZone.addEventListener("dragleave", (e) => {
+          if (!dropZone.contains(e.relatedTarget as Node)) {
+            dropZone.classList.remove("drag-over");
+          }
+        });
 
-    // Event listeners
-    if (dropZone) {
-      dropZone.addEventListener("click", () => fileInput.click());
-
-      dropZone.addEventListener("dragenter", (e) => {
-        e.preventDefault();
-        dropZone.classList.add("drag-over");
-      });
-
-      dropZone.addEventListener("dragover", (e) => {
-        e.preventDefault();
-        dropZone.classList.add("drag-over");
-      });
-
-      dropZone.addEventListener("dragleave", (e) => {
-        if (!dropZone.contains(e.relatedTarget as Node)) {
+        dropZone.addEventListener("drop", (e) => {
+          e.preventDefault();
           dropZone.classList.remove("drag-over");
-        }
-      });
-
-      dropZone.addEventListener("drop", (e) => {
-        e.preventDefault();
-        dropZone.classList.remove("drag-over");
-        const dropped = e.dataTransfer?.files;
-        if (dropped && dropped.length > 0) {
-          void addFiles(dropped);
-        }
-      });
-    }
-
-    fileInput.addEventListener("change", (e) => {
-      const targetFiles = (e.target as HTMLInputElement).files;
-      if (targetFiles && targetFiles.length > 0) {
-        void addFiles(targetFiles);
-      }
-      (e.target as HTMLInputElement).value = "";
-    });
-
-    // Event delegation dla dużej liczby rekordów
-    tableBody.addEventListener("change", (event) => {
-      const target = event.target as HTMLInputElement;
-      const row = target.closest("tr[data-file-id]") as HTMLElement | null;
-      if (!row) return;
-
-      const id = Number(row.dataset.fileId || "0");
-      const index = files.findIndex((f) => f.id === id);
-      if (index < 0) return;
-
-      if (target.dataset.action === "fold") {
-        files[index].folding = target.checked;
-        files[index] = recalculateFile(files[index]);
-        renderFiles();
-      }
-
-      if (target.dataset.action === "scan") {
-        files[index].scanning = target.checked;
-        files[index] = recalculateFile(files[index]);
-        renderFiles();
-      }
-    });
-
-    tableBody.addEventListener("input", (event) => {
-      const target = event.target as HTMLInputElement;
-      if (target.dataset.action !== "qty") return;
-      const row = target.closest("tr[data-file-id]") as HTMLElement | null;
-      if (!row) return;
-      const id = Number(row.dataset.fileId || "0");
-      const index = files.findIndex((f) => f.id === id);
-      if (index < 0) return;
-      const newQty = parseInt(target.value, 10);
-      files[index].printQty = !isNaN(newQty) && newQty >= 1 ? newQty : 1;
-
-      // Przeliczamy ceny WSZYSTKICH wierszy, nie tylko edytowanego: dla A4 cena
-      // jednostkowa zależy od łącznego nakładu A4 (Σ strony × Ilość), więc
-      // zmiana Ilości w jednym wierszu może przeskoczyć próg i zmienić cenę
-      // pozostałych wierszy A4. Aktualizujemy tylko .cad-price-cell (nie cały
-      // wiersz), więc input Ilości nie jest przebudowywany i nie traci focusu.
-      // A4 idzie ścieżką Druk A4/A3 (calculateA4RowPrice); reszta — CAD
-      // (calculateRowTotal). Wcześniej A4 liczono tu ścieżką CAD → 0,00 zł.
-      const surcharge = calcSurchargeMultiplier();
-      tableBody.querySelectorAll<HTMLElement>("tr[data-file-id]").forEach((rowEl) => {
-        const rowId = Number(rowEl.dataset.fileId || "0");
-        const file = files.find((f) => f.id === rowId);
-        if (!file) return;
-        const rowColor =
-          file.format === "A4"
-            ? calculateA4RowPrice(file, "color")
-            : calculateRowTotal(file, "color", surcharge);
-        const rowBw =
-          file.format === "A4"
-            ? calculateA4RowPrice(file, "bw")
-            : calculateRowTotal(file, "bw", surcharge);
-        const priceCell = rowEl.querySelector<HTMLElement>(".cad-price-cell");
-        if (priceCell) {
-          priceCell.innerHTML =
-            `<div class="cad-price-line"><span>🎨 Kolor</span><strong>${formatPLN(rowColor)}</strong></div>` +
-            `<div class="cad-price-line"><span>⚫ Cz-B</span><strong>${formatPLN(rowBw)}</strong></div>`;
-        }
-      });
-
-      renderSummary();
-    });
-
-    tableBody.addEventListener("click", (event) => {
-      const target = event.target as HTMLElement;
-      if (target.dataset.action !== "delete") return;
-
-      const row = target.closest("tr[data-file-id]") as HTMLElement | null;
-      if (!row) return;
-
-      const id = Number(row.dataset.fileId || "0");
-      files = files.filter((f) => f.id !== id);
-      syncSequentialIds();
-      renderFiles();
-    });
-
-    foldAllCheck?.addEventListener("change", () => {
-      const checked = foldAllCheck.checked;
-      files = files.map((file) => recalculateFile({ ...file, folding: checked }));
-      renderFiles();
-    });
-
-    scanAllCheck?.addEventListener("change", () => {
-      const checked = scanAllCheck.checked;
-      files = files.map((file) => recalculateFile({ ...file, scanning: checked }));
-      renderFiles();
-    });
-
-    if (modeSelect) {
-      modeSelect.addEventListener("change", (e) => {
-        isColor = ((e.target as HTMLSelectElement).value || "color") === "color";
-        colorSwitch?.classList.toggle("active", isColor);
-        files = files.map(recalculateFile);
-        renderFiles();
-        renderLegend();
-      });
-    }
-
-    if (colorToggle) {
-      colorToggle.addEventListener("click", () => {
-        isColor = !isColor;
-        colorSwitch?.classList.toggle("active", isColor);
-        if (modeSelect) {
-          modeSelect.value = isColor ? "color" : "bw";
-        }
-        files = files.map(recalculateFile);
-        renderFiles();
-        renderLegend();
-      });
-    }
-
-    [optFill, optScale, optEmail].forEach((el) => {
-      el?.addEventListener("change", () => renderFiles());
-    });
-
-    optKlientSkladanie?.addEventListener("change", () => {
-      if (cadUploadKlientSkladanieQtyRow) {
-        cadUploadKlientSkladanieQtyRow.style.display = optKlientSkladanie.checked ? "flex" : "none";
-      }
-      updateExtraServicePriceLine(
-        optKlientSkladanie,
-        cadUploadKlientSkladanieQty,
-        cadUploadKlientSkladaniePriceLine,
-        klientUnitPrice,
-        "szt"
-      );
-      renderFiles();
-    });
-
-    optNieformatoweSkladanie?.addEventListener("change", () => {
-      if (cadUploadNieformatoweSkladanieQtyRow) {
-        cadUploadNieformatoweSkladanieQtyRow.style.display = optNieformatoweSkladanie.checked
-          ? "flex"
-          : "none";
-      }
-      updateExtraServicePriceLine(
-        optNieformatoweSkladanie,
-        cadUploadNieformatoweSkladanieQty,
-        cadUploadNieformatoweSkladaniePriceLine,
-        nieformatoweUnitPrice,
-        "m²"
-      );
-      renderFiles();
-    });
-
-    optPaskiWzmacniajace?.addEventListener("change", () => {
-      if (cadUploadPaskiWzmacniajaceQtyRow) {
-        cadUploadPaskiWzmacniajaceQtyRow.style.display = optPaskiWzmacniajace.checked
-          ? "flex"
-          : "none";
-      }
-      updateExtraServicePriceLine(
-        optPaskiWzmacniajace,
-        cadUploadPaskiWzmacniajaceQty,
-        cadUploadPaskiWzmacniajacePriceLine,
-        paskiUnitPrice,
-        "szt"
-      );
-      renderFiles();
-    });
-
-    cadUploadKlientSkladanieQty?.addEventListener("input", () => {
-      updateExtraServicePriceLine(
-        optKlientSkladanie,
-        cadUploadKlientSkladanieQty,
-        cadUploadKlientSkladaniePriceLine,
-        klientUnitPrice,
-        "szt"
-      );
-      renderFiles();
-    });
-    cadUploadNieformatoweSkladanieQty?.addEventListener("input", () => {
-      updateExtraServicePriceLine(
-        optNieformatoweSkladanie,
-        cadUploadNieformatoweSkladanieQty,
-        cadUploadNieformatoweSkladaniePriceLine,
-        nieformatoweUnitPrice,
-        "m²"
-      );
-      renderFiles();
-    });
-    cadUploadPaskiWzmacniajaceQty?.addEventListener("input", () => {
-      updateExtraServicePriceLine(
-        optPaskiWzmacniajace,
-        cadUploadPaskiWzmacniajaceQty,
-        cadUploadPaskiWzmacniajacePriceLine,
-        paskiUnitPrice,
-        "szt"
-      );
-      renderFiles();
-    });
-
-    cadUploadKlientSkladanieAdd?.addEventListener("click", () => {
-      addExtraServiceToCart({
-        id: "cad-klient-skladanie",
-        name: "Składanie od klienta",
-        unit: "szt",
-        qtyInput: cadUploadKlientSkladanieQty,
-        checkbox: optKlientSkladanie,
-        qtyRow: cadUploadKlientSkladanieQtyRow,
-        priceLine: cadUploadKlientSkladaniePriceLine,
-        unitPrice: klientUnitPrice,
-      });
-    });
-    cadUploadNieformatoweSkladanieAdd?.addEventListener("click", () => {
-      addExtraServiceToCart({
-        id: "cad-nieformatowe-skladanie",
-        name: "Składanie nieformatowych",
-        unit: "m²",
-        qtyInput: cadUploadNieformatoweSkladanieQty,
-        checkbox: optNieformatoweSkladanie,
-        qtyRow: cadUploadNieformatoweSkladanieQtyRow,
-        priceLine: cadUploadNieformatoweSkladaniePriceLine,
-        unitPrice: nieformatoweUnitPrice,
-      });
-    });
-    cadUploadPaskiWzmacniajaceAdd?.addEventListener("click", () => {
-      addExtraServiceToCart({
-        id: "cad-paski-wzmacniajace",
-        name: "Doklejanie pasków wzmacniających",
-        unit: "szt",
-        qtyInput: cadUploadPaskiWzmacniajaceQty,
-        checkbox: optPaskiWzmacniajace,
-        qtyRow: cadUploadPaskiWzmacniajaceQtyRow,
-        priceLine: cadUploadPaskiWzmacniajacePriceLine,
-        unitPrice: paskiUnitPrice,
-      });
-    });
-
-    // DPI change
-    if (dpiInput) {
-      dpiInput.addEventListener("change", (e) => {
-        dpi = parseInt((e.target as HTMLInputElement).value) || 300;
-        files = files.map((f) => {
-          if (f.isPdf) return f;
-          f.widthMm = pxToMm(f.widthPx);
-          f.heightMm = pxToMm(f.heightPx);
-          const fmt = detectFormatFromDimensions(f.widthMm, f.heightMm, true);
-          f.format = fmt.format;
-          f.isFormatowy = fmt.isFormatowy;
-          f.isStandardWidth = fmt.isStandardWidth;
-          f.mode = getMode();
-          return recalculateFile(f);
+          const dropped = e.dataTransfer?.files;
+          if (dropped && dropped.length > 0) {
+            void addFiles(dropped);
+          }
         });
-        renderFiles();
+      }
+
+      fileInput.addEventListener("change", (e) => {
+        const targetFiles = (e.target as HTMLInputElement).files;
+        if (targetFiles && targetFiles.length > 0) {
+          void addFiles(targetFiles);
+        }
+        (e.target as HTMLInputElement).value = "";
       });
 
-      const dpiNote = document.createElement("p");
-      dpiNote.className = "cad-dpi-note";
-      dpiNote.style.cssText =
-        "margin:4px 0 0;font-size:0.78rem;color:var(--text-secondary,#64748b);";
-      dpiNote.textContent =
-        "DPI dotyczy tylko plików graficznych (np. skanów). Pliki PDF mają wbudowaną rozdzielczość i nie są przeliczane przy zmianie DPI.";
-      dpiInput.insertAdjacentElement("afterend", dpiNote);
-    }
+      // Event delegation dla dużej liczby rekordów
+      tableBody.addEventListener("change", (event) => {
+        const target = event.target as HTMLInputElement;
+        const row = target.closest("tr[data-file-id]") as HTMLElement | null;
+        if (!row) return;
 
-    // Add to cart buttons (Color and BW)
-    const selectColorBtn = container.querySelector<HTMLButtonElement>("#selectColor");
-    const selectBwBtn = container.querySelector<HTMLButtonElement>("#selectBw");
-    const submitBtn = container.querySelector<HTMLButtonElement>("#submitBtn");
+        const id = Number(row.dataset.fileId || "0");
+        const index = files.findIndex((f) => f.id === id);
+        if (index < 0) return;
 
-    const handleCartButton = (btn: HTMLButtonElement | null, mode: "color" | "bw") => {
-      if (!btn) return;
-
-      btn.addEventListener("click", () => {
-        if (files.length === 0) {
-          alert("Nie dodano żadnych plików do wyceny");
-          return;
+        if (target.dataset.action === "fold") {
+          files[index].folding = target.checked;
+          files[index] = recalculateFile(files[index]);
+          renderFiles();
         }
 
-        const grandTotalPrice = mode === "color" ? grandTotalColorVariant : grandTotalBwVariant;
-        const totalFolding = files.reduce((sum, f) => sum + f.foldingPrice, 0);
-        const totalScan = files.reduce((sum, f) => sum + f.scanPrice, 0);
-
-        // Rozbicie stron po formacie — pokazuje osobie obsługującej zamówienie
-        // ile stron jakiego formatu wyceniono, nie tylko "X plików" (co po
-        // mixie A3+A4 w jednym pliku jest niejednoznaczne — jeden upload
-        // może dać 2 pozycje). A4 liczone progami "Druk A4/A3" od sumy stron,
-        // już wliczone w totalPrice — nie jest to wykluczone z ceny.
-        const pagesByFormat = new Map<string, number>();
-        for (const f of files) {
-          pagesByFormat.set(f.format, (pagesByFormat.get(f.format) || 0) + f.pageCount);
+        if (target.dataset.action === "scan") {
+          files[index].scanning = target.checked;
+          files[index] = recalculateFile(files[index]);
+          renderFiles();
         }
-        const a4Pages = pagesByFormat.get("A4") || 0;
-        const otherBreakdown = [...pagesByFormat.entries()]
-          .filter(([fmt]) => fmt !== "A4")
-          .map(([fmt, count]) => `${count} str. ${formatLabel(fmt)}`)
-          .join(", ");
-        const a4Note = a4Pages > 0 ? `${a4Pages} str. A4 (cennik Druk A4/A3)` : "";
-        const pagesBreakdown = [otherBreakdown, a4Note].filter(Boolean).join(" + ");
+      });
 
-        const modeLabel = mode === "color" ? "KOLOR" : "CZ-B";
-        const opts = [
-          formatPlikCount(files.length),
-          modeLabel,
-          pagesBreakdown,
-          totalFolding > 0 ? "ze składaniem" : "",
-          totalScan > 0 ? "ze skanowaniem" : "",
-        ]
-          .filter(Boolean)
-          .join(", ");
+      tableBody.addEventListener("input", (event) => {
+        const target = event.target as HTMLInputElement;
+        if (target.dataset.action !== "qty") return;
+        const row = target.closest("tr[data-file-id]") as HTMLElement | null;
+        if (!row) return;
+        const id = Number(row.dataset.fileId || "0");
+        const index = files.findIndex((f) => f.id === id);
+        if (index < 0) return;
+        const newQty = parseInt(target.value, 10);
+        files[index].printQty = !isNaN(newQty) && newQty >= 1 ? newQty : 1;
 
-        const snapshotFiles = files.map((f) => ({ ...f }));
-
-        ctx.cart.addItem({
-          id: `cad-upload-${mode}-${Date.now()}`,
-          category: "CAD Upload",
-          name: `Wydruk CAD (${formatPlikCount(files.length)}) - ${modeLabel}`,
-          quantity: files.length,
-          unit: "plik",
-          unitPrice: grandTotalPrice / files.length,
-          isExpress: ctx.expressMode,
-          totalPrice: grandTotalPrice,
-          optionsHint: opts,
-          payload: { files: snapshotFiles, mode, price: grandTotalPrice },
+        // Przeliczamy ceny WSZYSTKICH wierszy, nie tylko edytowanego: dla A4 cena
+        // jednostkowa zależy od łącznego nakładu A4 (Σ strony × Ilość), więc
+        // zmiana Ilości w jednym wierszu może przeskoczyć próg i zmienić cenę
+        // pozostałych wierszy A4. Aktualizujemy tylko .cad-price-cell (nie cały
+        // wiersz), więc input Ilości nie jest przebudowywany i nie traci focusu.
+        // A4 idzie ścieżką Druk A4/A3 (calculateA4RowPrice); reszta — CAD
+        // (calculateRowTotal). Wcześniej A4 liczono tu ścieżką CAD → 0,00 zł.
+        const surcharge = calcSurchargeMultiplier();
+        tableBody.querySelectorAll<HTMLElement>("tr[data-file-id]").forEach((rowEl) => {
+          const rowId = Number(rowEl.dataset.fileId || "0");
+          const file = files.find((f) => f.id === rowId);
+          if (!file) return;
+          const rowColor =
+            file.format === "A4"
+              ? calculateA4RowPrice(file, "color")
+              : calculateRowTotal(file, "color", surcharge);
+          const rowBw =
+            file.format === "A4"
+              ? calculateA4RowPrice(file, "bw")
+              : calculateRowTotal(file, "bw", surcharge);
+          const priceCell = rowEl.querySelector<HTMLElement>(".cad-price-cell");
+          if (priceCell) {
+            priceCell.innerHTML =
+              `<div class="cad-price-line"><span>🎨 Kolor</span><strong>${formatPLN(rowColor)}</strong></div>` +
+              `<div class="cad-price-line"><span>⚫ Cz-B</span><strong>${formatPLN(rowBw)}</strong></div>`;
+          }
         });
 
-        ctx.updateLastCalculated(grandTotalPrice, "CAD Upload");
+        renderSummary();
+      });
 
-        files.splice(0, files.length);
+      tableBody.addEventListener("click", (event) => {
+        const target = event.target as HTMLElement;
+        if (target.dataset.action !== "delete") return;
+
+        const row = target.closest("tr[data-file-id]") as HTMLElement | null;
+        if (!row) return;
+
+        const id = Number(row.dataset.fileId || "0");
+        files = files.filter((f) => f.id !== id);
+        syncSequentialIds();
         renderFiles();
       });
-    };
 
-    handleCartButton(selectColorBtn, "color");
-    handleCartButton(selectBwBtn, "bw");
+      foldAllCheck?.addEventListener("change", () => {
+        const checked = foldAllCheck.checked;
+        files = files.map((file) => recalculateFile({ ...file, folding: checked }));
+        renderFiles();
+      });
 
-    if (submitBtn) {
-      submitBtn.addEventListener("click", () => {
-        if (files.length === 0) {
-          alert("Nie dodano żadnych plików do wyceny");
-          return;
+      scanAllCheck?.addEventListener("change", () => {
+        const checked = scanAllCheck.checked;
+        files = files.map((file) => recalculateFile({ ...file, scanning: checked }));
+        renderFiles();
+      });
+
+      if (modeSelect) {
+        modeSelect.addEventListener("change", (e) => {
+          isColor = ((e.target as HTMLSelectElement).value || "color") === "color";
+          colorSwitch?.classList.toggle("active", isColor);
+          files = files.map(recalculateFile);
+          renderFiles();
+          renderLegend();
+        });
+      }
+
+      if (colorToggle) {
+        colorToggle.addEventListener("click", () => {
+          isColor = !isColor;
+          colorSwitch?.classList.toggle("active", isColor);
+          if (modeSelect) {
+            modeSelect.value = isColor ? "color" : "bw";
+          }
+          files = files.map(recalculateFile);
+          renderFiles();
+          renderLegend();
+        });
+      }
+
+      [optFill, optScale, optEmail].forEach((el) => {
+        el?.addEventListener("change", () => renderFiles());
+      });
+
+      optKlientSkladanie?.addEventListener("change", () => {
+        if (cadUploadKlientSkladanieQtyRow) {
+          cadUploadKlientSkladanieQtyRow.style.display = optKlientSkladanie.checked
+            ? "flex"
+            : "none";
         }
+        updateExtraServicePriceLine(
+          optKlientSkladanie,
+          cadUploadKlientSkladanieQty,
+          cadUploadKlientSkladaniePriceLine,
+          klientUnitPrice,
+          "szt"
+        );
+        renderFiles();
+      });
 
-        const selectedMode = (modeSelect?.value || (isColor ? "color" : "bw")) as "color" | "bw";
-        if (selectedMode === "color") {
-          selectColorBtn?.click();
-        } else {
-          selectBwBtn?.click();
+      optNieformatoweSkladanie?.addEventListener("change", () => {
+        if (cadUploadNieformatoweSkladanieQtyRow) {
+          cadUploadNieformatoweSkladanieQtyRow.style.display = optNieformatoweSkladanie.checked
+            ? "flex"
+            : "none";
+        }
+        updateExtraServicePriceLine(
+          optNieformatoweSkladanie,
+          cadUploadNieformatoweSkladanieQty,
+          cadUploadNieformatoweSkladaniePriceLine,
+          nieformatoweUnitPrice,
+          "m²"
+        );
+        renderFiles();
+      });
+
+      optPaskiWzmacniajace?.addEventListener("change", () => {
+        if (cadUploadPaskiWzmacniajaceQtyRow) {
+          cadUploadPaskiWzmacniajaceQtyRow.style.display = optPaskiWzmacniajace.checked
+            ? "flex"
+            : "none";
+        }
+        updateExtraServicePriceLine(
+          optPaskiWzmacniajace,
+          cadUploadPaskiWzmacniajaceQty,
+          cadUploadPaskiWzmacniajacePriceLine,
+          paskiUnitPrice,
+          "szt"
+        );
+        renderFiles();
+      });
+
+      cadUploadKlientSkladanieQty?.addEventListener("input", () => {
+        updateExtraServicePriceLine(
+          optKlientSkladanie,
+          cadUploadKlientSkladanieQty,
+          cadUploadKlientSkladaniePriceLine,
+          klientUnitPrice,
+          "szt"
+        );
+        renderFiles();
+      });
+      cadUploadNieformatoweSkladanieQty?.addEventListener("input", () => {
+        updateExtraServicePriceLine(
+          optNieformatoweSkladanie,
+          cadUploadNieformatoweSkladanieQty,
+          cadUploadNieformatoweSkladaniePriceLine,
+          nieformatoweUnitPrice,
+          "m²"
+        );
+        renderFiles();
+      });
+      cadUploadPaskiWzmacniajaceQty?.addEventListener("input", () => {
+        updateExtraServicePriceLine(
+          optPaskiWzmacniajace,
+          cadUploadPaskiWzmacniajaceQty,
+          cadUploadPaskiWzmacniajacePriceLine,
+          paskiUnitPrice,
+          "szt"
+        );
+        renderFiles();
+      });
+
+      cadUploadKlientSkladanieAdd?.addEventListener("click", () => {
+        addExtraServiceToCart({
+          id: "cad-klient-skladanie",
+          name: "Składanie od klienta",
+          unit: "szt",
+          qtyInput: cadUploadKlientSkladanieQty,
+          checkbox: optKlientSkladanie,
+          qtyRow: cadUploadKlientSkladanieQtyRow,
+          priceLine: cadUploadKlientSkladaniePriceLine,
+          unitPrice: klientUnitPrice,
+        });
+      });
+      cadUploadNieformatoweSkladanieAdd?.addEventListener("click", () => {
+        addExtraServiceToCart({
+          id: "cad-nieformatowe-skladanie",
+          name: "Składanie nieformatowych",
+          unit: "m²",
+          qtyInput: cadUploadNieformatoweSkladanieQty,
+          checkbox: optNieformatoweSkladanie,
+          qtyRow: cadUploadNieformatoweSkladanieQtyRow,
+          priceLine: cadUploadNieformatoweSkladaniePriceLine,
+          unitPrice: nieformatoweUnitPrice,
+        });
+      });
+      cadUploadPaskiWzmacniajaceAdd?.addEventListener("click", () => {
+        addExtraServiceToCart({
+          id: "cad-paski-wzmacniajace",
+          name: "Doklejanie pasków wzmacniających",
+          unit: "szt",
+          qtyInput: cadUploadPaskiWzmacniajaceQty,
+          checkbox: optPaskiWzmacniajace,
+          qtyRow: cadUploadPaskiWzmacniajaceQtyRow,
+          priceLine: cadUploadPaskiWzmacniajacePriceLine,
+          unitPrice: paskiUnitPrice,
+        });
+      });
+
+      // DPI change
+      if (dpiInput) {
+        dpiInput.addEventListener("change", (e) => {
+          dpi = parseInt((e.target as HTMLInputElement).value) || 300;
+          files = files.map((f) => {
+            if (f.isPdf) return f;
+            f.widthMm = pxToMm(f.widthPx);
+            f.heightMm = pxToMm(f.heightPx);
+            const fmt = detectFormatFromDimensions(f.widthMm, f.heightMm, true);
+            f.format = fmt.format;
+            f.isFormatowy = fmt.isFormatowy;
+            f.isStandardWidth = fmt.isStandardWidth;
+            f.mode = getMode();
+            return recalculateFile(f);
+          });
+          renderFiles();
+        });
+
+        const dpiNote = document.createElement("p");
+        dpiNote.className = "cad-dpi-note";
+        dpiNote.style.cssText =
+          "margin:4px 0 0;font-size:0.78rem;color:var(--text-secondary,#64748b);";
+        dpiNote.textContent =
+          "DPI dotyczy tylko plików graficznych (np. skanów). Pliki PDF mają wbudowaną rozdzielczość i nie są przeliczane przy zmianie DPI.";
+        dpiInput.insertAdjacentElement("afterend", dpiNote);
+      }
+
+      // Add to cart buttons (Color and BW)
+      const selectColorBtn = container.querySelector<HTMLButtonElement>("#selectColor");
+      const selectBwBtn = container.querySelector<HTMLButtonElement>("#selectBw");
+      const submitBtn = container.querySelector<HTMLButtonElement>("#submitBtn");
+
+      const handleCartButton = (btn: HTMLButtonElement | null, mode: "color" | "bw") => {
+        if (!btn) return;
+
+        btn.addEventListener("click", () => {
+          if (files.length === 0) {
+            alert("Nie dodano żadnych plików do wyceny");
+            return;
+          }
+
+          const grandTotalPrice = mode === "color" ? grandTotalColorVariant : grandTotalBwVariant;
+          const totalFolding = files.reduce((sum, f) => sum + f.foldingPrice, 0);
+          const totalScan = files.reduce((sum, f) => sum + f.scanPrice, 0);
+
+          // Rozbicie stron po formacie — pokazuje osobie obsługującej zamówienie
+          // ile stron jakiego formatu wyceniono, nie tylko "X plików" (co po
+          // mixie A3+A4 w jednym pliku jest niejednoznaczne — jeden upload
+          // może dać 2 pozycje). A4 liczone progami "Druk A4/A3" od sumy stron,
+          // już wliczone w totalPrice — nie jest to wykluczone z ceny.
+          const pagesByFormat = new Map<string, number>();
+          for (const f of files) {
+            pagesByFormat.set(f.format, (pagesByFormat.get(f.format) || 0) + f.pageCount);
+          }
+          const a4Pages = pagesByFormat.get("A4") || 0;
+          const otherBreakdown = [...pagesByFormat.entries()]
+            .filter(([fmt]) => fmt !== "A4")
+            .map(([fmt, count]) => `${count} str. ${formatLabel(fmt)}`)
+            .join(", ");
+          const a4Note = a4Pages > 0 ? `${a4Pages} str. A4 (cennik Druk A4/A3)` : "";
+          const pagesBreakdown = [otherBreakdown, a4Note].filter(Boolean).join(" + ");
+
+          const modeLabel = mode === "color" ? "KOLOR" : "CZ-B";
+          const opts = [
+            formatPlikCount(files.length),
+            modeLabel,
+            pagesBreakdown,
+            totalFolding > 0 ? "ze składaniem" : "",
+            totalScan > 0 ? "ze skanowaniem" : "",
+          ]
+            .filter(Boolean)
+            .join(", ");
+
+          const snapshotFiles = files.map((f) => ({ ...f }));
+
+          ctx.cart.addItem({
+            id: `cad-upload-${mode}-${Date.now()}`,
+            category: "CAD Upload",
+            name: `Wydruk CAD (${formatPlikCount(files.length)}) - ${modeLabel}`,
+            quantity: files.length,
+            unit: "plik",
+            unitPrice: grandTotalPrice / files.length,
+            isExpress: ctx.expressMode,
+            totalPrice: grandTotalPrice,
+            optionsHint: opts,
+            payload: { files: snapshotFiles, mode, price: grandTotalPrice },
+          });
+
+          ctx.updateLastCalculated(grandTotalPrice, "CAD Upload");
+
+          files.splice(0, files.length);
+          renderFiles();
+        });
+      };
+
+      handleCartButton(selectColorBtn, "color");
+      handleCartButton(selectBwBtn, "bw");
+
+      if (submitBtn) {
+        submitBtn.addEventListener("click", () => {
+          if (files.length === 0) {
+            alert("Nie dodano żadnych plików do wyceny");
+            return;
+          }
+
+          const selectedMode = (modeSelect?.value || (isColor ? "color" : "bw")) as "color" | "bw";
+          if (selectedMode === "color") {
+            selectColorBtn?.click();
+          } else {
+            selectBwBtn?.click();
+          }
+        });
+      }
+
+      // Initial render
+      renderFiles();
+      renderLegend();
+
+      ctx?.on?.("prices-updated", () => {
+        try {
+          renderLegend();
+        } catch (_) {
+          /* ignore */
         }
       });
+    } finally {
+      // Normalne zakończenie → zdjęcie osłony (input przyjmuje pliki, wczesne
+      // handlery drag&drop stają się no-op). Rzut po await → to samo, input nie
+      // zostaje trwale zablokowany. Mount wyparty → token-check wewnątrz pomija
+      // zwolnienie (DOM martwy).
+      releaseInitGuard();
     }
-
-    // Initial render
-    renderFiles();
-    renderLegend();
-
-    ctx?.on?.("prices-updated", () => {
-      try {
-        renderLegend();
-      } catch (_) {
-        /* ignore */
-      }
-    });
   },
 
   unmount() {
