@@ -1,5 +1,6 @@
 import { test, expect, type Page } from "@playwright/test";
 import { join } from "node:path";
+import { waitForCadViewReady } from "./helpers/waitForViewReady";
 
 /**
  * Weryfikacja na żywo (żądanie ownera: nie tylko testy jednostkowe) scenariusza
@@ -50,7 +51,7 @@ test.describe("CAD Upload — A4 wykryty i wyceniony progami Druk A4/A3 przy mix
     fs.writeFileSync(filePath, bytes);
 
     await page.goto("/#/cad-upload");
-    await page.waitForSelector("#cadFileInput", { state: "attached", timeout: 10000 });
+    await waitForCadViewReady(page);
 
     await page.setInputFiles("#cadFileInput", [filePath]);
 
@@ -131,7 +132,7 @@ test.describe("CAD Upload — A4 wykryty i wyceniony progami Druk A4/A3 przy mix
     fs.writeFileSync(filePath, bytes);
 
     await page.goto("/#/cad-upload");
-    await page.waitForSelector("#cadFileInput", { state: "attached", timeout: 10000 });
+    await waitForCadViewReady(page);
     await page.setInputFiles("#cadFileInput", [filePath]);
     await page.waitForSelector("#results-body tr[data-file-id]");
 
@@ -169,7 +170,7 @@ test.describe("CAD Upload — A4 wykryty i wyceniony progami Druk A4/A3 przy mix
     fs.writeFileSync(filePath, bytes);
 
     await page.goto("/#/cad-upload");
-    await page.waitForSelector("#cadFileInput", { state: "attached", timeout: 10000 });
+    await waitForCadViewReady(page);
     await page.setInputFiles("#cadFileInput", [filePath]);
     await page.waitForSelector("#results-body tr[data-file-id]");
 
