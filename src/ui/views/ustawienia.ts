@@ -7,6 +7,7 @@ import {
   BASE_PRICE_CATEGORIES,
   findOrCreateCategory,
 } from "../../core/productCat";
+import { categoryAppliesSurcharges } from "../../core/surchargeCategories";
 import { logVariantOperation } from "../../core/variantLogger";
 import { clearAdminSession } from "../../core/adminSession";
 import { createSingleFlightGuard } from "../../core/singleFlight";
@@ -2034,6 +2035,15 @@ function getAddableCategories(): PriceCategory[] {
   return BASE_PRICE_CATEGORIES.filter(
     (category) => category.id !== "inne" && category.id !== "modifiers"
   );
+}
+
+// Picker dopłat globalnych pokazuje WYŁĄCZNIE kategorie, które realnie wołają
+// applySurcharges (H15/ZD-14). Dopłata przypisana do kategorii spoza tego
+// zbioru (np. Artykuły, Usługi, Koperty) nic by nie zrobiła — nie wolno jej
+// tam przypisać. Wariantowy picker „Dodaj wariant/materiał" używa nadal
+// pełnego getAddableCategories().
+function getSurchargeAddableCategories(): PriceCategory[] {
+  return getAddableCategories().filter((category) => categoryAppliesSurcharges(category.id));
 }
 
 const CAD_SETTINGS_ORDER: string[] = [
@@ -4386,7 +4396,7 @@ export const UstawieniaView: View = {
                   <details class="settings-multiselect" id="new-surcharge-category-picker">
                     <summary id="new-surcharge-category-summary" class="settings-input">Wybierz kategorie (0 zaznaczonych)</summary>
                     <div class="settings-multiselect-options">
-                      ${getAddableCategories()
+                      ${getSurchargeAddableCategories()
                         .map(
                           (cat) => `
                       <label style="display:flex; align-items:center; gap:8px; margin:4px 0;">
@@ -4408,6 +4418,8 @@ export const UstawieniaView: View = {
                   </select>
                   <button id="btn-delete-surcharge" type="button" class="btn-secondary settings-action-btn" style="margin-top:6px;" disabled>✕ Usuń dopłatę</button>
                 </div>
+
+                <div id="surcharge-mismatch-warning" class="settings-warning" style="display:none; margin-top:10px; padding:8px 10px; border-radius:6px; border:1px solid #f59e0b; background:#fffbeb; color:#92400e; font-size:13px;"></div>
               </details>
 
               <details class="settings-add-group" id="add-bulk-paper-group" style="display:none; margin-top:12px;" open>
@@ -5856,7 +5868,46 @@ export const UstawieniaView: View = {
       btnDeleteSurcharge.disabled = false;
     }
 
+    const surchargeMismatchWarningEl = container.querySelector<HTMLElement>(
+      "#surcharge-mismatch-warning"
+    );
+    const categoryLabelById = (id: string): string =>
+      BASE_PRICE_CATEGORIES.find((c) => c.id === id)?.label ?? id;
+
+    // Istniejące dopłaty przypisane do kategorii, która nie nalicza dopłat
+    // (H15): NIE kasujemy automatycznie — tylko ostrzegamy, owner decyduje.
+    function refreshSurchargeMismatchWarning(): void {
+      if (!surchargeMismatchWarningEl) return;
+      const problems = getSurchargeDefinitions()
+        .map((s) => {
+          const deadCategories = (s.categoryIds ?? []).filter(
+            (id) => !categoryAppliesSurcharges(id)
+          );
+          return deadCategories.length > 0 ? { label: s.label, deadCategories } : null;
+        })
+        .filter((p): p is { label: string; deadCategories: string[] } => p !== null);
+
+      if (problems.length === 0) {
+        surchargeMismatchWarningEl.style.display = "none";
+        surchargeMismatchWarningEl.textContent = "";
+        return;
+      }
+
+      const lines = problems.map(
+        (p) =>
+          `„${p.label}" przypisana do: ${p.deadCategories
+            .map(categoryLabelById)
+            .join(", ")} — tam nie jest naliczana.`
+      );
+      surchargeMismatchWarningEl.innerHTML =
+        `<strong>⚠️ Dopłaty bez efektu w przypisanych kategoriach</strong><br>` +
+        `${lines.join("<br>")}<br>` +
+        `<span style="opacity:.85;">Kategoria musi mieć wpisany w kodzie odczyt dopłat. Usuń przypisanie lub dopłatę, jeśli było pomyłką.</span>`;
+      surchargeMismatchWarningEl.style.display = "";
+    }
+
     refreshDeleteSurchargeSelect();
+    refreshSurchargeMismatchWarning();
 
     container.querySelector("#btn-add-surcharge")?.addEventListener("click", () => {
       const name = (surchargeNameInput?.value ?? "").trim();
@@ -5930,6 +5981,7 @@ export const UstawieniaView: View = {
         .forEach((cb) => (cb.checked = false));
       refreshSurchargeCategorySummary();
       refreshDeleteSurchargeSelect();
+      refreshSurchargeMismatchWarning();
     });
 
     btnDeleteSurcharge?.addEventListener("click", () => {
@@ -5957,6 +6009,7 @@ export const UstawieniaView: View = {
       renderTabs();
       renderTable();
       refreshDeleteSurchargeSelect();
+      refreshSurchargeMismatchWarning();
       ctx?.emit?.("prices-updated", { timestamp: Date.now() });
     });
 
