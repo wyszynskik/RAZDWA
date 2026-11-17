@@ -33,6 +33,7 @@
 import { getVariantDefinitions, type VariantDefinition } from "../services/priceService";
 import { resolveStoredPrice } from "./compat";
 import { formatRatePercent } from "./rateLabels";
+import { escapeHtml } from "./validation";
 
 export const SURCHARGE_ASSIGNMENT_PREFIX = "__surcharge__";
 
@@ -93,17 +94,30 @@ export function getSurchargesForCategory(categoryId: string): SurchargeDefinitio
  * checkbox ids would collide and collectCheckedSurchargeIds's scoped
  * querySelectorAll would still work (class-based), but duplicate `id`
  * attributes are invalid HTML and break label `for` association.
+ *
+ * Z-01 (XSS): the output is injected via `innerHTML` at every call site, and
+ * both `s.label` (admin-edited) and `s.id` (round-tripped verbatim through
+ * catalog.save/GAS) are attacker-influenced under the catalog threat model.
+ * `s.label` is a text node, `s.id` lands in double-quoted attributes — escape
+ * BOTH with escapeHtml. The browser decodes attributes on parse, so the
+ * escaped `data-surcharge-id` still reads back raw via dataset, and the
+ * `id`/`for` pair still matches. The sibling text helpers
+ * (formatCheckedSurchargeNames / formatCheckedSurchargeSummary) stay RAW on
+ * purpose: their sinks already escape (cart via escapeHtml in main.ts,
+ * summary via textContent in viewHelpers) — escaping here too would
+ * double-encode legitimate labels.
  */
 export function renderSurchargeCheckboxesHtml(categoryId: string, idPrefix = ""): string {
   const surcharges = getSurchargesForCategory(categoryId);
   if (surcharges.length === 0) return "";
   return surcharges
     .map((s) => {
-      const checkboxId = `${idPrefix}dyn-surcharge-${s.id}`;
+      const checkboxId = escapeHtml(`${idPrefix}dyn-surcharge-${s.id}`);
+      const surchargeIdAttr = escapeHtml(s.id);
       const pct = Math.round(s.percent * 100);
       return `<label for="${checkboxId}" class="dyn-surcharge-row" style="display:flex; align-items:center; gap:6px; margin:4px 0;">
-        <input type="checkbox" id="${checkboxId}" class="dyn-surcharge-check" data-surcharge-id="${s.id}">
-        <span>${s.label} (+${pct}%)</span>
+        <input type="checkbox" id="${checkboxId}" class="dyn-surcharge-check" data-surcharge-id="${surchargeIdAttr}">
+        <span>${escapeHtml(s.label)} (+${pct}%)</span>
       </label>`;
     })
     .join("");

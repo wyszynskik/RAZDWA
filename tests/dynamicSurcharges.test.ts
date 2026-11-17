@@ -144,6 +144,27 @@ describe("dynamicSurcharges", () => {
     expect(html).toContain("Dwustronne (+40%)");
   });
 
+  it("renderSurchargeCheckboxesHtml: escapuje etykietę (Z-01, Stored XSS)", () => {
+    setVariantDefinitions([
+      buildSurchargeVariant("evil", '<img src=x onerror="window.__xss=1">', ["dyplomy"]),
+    ]);
+    setPrice(`defaultPrices.${surchargeRateKey("evil")}`, 0.1);
+    const html = renderSurchargeCheckboxesHtml("dyplomy");
+    expect(html).toContain("&lt;img");
+    expect(html).not.toContain("<img");
+  });
+
+  it("renderSurchargeCheckboxesHtml: escapuje id w atrybucie (Z-01, wyłamanie z atrybutu)", () => {
+    setVariantDefinitions([
+      buildSurchargeVariant('x"><script>window.__xss=1</script>', "Zła dopłata", ["dyplomy"]),
+    ]);
+    setPrice(`defaultPrices.${surchargeRateKey('x"><script>window.__xss=1</script>')}`, 0.1);
+    const html = renderSurchargeCheckboxesHtml("dyplomy");
+    expect(html).not.toContain("<script>");
+    expect(html).toContain("&lt;script&gt;");
+    expect(html).toContain("&quot;");
+  });
+
   it("buildSurchargeAssignmentKey jest stabilny i parsowalny przez prefiks", () => {
     const key = buildSurchargeAssignmentKey("test-id");
     expect(key).toBe(`${SURCHARGE_ASSIGNMENT_PREFIX}test-id`);
