@@ -43,6 +43,52 @@ afterEach(() => {
   setVariantDefinitions([]);
 });
 
+describe("Dyplomy — D-110 per-unit powyżej najwyższego punktu (główna drabina ilości)", () => {
+  // Bundle: główna drabina top = 100 szt / 120 zł → cena/szt = 1,2.
+  // Ścieżka płaskiej tabeli (bez gramatury/materiału) → basePrice = getPriceForQuantity.
+  const base = (qty: number) => calculateDyplomy({ qty, isSatin: false, express: false }).basePrice;
+
+  it("qty = najwyższy punkt (100) = cena najwyższego punktu (ciągłość): 120", () => {
+    expect(base(100)).toBe(120);
+  });
+
+  it("last+1 (101): 101 × 1,2 = 121,20", () => {
+    expect(base(101)).toBe(121.2);
+  });
+
+  it("2×last (200): 200 × 1,2 = 240", () => {
+    expect(base(200)).toBe(240);
+  });
+
+  it("poniżej pierwszego punktu (0) → cena pierwszego punktu (20), skończona", () => {
+    const v = base(0);
+    expect(Number.isFinite(v)).toBe(true);
+    expect(v).toBe(20);
+  });
+
+  it("wewnątrz progów bez zmian (50 szt = tier 50 = 75)", () => {
+    expect(base(50)).toBe(75);
+  });
+
+  it("dodatki stosują się do bazy per-unit w tej samej kolejności, jedno zaokrąglenie: 200 szt + satyna +12% = 240 × 1,12 = 268,80", () => {
+    const r = calculateDyplomy({ qty: 200, isSatin: true, express: false });
+    expect(r.basePrice).toBe(240);
+    expect(r.totalPrice).toBe(268.8);
+    expect(r.appliedModifiers).toEqual(["satin"]);
+  });
+
+  it("Dyplomy Eko: per-unit powyżej top (A4 top 100/310 → /szt 3,1): last 310, last+1 313,10, 2×last 620, poniżej pierwszego 12", () => {
+    const eko = (qty: number) =>
+      calculateDyplomyEko({ format: "A4", qty, isSatin: false, express: false }).basePrice;
+    expect(eko(100)).toBe(310);
+    expect(eko(101)).toBe(313.1);
+    expect(eko(200)).toBe(620);
+    const below = eko(0);
+    expect(Number.isFinite(below)).toBe(true);
+    expect(below).toBe(12);
+  });
+});
+
 describe("Dyplomy logic", () => {
   it("should calculate 1szt correctly", () => {
     const result = calculateDyplomy({
@@ -174,10 +220,10 @@ describe("Dyplomy logic", () => {
       expect(result.totalPrice).toBe(20);
     });
 
-    it("above max – qty=200: powyżej progu 100→120 → flat 120 zł", () => {
+    it("above max – qty=200: powyżej progu 100 (120 zł) → per-unit 200 × 1,2 = 240 (D-110)", () => {
       const result = calculateDyplomy({ qty: 200, isSatin: false, express: false });
-      expect(result.tierPrice).toBe(120);
-      expect(result.totalPrice).toBe(120);
+      expect(result.tierPrice).toBe(240);
+      expect(result.totalPrice).toBe(240);
     });
   });
 
@@ -323,9 +369,9 @@ describe("Dyplomy Ekonomiczny", () => {
     expect(result.basePrice).toBe(22.22);
   });
 
-  it("A4 qty=200 – powyżej max (100 szt) → flat 310.00", () => {
+  it("A4 qty=200 – powyżej max (100 szt / 310 zł) → per-unit 200 × 3,1 = 620 (D-110)", () => {
     const result = calculateDyplomyEko({ format: "A4", qty: 200, isSatin: false, express: false });
-    expect(result.basePrice).toBe(310.0);
+    expect(result.basePrice).toBe(620.0);
   });
 
   it("getResolvedDyplomyEkoTiers – zwraca posortowane progi dla A4", () => {
