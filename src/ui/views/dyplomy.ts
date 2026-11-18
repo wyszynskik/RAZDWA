@@ -18,7 +18,7 @@ import {
 } from "../../core/dynamicSurcharges";
 import { escapeHtml } from "../../core/validation";
 import { mountDynamicSubgroupContainers } from "../dynamicSubgroups";
-import { setFieldHint, flashFieldHints, setButtonGuarded } from "../viewHelpers";
+import { setFieldHint, flashFieldHints, setButtonGuarded, renderPriceResult } from "../viewHelpers";
 
 export const DyplomyView: View = {
   id: "dyplomy",
@@ -224,13 +224,14 @@ export const DyplomyView: View = {
         breakdownBox.style.display = "grid";
 
         resultArea.style.display = "block";
-        setButtonGuarded(addToCartBtn, true);
-        setFieldHint(qtyHint, null);
-        (container.querySelector("#resUnitPrice") as HTMLElement).textContent = formatPLN(
-          totalPrice / options.qty
-        );
-        (container.querySelector("#resTotalPrice") as HTMLElement).textContent =
-          formatPLN(totalPrice);
+        renderPriceResult({
+          totalPrice,
+          totalEl: container.querySelector<HTMLElement>("#resTotalPrice"),
+          unitPrice: totalPrice / options.qty,
+          unitEl: container.querySelector<HTMLElement>("#resUnitPrice"),
+          button: addToCartBtn,
+          hintEl: qtyHint,
+        });
         const tierHintEl = container.querySelector("#resTierHint") as HTMLElement;
         if (tierHintEl) {
           tierHintEl.textContent = `Dla ${options.qty} szt użyto ceny tabeli ${formatPLN(tierPrice)} (papier: ${paperVal.replace("_", " ")})`;
@@ -347,14 +348,14 @@ export const DyplomyView: View = {
         ekoBreakdownBox.style.display = "grid";
 
         ekoResultArea.style.display = "block";
-        setButtonGuarded(ekoAddToCartBtn, true);
-        setFieldHint(ekoQtyHint, null);
-        (container.querySelector("#ekoTotalPrice") as HTMLElement).textContent = formatPLN(
-          result.totalPrice
-        );
-        (container.querySelector("#ekoUnitPrice") as HTMLElement).textContent = formatPLN(
-          result.totalPrice / qty
-        );
+        renderPriceResult({
+          totalPrice: result.totalPrice,
+          totalEl: container.querySelector<HTMLElement>("#ekoTotalPrice"),
+          unitPrice: result.totalPrice / qty,
+          unitEl: container.querySelector<HTMLElement>("#ekoUnitPrice"),
+          button: ekoAddToCartBtn,
+          hintEl: ekoQtyHint,
+        });
         const ekoTierHintEl = container.querySelector("#ekoTierHint") as HTMLElement;
         if (ekoTierHintEl) {
           ekoTierHintEl.textContent = `${qty} szt ${format}, papier: ${paperLabel}`;

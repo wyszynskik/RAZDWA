@@ -28,6 +28,7 @@ import {
   isButtonGuardDisabled,
   mountInOptionsRegion,
   updateSurchargeSummary,
+  renderPriceResult,
 } from "../viewHelpers";
 
 type BreakdownRow = {
@@ -609,7 +610,12 @@ export const WlepkiView: View = {
           if (breakdownLinesEl) renderBreakdownRows(breakdownLinesEl, breakdownRows);
         }
 
-        totalPriceEl.textContent = formatPLN(currentResult.totalPrice);
+        const priceValid = renderPriceResult({
+          totalPrice: currentResult.totalPrice,
+          totalEl: totalPriceEl,
+          button: addBtn,
+          hintEl: fallbackHint,
+        });
         updateSurchargeSummary(
           container,
           resultDiv,
@@ -617,8 +623,7 @@ export const WlepkiView: View = {
         );
         if (resultDiv) resultDiv.style.display = "block";
         if (detailedBreakdownDisplay) detailedBreakdownDisplay.style.display = "block";
-        setButtonGuarded(addBtn, true);
-        blockedHints = [];
+        blockedHints = priceValid ? [] : [fallbackHint];
 
         ctx.updateLastCalculated(currentResult.totalPrice, "Wlepki");
       } catch (err) {

@@ -1,6 +1,48 @@
+import { formatPLN } from "../core/money";
+
 export function setFieldHint(hintEl: HTMLElement | null, reason: string | null): void {
   if (!hintEl) return;
   hintEl.textContent = reason ?? "";
+}
+
+/**
+ * D-102: jeden wzorzec „cena niedostępna" dla wszystkich widoków. Gdy cena ≤0
+ * lub NaN (brak klucza cennika), pokazuje tekst-placeholder zamiast „0,00 zł",
+ * wyłącza przycisk koszyka (aria-disabled, spójnie z globalną blokadą) i ustawia
+ * hint — zamiast aktywnego przycisku i toasta dopiero po kliknięciu. Wyłącznie
+ * prezentacja: formatuje PODANĄ, już policzoną cenę, nie liczy jej. Zwraca, czy
+ * cena jest poprawna (>0), żeby widok mógł ustawić własny stan (np. blockedHints).
+ *
+ * `placeholder` parametryzowalny, bo Broszury historycznie pokazują samo „—";
+ * domyślnie „— (do uzupełnienia)" dla pozostałych widoków.
+ */
+export function renderPriceResult(opts: {
+  totalPrice: number;
+  totalEl: HTMLElement | null;
+  button: HTMLButtonElement | null;
+  unitPrice?: number;
+  unitEl?: HTMLElement | null;
+  hintEl?: HTMLElement | null;
+  unavailableHint?: string;
+  placeholder?: string;
+}): boolean {
+  const placeholder = opts.placeholder ?? "— (do uzupełnienia)";
+  const valid = Number.isFinite(opts.totalPrice) && opts.totalPrice > 0;
+
+  if (opts.totalEl) opts.totalEl.textContent = valid ? formatPLN(opts.totalPrice) : placeholder;
+  if (opts.unitEl) {
+    const u = opts.unitPrice;
+    const unitValid = u !== undefined && Number.isFinite(u) && u > 0;
+    opts.unitEl.textContent = unitValid ? formatPLN(u) : placeholder;
+  }
+  if (opts.button) setButtonGuarded(opts.button, valid);
+  if (opts.hintEl) {
+    setFieldHint(
+      opts.hintEl,
+      valid ? null : (opts.unavailableHint ?? "Brak ceny dla tych opcji — skontaktuj się z nami.")
+    );
+  }
+  return valid;
 }
 
 export function flashFieldHints(hintEls: (HTMLElement | null)[]): void {
