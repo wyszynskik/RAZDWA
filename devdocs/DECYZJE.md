@@ -91,8 +91,8 @@ Stan kodu dla sekcji D-1xx i D-2xx: `main` @ beced81 (PR #230), zweryfikowany 20
 - **Decyzja:** klientka wpisuje ceny dla konkretnych ilości (np. 1, 5, 10, 20 szt); cena to kwota za całe zamówienie przy tej ilości. Pomiędzy punktami cena jest interpolowana liniowo. Powyżej ostatniego punktu: cena za sztukę z ostatniego punktu × zamawiana ilość (ostatni punkt 1500 szt, zamówienie 2000 szt → 2000 × cena 1500 / 1500).
 - **Powód:** klientka tak zapisuje cenniki; ilość spoza cennika nie może blokować wyceny.
 - **Dotyczy:** cały kalkulator, wszystkie kategorie liczone od ilości.
-- **Status:** OBOWIĄZUJE jako decyzja; kod do wyrównania (nowy mechanizm Dyplomów liczy przedziałami, część kategorii powyżej ostatniego punktu trzyma stałą cenę).
-- **Otwarte:** zachowanie poniżej pierwszego punktu.
+- **Status:** OBOWIĄZUJE, WDROŻONE (2026-11-18). Jedyna implementacja reguły: `getInterpolatedPrice(tiers, qty, "per-unit")` (`src/core/compat.ts`). Delegują do niej `safeInterpolate` (generyczne podgrupy, `src/ui/dynamicSubgroups.ts`) i `interpolatePrice` (Plakaty A4-A3, `src/categories/plakaty.ts`). Objęte kategorie: generyczne podgrupy punktowe wszystkich kategorii (w tym custom plakaty-a4-a3), główna drabina ilości Dyplomów i Dyplomy Eko (`src/categories/dyplomy.ts` — `getPriceForQuantity`, `calculateDyplomyEko`), tabele papieru Dyplomów (już per-unit). Plakaty „Duży Canon" capują ilość do [10, 200], więc powyżej 200 reguła nie ma efektu (ilość nigdy nie przekracza najwyższego progu). Powyżej najwyższego punktu: per-unit ciągły na granicy, zaczepiony o zawsze najwyższy istniejący punkt (dynamiczny). Poniżej pierwszego punktu: cena pierwszego punktu (nie NaN — naprawiono Z-10). Dodatki (satyna/Modigliani/dwustronne/EXPRESS) liczone od tej samej bazy, w tej samej kolejności, z jednym zaokrągleniem.
+- **Otwarte:** brak (zachowanie poniżej pierwszego punktu ustalone: cena pierwszego punktu).
 
 ### D-111 Przejście ze starych cen na nowe
 

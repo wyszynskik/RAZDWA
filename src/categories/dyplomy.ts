@@ -62,7 +62,9 @@ function getSelectedDyplomyTier(qty: number, tiers: DyplomyTier[]): DyplomyTier 
 
 function getPriceForQuantity(qty: number): number {
   const tiers = getResolvedDyplomyTiers();
-  return getInterpolatedPrice(tiers, qty);
+  // D-110: powyżej najwyższego punktu ekstrapolacja per sztuka (nie flat),
+  // ciągła na granicy, zaczepiona o najwyższy istniejący punkt.
+  return getInterpolatedPrice(tiers, qty, "per-unit");
 }
 
 function dyplomyMaterialCategoryId(format: "A4" | "A5"): DynamicMaterialCategoryId {
@@ -307,7 +309,8 @@ export function getResolvedDyplomyEkoTiers(format: DyplomyEkoFormat): DyplomyTie
 
 export function calculateDyplomyEko(options: DyplomyEkoOptions) {
   const tiers = getResolvedDyplomyEkoTiers(options.format);
-  const basePrice = getInterpolatedPrice(tiers, options.qty);
+  // D-110: powyżej najwyższego punktu per sztuka (jak główna drabina Dyplomów).
+  const basePrice = getInterpolatedPrice(tiers, options.qty, "per-unit");
   const satinRate = resolveStoredPrice("modifier-satyna-eko", 0.07);
   const expressRate = resolveStoredPrice("modifier-express", 0.2);
 
