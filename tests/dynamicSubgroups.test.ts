@@ -542,11 +542,12 @@ describe("safeInterpolate", () => {
     expect(safeInterpolate(5, tiers)).toBe(10);
   });
 
-  it("clamps to the highest tier price when qty is above the highest tier", () => {
-    expect(safeInterpolate(50, tiers)).toBe(20);
+  it("extrapoluje per-unit powyżej najwyższego punktu (D-110), nie clampuje do flat", () => {
+    // najwyższy punkt {10,20} → cena/szt = 20/10 = 2; qty 50 → 50×2 = 100
+    expect(safeInterpolate(50, tiers)).toBe(100);
   });
 
-  it("delegates to interpolatePrice for qty strictly between two tiers", () => {
+  it("interpoluje liniowo dla qty ściśle między dwoma punktami (bez zmian)", () => {
     // ratio = (7-5)/(10-5) = 0.4; price = 10 + 0.4 * (20-10) = 14
     expect(safeInterpolate(7, tiers)).toBe(14);
   });
@@ -557,6 +558,47 @@ describe("safeInterpolate", () => {
       { key: "k5", qty: 5, price: 10 },
     ];
     expect(safeInterpolate(7, unsorted)).toBe(safeInterpolate(7, tiers));
+  });
+});
+
+describe("safeInterpolate — reguła D-110 (powyżej/poniżej progów, wartości liczbowe)", () => {
+  // Najwyższy punkt 1500 → T=300, cena/szt = 300/1500 = 0,2.
+  const tiers: DynamicSubgroupTier[] = [
+    { key: "k100", qty: 100, price: 30 },
+    { key: "k1500", qty: 1500, price: 300 },
+  ];
+
+  it("ciągłość na granicy: qty = najwyższy punkt = cena najwyższego punktu", () => {
+    expect(safeInterpolate(1500, tiers)).toBe(300);
+  });
+
+  it("last+1: 1501 × (300/1500) = 300,20", () => {
+    expect(safeInterpolate(1501, tiers)).toBe(300.2);
+  });
+
+  it("2×last: 3000 × (300/1500) = 600", () => {
+    expect(safeInterpolate(3000, tiers)).toBe(600);
+  });
+
+  it("poniżej pierwszego punktu: {0, 1, first-1} → skończone i = cena pierwszego punktu (fix Z-10)", () => {
+    for (const qty of [0, 1, 99]) {
+      const v = safeInterpolate(qty, tiers);
+      expect(Number.isFinite(v)).toBe(true);
+      expect(v).toBe(30);
+    }
+  });
+
+  it("wewnątrz progów bez zmian: 800 interpoluje między 100 i 1500", () => {
+    // 30 + ((800-100)/(1500-100)) × (300-30) = 30 + 0,5 × 270 = 165
+    expect(safeInterpolate(800, tiers)).toBe(165);
+  });
+
+  it("dynamiczna kotwica: po dodaniu punktu 2000 ekstrapolacja liczy wg 2000", () => {
+    const withHigher: DynamicSubgroupTier[] = [...tiers, { key: "k2000", qty: 2000, price: 500 }];
+    // nowy najwyższy 2000 → cena/szt = 500/2000 = 0,25; qty 4000 → 1000
+    expect(safeInterpolate(4000, withHigher)).toBe(1000);
+    // granica: qty = 2000 → 500 (ciągłość na nowej kotwicy)
+    expect(safeInterpolate(2000, withHigher)).toBe(500);
   });
 });
 

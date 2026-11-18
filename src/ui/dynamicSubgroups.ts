@@ -19,7 +19,7 @@ import {
   type MaterialSizeOption,
   type VariantDefinition,
 } from "../services/priceService";
-import { getDefaultPricesMap } from "../core/compat";
+import { getDefaultPricesMap, getInterpolatedPrice } from "../core/compat";
 import { getExpressRate } from "../core/modifiers";
 import {
   renderSurchargeCheckboxesHtml,
@@ -29,7 +29,6 @@ import {
   formatCheckedSurchargeSummary,
 } from "../core/dynamicSurcharges";
 import { updateSurchargeSummary } from "./viewHelpers";
-import { interpolatePrice } from "../categories/plakaty";
 import { formatPLN } from "../core/money";
 import { escapeHtml } from "../core/validation";
 import {
@@ -196,21 +195,21 @@ export function getRenderableProducts(categoryId: string): RenderableProduct[] {
 }
 
 /**
- * interpolatePrice() divides by (upperTier.qty - lowerTier.qty); for any qty
- * at or below the lowest known tier that gap collapses to 0, producing NaN
- * (it only clamps qty *above* the top tier, not below the bottom one — see
- * categories/plakaty.ts). Clamp both ends here before deferring to it.
+ * Cienka delegacja do getInterpolatedPrice (core/compat) — jedyna implementacja
+ * reguły D-110 dla podgrup punktowych: poniżej pierwszego punktu cena pierwszego
+ * punktu (bez NaN), między punktami interpolacja liniowa (bez zmian), powyżej
+ * najwyższego punktu tryb "per-unit" (qty × cena_najwyższego / ilość_najwyższego),
+ * ciągły na granicy i zaczepiony o zawsze najwyższy istniejący punkt (dodanie
+ * wyższego punktu samo przesuwa ekstrapolację).
  *
  * Exported for unit tests only — not part of this module's public API for
  * other views, which should go through mountDynamicSubgroupContainers().
  */
 export function safeInterpolate(qty: number, tiers: DynamicSubgroupTier[]): number {
-  const sorted = [...tiers].sort((a, b) => a.qty - b.qty);
-  if (qty <= sorted[0].qty) return sorted[0].price;
-  if (qty >= sorted[sorted.length - 1].qty) return sorted[sorted.length - 1].price;
-  return interpolatePrice(
+  return getInterpolatedPrice(
+    tiers.map((t) => ({ qty: t.qty, price: t.price })),
     qty,
-    sorted.map((t) => ({ qty: t.qty, price: t.price }))
+    "per-unit"
   );
 }
 

@@ -3,6 +3,7 @@ import {
   calculatePlakatyM2,
   calculatePlakatyFormat,
   calculatePlakatyDuzyCanon,
+  interpolatePrice,
 } from "../src/categories/plakaty";
 import { getPlakatyA4A3LegendStyles } from "../src/ui/views/plakaty-a4-a3";
 import {
@@ -275,6 +276,35 @@ describe("calculatePlakatyDuzyCanon – A4/A3, linear interpolation between tier
 
     const above = calculatePlakatyDuzyCanon({ variantId: "a4-170-kreda-130-170", qty: 999 });
     expect(above.qty).toBe(200);
+  });
+});
+
+describe("interpolatePrice — reguła D-110 + fix Z-10 (wartości liczbowe)", () => {
+  const tiers = [
+    { qty: 100, price: 30 },
+    { qty: 1500, price: 300 },
+  ];
+
+  it("poniżej pierwszego punktu: {0, 1, first-1} → skończone i = cena pierwszego punktu (nie NaN)", () => {
+    for (const qty of [0, 1, 99]) {
+      const v = interpolatePrice(qty, tiers);
+      expect(Number.isFinite(v)).toBe(true);
+      expect(v).toBe(30);
+    }
+  });
+
+  it("wewnątrz progów bez zmian: 800 → 165", () => {
+    expect(interpolatePrice(800, tiers)).toBe(165);
+  });
+
+  it("ciągłość na granicy i per-unit powyżej: 1500→300, 1501→300,20, 3000→600", () => {
+    expect(interpolatePrice(1500, tiers)).toBe(300);
+    expect(interpolatePrice(1501, tiers)).toBe(300.2);
+    expect(interpolatePrice(3000, tiers)).toBe(600);
+  });
+
+  it("qty równe punktowi środkowemu zwraca jego cenę (bez driftu zaokrągleń)", () => {
+    expect(interpolatePrice(100, tiers)).toBe(30);
   });
 });
 
