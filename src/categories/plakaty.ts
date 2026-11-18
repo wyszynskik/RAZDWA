@@ -3,7 +3,7 @@ import { calculatePrice } from "../core/pricing";
 import { formatPLN } from "../core/money";
 import { getPrice } from "../services/priceService";
 import { PriceTable } from "../core/types";
-import { resolveStoredPrice } from "../core/compat";
+import { resolveStoredPrice, getInterpolatedPrice } from "../core/compat";
 import { applySurcharges } from "../core/dynamicSurcharges";
 
 const fullData: any = getPrice("plakaty") as any;
@@ -314,39 +314,20 @@ export function calculatePlakatyFormat(input: PlakatyFormatInput): PlakatyFormat
 }
 
 /**
- * Linear interpolation function to calculate price between price breakpoints
- * @param qty - requested quantity
- * @param tiers - array of {qty, price} objects
- * @returns interpolated price, or the exact tier price if qty matches
+ * Cienka delegacja do getInterpolatedPrice (core/compat) — jedyna implementacja
+ * reguły D-110: poniżej pierwszego punktu cena pierwszego punktu (bez NaN,
+ * naprawia Z-10 — stary warunek brzegowy dzielił przez 0 dla qty < pierwszy
+ * punkt), między punktami interpolacja liniowa (bez zmian), powyżej najwyższego
+ * punktu total = qty × (cena_najwyższego / ilość_najwyższego) — tryb "per-unit",
+ * ciągły na granicy, zaczepiony o zawsze najwyższy istniejący punkt.
  */
 export function interpolatePrice(qty: number, tiers: any[]): number {
   if (!tiers || tiers.length === 0) return 0;
-
-  // If qty matches exactly, return that price
-  const exactTier = tiers.find((t: any) => t.qty === qty);
-  if (exactTier) return exactTier.price;
-
-  // Find lower and upper bounds
-  const sortedTiers = [...tiers].sort((a, b) => a.qty - b.qty);
-  const lowerTier = sortedTiers.reduce((prev: any, curr: any) =>
-    curr.qty <= qty && curr.qty > (prev?.qty || 0) ? curr : prev
+  return getInterpolatedPrice(
+    tiers.map((t: any) => ({ qty: t.qty, price: t.price })),
+    qty,
+    "per-unit"
   );
-  const upperTier = sortedTiers.find((t: any) => t.qty > qty);
-
-  // If qty is below minimum tier, return minimum tier price
-  if (!lowerTier || lowerTier.qty < sortedTiers[0].qty) {
-    return sortedTiers[0].price;
-  }
-
-  // If qty is above maximum tier, use maximum tier price (no extrapolation)
-  if (!upperTier) {
-    return sortedTiers[sortedTiers.length - 1].price;
-  }
-
-  // Linear interpolation between lower and upper bounds
-  const ratio = (qty - lowerTier.qty) / (upperTier.qty - lowerTier.qty);
-  const interpolated = lowerTier.price + ratio * (upperTier.price - lowerTier.price);
-  return parseFloat(interpolated.toFixed(2));
 }
 
 const DUZY_CANON_TABLE = {
