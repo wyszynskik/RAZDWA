@@ -21,6 +21,7 @@ import {
   flashFieldHints,
   setButtonGuarded,
   isButtonGuardDisabled,
+  renderPriceResult,
 } from "../viewHelpers";
 
 type BreakdownRow = {
@@ -260,16 +261,15 @@ export const RollUpView: View = {
         breakdownBox.style.display = "grid";
 
         resultArea.style.display = "block";
-        (container.querySelector("#resUnitPrice") as HTMLElement).textContent = formatPLN(
-          result.totalPrice / options.qty
-        );
-        (container.querySelector("#resTotalPrice") as HTMLElement).textContent = formatPLN(
-          result.totalPrice
-        );
-
-        setFieldHint(qtyHint, null);
-        setButtonGuarded(addToCartBtn, true);
-        blockedHints = [];
+        const priceValid = renderPriceResult({
+          totalPrice: result.totalPrice,
+          totalEl: container.querySelector<HTMLElement>("#resTotalPrice"),
+          unitPrice: result.totalPrice / options.qty,
+          unitEl: container.querySelector<HTMLElement>("#resUnitPrice"),
+          button: addToCartBtn,
+          hintEl: qtyHint,
+        });
+        blockedHints = priceValid ? [] : [qtyHint];
         ctx.updateLastCalculated(result.totalPrice, "Roll-up");
       };
 

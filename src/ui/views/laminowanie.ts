@@ -462,7 +462,13 @@ export const LaminowanieView: View = {
         const items = getItems();
         const item = items.find((i) => i.id === select.value);
         const qty = Number.parseInt(qtyInput.value, 10);
-        setButtonGuarded(addBtn, Boolean(item) && Number.isFinite(qty) && qty > 0);
+        // D-102 (LAM-03): pozycja bez uzupełnionej ceny (resolveStoredPrice → 0)
+        // nie może trafić do koszyka — przycisk zablokowany z góry, nie dopiero
+        // toast po kliknięciu. Brak pola ceny w tym widżecie → sama blokada.
+        setButtonGuarded(
+          addBtn,
+          Boolean(item) && (item?.price ?? 0) > 0 && Number.isFinite(qty) && qty > 0
+        );
       };
 
       const populate = () => {
@@ -485,7 +491,7 @@ export const LaminowanieView: View = {
         const items = getItems();
         const item = items.find((i) => i.id === select.value);
         const qty = Number.parseInt(qtyInput.value, 10);
-        if (!item || !Number.isFinite(qty) || qty <= 0) return;
+        if (!item || item.price <= 0 || !Number.isFinite(qty) || qty <= 0) return;
 
         const totalPrice = parseFloat((item.price * qty).toFixed(2));
         ctx.cart.addItem({

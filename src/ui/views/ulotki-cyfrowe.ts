@@ -19,6 +19,7 @@ import {
   flashFieldHints,
   setButtonGuarded,
   isButtonGuardDisabled,
+  renderPriceResult,
 } from "../viewHelpers";
 import { resolveStoredPrice } from "../../core/compat";
 
@@ -274,16 +275,21 @@ export const UlotkiCyfroweView: View = {
         const totalPrice = result.totalPrice;
         currentResult = { ...result, totalPrice, isSatin };
 
-        totalPriceSpan.innerText = formatPLN(totalPrice);
-        if (unitPriceSpan) unitPriceSpan.innerText = formatPLN(totalPrice / currentOptions.qty);
+        const priceValid = renderPriceResult({
+          totalPrice,
+          totalEl: totalPriceSpan,
+          unitPrice: totalPrice / currentOptions.qty,
+          unitEl: unitPriceSpan ?? null,
+          button: addToCartBtn,
+          hintEl: formatHint,
+        });
         if (tierHint)
           tierHint.innerText = `${currentOptions.qty} szt, ${currentOptions.format}, ${paperVal.replace("_", " ")} — cena bazowa: ${formatPLN(result.basePrice)}`;
         if (expressHint) expressHint.style.display = ctx.expressMode ? "block" : "none";
         if (satinHint) satinHint.style.display = isSatin ? "block" : "none";
         renderBreakdown(currentResult, currentOptions);
         resultDisplay.style.display = "block";
-        setButtonGuarded(addToCartBtn, true);
-        blockedHints = [];
+        blockedHints = priceValid ? [] : [formatHint];
 
         ctx.updateLastCalculated(totalPrice, "Ulotki");
       } catch (err) {

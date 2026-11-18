@@ -13,6 +13,7 @@ import {
   flashFieldHints,
   setButtonGuarded,
   isButtonGuardDisabled,
+  renderPriceResult,
 } from "../viewHelpers";
 
 type BreakdownRow = {
@@ -200,8 +201,6 @@ function initBroszuryKatalogi(container: HTMLElement, ctx: ViewContext): void {
     currentOptions = { format, pages, qty, express: ctx.expressMode, checkedSurchargeIds };
     currentResult = { unitPrice, basePrice, expressCost, totalPrice };
 
-    unitPriceSpan.innerText = unitPrice > 0 ? formatPLN(unitPrice) : "—";
-    totalPriceSpan.innerText = totalPrice > 0 ? formatPLN(totalPrice) : "—";
     if (expressHint) expressHint.style.display = ctx.expressMode ? "block" : "none";
 
     const lines: BreakdownRow[] = [
@@ -236,13 +235,17 @@ function initBroszuryKatalogi(container: HTMLElement, ctx: ViewContext): void {
     renderBreakdownRows(breakdownLines, lines);
     breakdownDisplay.style.display = "block";
     resultDisplay.style.display = "block";
-    const isValid = unitPrice > 0;
-    setButtonGuarded(addToCartBtn, isValid);
     setFieldHint(qtyHint, null);
-    setFieldHint(
-      formatHint,
-      isValid ? null : "Brak ceny dla tego formatu i nakładu — skontaktuj się z nami."
-    );
+    const isValid = renderPriceResult({
+      totalPrice,
+      totalEl: totalPriceSpan,
+      unitPrice,
+      unitEl: unitPriceSpan,
+      button: addToCartBtn,
+      hintEl: formatHint,
+      unavailableHint: "Brak ceny dla tego formatu i nakładu — skontaktuj się z nami.",
+      placeholder: "—",
+    });
     blockedHints = isValid ? [] : [formatHint];
 
     ctx.updateLastCalculated(totalPrice, "Broszury i katalogi");

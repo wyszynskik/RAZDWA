@@ -16,6 +16,7 @@ import {
   flashFieldHints,
   setButtonGuarded,
   isButtonGuardDisabled,
+  renderPriceResult,
 } from "../viewHelpers";
 
 type BreakdownRow = {
@@ -441,8 +442,14 @@ export const WizytowkiView: View = {
         const totalPrice = result.totalPrice;
         currentResult = { ...result, totalPrice, isSatin };
 
-        if (totalPriceSpan) totalPriceSpan.innerText = formatPLN(totalPrice);
-        if (unitPriceSpan) unitPriceSpan.innerText = formatPLN(totalPrice / currentOptions.qty);
+        const priceValid = renderPriceResult({
+          totalPrice,
+          totalEl: totalPriceSpan ?? null,
+          unitPrice: totalPrice / currentOptions.qty,
+          unitEl: unitPriceSpan ?? null,
+          button: addToCartBtn ?? null,
+          hintEl: qtyHint,
+        });
         if (billedQtyHint) billedQtyHint.innerText = `Rozliczono za: ${result.qtyBilled} szt.`;
         if (tierHint)
           tierHint.innerText = `Dla ${result.qtyBilled} szt użyto ceny bazowej ${formatPLN(result.basePrice)}`;
@@ -450,8 +457,7 @@ export const WizytowkiView: View = {
         if (satinHint) satinHint.style.display = isSatin ? "block" : "none";
         renderBreakdown(currentResult, currentOptions, isSatin);
         if (resultDisplay) resultDisplay.style.display = "block";
-        if (addToCartBtn) setButtonGuarded(addToCartBtn, true);
-        blockedHints = [];
+        blockedHints = priceValid ? [] : [qtyHint];
 
         ctx.updateLastCalculated(totalPrice, "Wizytówki");
       } catch (err) {
