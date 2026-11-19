@@ -1,0 +1,49 @@
+## Stan obecny (fakty: plik:linia, nazwa funkcji)
+
+Katalog globalnych dopłat ma wspólny rejestr kategorii: `SURCHARGE_APPLYING_CATEGORY_IDS` zawiera 18 kategorii i `categoryAppliesSurcharges()` sprawdza członkostwo (`src/core/surchargeCategories.ts:44-67`). Render checkboxów jest wspólny i tworzy płaską listę `.dyn-surcharge-row` (`renderSurchargeCheckboxesHtml`, `src/core/dynamicSurcharges.ts:110-124`). `mountInOptionsRegion()` najpierw szuka `scope [data-region="options"]`, a w razie braku wstawia box przed fallbackowym przyciskiem (`src/ui/viewHelpers.ts:79-91`).
+
+| Kategoria | Widok | Ma `data-region="options"` | Wywołanie render/mount (plik:linia) | Co trzeba dodać w HTML |
+|---|---|---|---|---|
+| banner | `src/ui/views/banner.ts` | Nie | `renderSurchargeCheckboxesHtml("banner")`; box przed przyciskiem „Dodaj” (`src/ui/views/banner.ts:81`) | Region opcji wewnątrz formularza/zakładki |
+| broszury-katalogi | `src/ui/views/broszury-katalogi.ts` | Nie | `renderSurchargeCheckboxesHtml("broszury-katalogi")`; box przed przyciskiem (`src/ui/views/broszury-katalogi.ts:109`) | `data-region="options"` w formularzu |
+| canvas | `src/ui/views/canvas-fixed.ts` | Nie | `renderSurchargeCheckboxesHtml("canvas")`; box przed przyciskiem (`src/ui/views/canvas-fixed.ts:56`) | Region opcji w formularzu Canvas |
+| druk-a4-a3 | `src/ui/views/druk-a4-a3-skan-view.ts` | Nie | `renderSurchargeCheckboxesHtml("druk-a4-a3")`; box przed przyciskiem (`src/ui/views/druk-a4-a3-skan-view.ts:86`) | Region opcji w formularzu |
+| druk-cad | `src/ui/views/druk-cad.ts` | Nie | `renderSurchargeCheckboxesHtml("druk-cad")`; box przed przyciskiem (`src/ui/views/druk-cad.ts:80`) | Region opcji w formularzu |
+| dyplomy / dyplomy-eko | `src/ui/views/dyplomy.ts` | Nie | Dwie osobne instancje: std `"dyplomy"` (`:67`) i eko `"dyplomy-eko"` (`:274`) | Osobny region opcji dla każdej zakładki, z innym `idPrefix` |
+| folia | `src/ui/views/folia-szroniona.ts` | Nie | `renderSurchargeCheckboxesHtml("folia")`; box przed przyciskiem (`src/ui/views/folia-szroniona.ts:83`) | Region opcji w formularzu |
+| laminowanie | `src/ui/views/laminowanie.ts` | Nie | Laminowanie `:784`, Introligatornia `:1697`; oba używają osobnych boxów i `renderSurchargeCheckboxesHtml("laminowanie", prefix)` | Region opcji dla każdej zakładki; prefiks `lam-`/`intro-` zgodnie z istniejącymi call-siteami |
+| plakaty-a4-a3 | `src/ui/views/plakaty-a4-a3.ts` | Nie | `renderSurchargeCheckboxesHtml("plakaty-a4-a3")` (`src/ui/views/plakaty-a4-a3.ts:126`) | Region opcji w formularzu |
+| plakaty-wf/solwent | `src/ui/views/plakaty-wf.ts` | Nie | `renderSurchargeCheckboxesHtml("solwent")` (`src/ui/views/plakaty-wf.ts:92`) | Region opcji w formularzu widoku WF |
+| rollup | `src/ui/views/roll-up.ts` | Nie | `renderSurchargeCheckboxesHtml("rollup")` (`src/ui/views/roll-up.ts:84`) | Region opcji w formularzu |
+| solwent | `src/ui/views/solwent-plakaty.ts` | Nie | `renderSurchargeCheckboxesHtml("solwent")` (`src/ui/views/solwent-plakaty.ts:62`) | Region opcji w formularzu |
+| ulotki | `src/ui/views/ulotki-cyfrowe.ts` | Nie | `renderSurchargeCheckboxesHtml("ulotki")`; box przed przyciskiem (`src/ui/views/ulotki-cyfrowe.ts:84`) | Region opcji w formularzu |
+| vouchery | `src/ui/views/vouchery.ts` | Nie | `renderSurchargeCheckboxesHtml("vouchery")` (`src/ui/views/vouchery.ts:78`) | Region opcji w formularzu |
+| wizytowki | `src/ui/views/wizytowki-druk-cyfrowy.ts` | Nie | `renderSurchargeCheckboxesHtml("wizytowki")` (`src/ui/views/wizytowki-druk-cyfrowy.ts:85`) | Region opcji w formularzu |
+| wlepki | `src/ui/views/wlepki-naklejki.ts` | Tak | Jedyny call-site używa `mountInOptionsRegion(surchargesBox, container, addBtn)` (`:143`) oraz renderuje `"wlepki"` (`:145`) | HTML widoku już ma `#wlepki-modifiers-group data-region="options"` (`docs/categories/wlepki-naklejki.html:103`) |
+| wycinanie-folii | `src/ui/views/wycinanie-folii.ts` | Nie | `renderSurchargeCheckboxesHtml("wycinanie-folii")` (`src/ui/views/wycinanie-folii.ts:48`) | Region opcji w formularzu |
+| zaproszenia | `src/ui/views/zaproszenia-kreda.ts` | Nie | `renderSurchargeCheckboxesHtml("zaproszenia")` (`src/ui/views/zaproszenia-kreda.ts:40`) | Region opcji w formularzu |
+
+## Punkty zmiany (dokładne miejsca, co i dlaczego)
+
+Dodatkowo istnieje wspólny renderer generycznych podgrup: `mountInOptionsRegion` nie jest tam używany, a dopłaty są renderowane wewnątrz kart (`renderSurchargeCheckboxesHtml` w `src/ui/dynamicSubgroups.ts:499`). To jest osobny call-site poza tabelą widoków, nadal bez deklarowanego regionu; kontrakt ADR powinien wskazać docelowy region panelu podgrupy (`devdocs/adr/I-category-form-composition.md:34-69`, `:108-116`).
+
+W każdym widoku bez regionu zmiana dotyczy najpierw `docs/categories/<id>.html`: do grupy opcji trzeba dopisać `data-region="options"`, następnie funkcja widoku musi przekazać właściwy scope i kotwicę do `mountInOptionsRegion`, zamiast tworzyć box i wstawiać go bezpośrednio `beforebegin` przy przycisku. Wiele zakładek (Dyplomy, Laminowanie) wymaga osobnego regionu i osobnego prefiksu dla unikalności `id/for` (`src/core/dynamicSurcharges.ts:110-124`).
+
+## Zależności i ryzyka (co jeszcze się zepsuje, powiązane kategorie)
+
+- `mountInOptionsRegion()` ma obecnie fallback, więc widoki bez regionu nadal działają; dodanie regionu zmienia tylko położenie (`src/ui/viewHelpers.ts:79-91`).
+- Dopłaty są liczone przez `collectCheckedSurchargeIds()` i `applySurcharges()`; przeniesienie DOM nie zmienia logiki cenowej, ale może zmienić scope kolekcji jeśli box znajdzie się w innej zakładce (`src/core/dynamicSurcharges.ts:126-145`).
+- Interfejs z obiektem `SURCHARGE_APPLYING_CATEGORY_IDS` wymaga spójności categoryId widoku i rejestru (`src/core/surchargeCategories.ts:44-67`).
+- Ryzyko duplikatów `id`: w osobnych zakładkach konieczne prefixowanie (`src/core/dynamicSurcharges.ts:110-117`).
+
+## Testy (istniejące do aktualizacji + brakujące do dopisania, ścieżki)
+
+Istniejące: test regionu Wlepek i migracji DOM `e2e/surcharge-options-region.spec.ts:5-57`; testy rejestru `tests/surchargeCategories.test.ts:22-39`. Brakującego zestawu dla pozostałych 17 kategorii nie znaleziono w repo. Do dopisania są testy dla obecności regionu w HTML, faktycznego położenia checkboxów i odrębnych prefiksów w zakładkach oraz testy, że fallback nadal działa, gdy regionu brakuje.
+
+## Pytania otwarte (czego nie da się ustalić z kodu; nie zgaduj)
+
+Nie znaleziono decyzji, które dokładne elementy `.form-group` mają być regionem dla każdej kategorii; ADR opisuje kontrakt, ale ma status „Proponowany” i nie ma implementacji poza Wlepkami (`devdocs/adr/I-category-form-composition.md:1-5`, `:108-116`). Nie da się ustalić bez klientki kolejności migracji pozostałych widoków.
+
+## Szacunek (liczba plików i PR-ów, kolejność)
+
+Ok. 18–20 plików HTML/TS w jednym PR lub kilku przyrostowych PR-ach. Kolejność: najpierw kontrakt i test Wlepek, potem proste widoki, na końcu wielozakładkowe Laminowanie i Dyplomy. Każdy widok jest osobnym punktem migracji.
