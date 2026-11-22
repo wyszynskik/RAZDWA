@@ -112,9 +112,9 @@ Stan kodu dla sekcji D-1xx i D-2xx: `main` @ beced81 (PR #230), zweryfikowany 20
 ### D-113 Kanon ceny i EXPRESS per koszyk
 
 - **Data:** 2026-11-22
-- **Decyzja:** kolejność liczenia pozycji: baza z papierem → modyfikatory kategorii (satyna, Modigliani, dwustronne, okładka) → dopłaty globalne (%) = cena pozycji. EXPRESS to osobna warstwa na poziomie **koszyka**, nie pozycji, z jednym zaokrągleniem. Stawki z cennika (D-105), etykiety z kluczy (D-104).
+- **Decyzja:** kolejność liczenia pozycji: baza z papierem → modyfikatory kategorii (satyna, Modigliani, dwustronne, okładka) → dopłaty globalne (%) = cena pozycji. EXPRESS to osobna warstwa na poziomie **koszyka**, nie pozycji, z jednym zaokrągleniem. Stawki z cennika (D-105), etykiety z kluczy (D-104). W UI EXPRESS włącza się jednym przełącznikiem w koszyku (#globalExpress) dla całego zamówienia.
 - **Powód:** EXPRESS dotyczy całego zlecenia, nie pojedynczej pozycji; liczenie per pozycja rozjeżdża sumę i zaokrąglenia.
-- **Status:** OBOWIĄZUJE. Wdrożenie EXPRESS per koszyk to osobne zadanie; do tego czasu EXPRESS liczy się jak dziś na `main` (per pozycja), bez zmian w tym zakresie.
+- **Status:** OBOWIĄZUJE. Zrealizowane w UI przez globalny przełącznik EXPRESS w koszyku (#globalExpress, jedna dopłata dla zamówienia). Wewnętrznie EXPRESS jest nakładany na każdą pozycję osobno (cart.setExpressForAll); refaktor na jedną operację koszyka odłożony (devdocs/discovery/faza4/T7-express-per-koszyk.md). Zmieniać tylko z testami liczbowymi i migracją localStorage. Otwarte (do klientki): czy EXPRESS liczy się przed czy po rabacie/dopłacie podsumowania (applySummaryPercentAdjustments).
 
 ---
 
