@@ -168,19 +168,18 @@ describe("Dyplomy logic", () => {
     expect(result.appliedModifiers).toContain("modigliani");
   });
 
-  it("should apply Modigliani and Express with express on base price", () => {
+  it("should apply Modigliani then Express as outermost multiplier (D-113)", () => {
     // baza 20.00
-    // modigliani (satyna+20%) = 6.88
-    // express +20% od bazy = 4.00
-    // razem = 30.88
+    // modigliani (satyna+20%) = 6.88 -> podsumowanie 26.88
+    // EXPRESS +20% mnożnikiem na końcu: 26.88 * 1.20 = 32.256 -> 32.26
     const result = calculateDyplomy({
       qty: 1,
       isSatin: false,
       isModigliani: true,
       express: true,
     });
-    expect(result.modifiersTotal).toBe(10.88);
-    expect(result.totalPrice).toBe(30.88);
+    expect(result.totalPrice).toBe(32.26);
+    expect(result.modifiersTotal).toBe(12.26);
     expect(result.appliedModifiers).toContain("express");
   });
 
@@ -244,15 +243,14 @@ describe("Dyplomy logic", () => {
     expect(result.totalPrice).toBe(180);
   });
 
-  it("satin and express both apply to full table price (D-202: bez rabatu)", () => {
+  it("satin then express as outermost multiplier (D-113, D-202: bez rabatu)", () => {
     // 6 szt: baza tabeli 35.00
-    // satyna +12% => 4.20
-    // express +20% => 7.00
-    // razem: 46.20
+    // satyna +12% => podsumowanie 39.20
+    // EXPRESS +20% mnożnikiem na końcu: 39.20 * 1.20 = 47.04
     const result = calculateDyplomy({ qty: 6, isSatin: true, express: true });
     expect(result.basePrice).toBe(35.0);
-    expect(result.modifiersTotal).toBe(11.2);
-    expect(result.totalPrice).toBe(46.2);
+    expect(result.totalPrice).toBe(47.04);
+    expect(result.modifiersTotal).toBe(12.04);
   });
 
   it("should ignore format in price calculation (stara tabela)", () => {
@@ -358,10 +356,10 @@ describe("Dyplomy Ekonomiczny", () => {
     expect(result.appliedModifiers).toContain("express");
   });
 
-  it("A4 satyna + express dla 10 szt: 35 + 7% + 20% = 35 + 2.45 + 7.00 = 44.45", () => {
+  it("A4 satyna, potem EXPRESS mnożnikiem na końcu (D-113): 35 * 1.07 * 1.20 = 44.94", () => {
     const result = calculateDyplomyEko({ format: "A4", qty: 10, isSatin: true, express: true });
     expect(result.basePrice).toBe(35.0);
-    expect(result.totalPrice).toBe(44.45);
+    expect(result.totalPrice).toBe(44.94);
   });
 
   it("A4 qty=5 – interpolacja między 1 i 10 szt: 12 + (4/9)*(35-12) = 22.22", () => {
@@ -850,5 +848,64 @@ describe("Dyplomy — tabele papieru z podkategorii (scalenie z głównym formul
     expect(products.some((p) => p.subcategoryPrefix === "dyplomy-dyplomy-a4-259g-")).toBe(true);
     // I nie zasila modelu papieru:
     expect(resolveDyplomyKredaPrice("A4", 259, 10)).toBeNull();
+  });
+});
+
+describe("Dyplomy — kolejność D-113 (baza → satyna/Modigliani → dopłaty globalne → EXPRESS)", () => {
+  // Baza 100 ustawiona przez override progu, żeby liczby były czyste.
+  // EXPRESS to mnożnik najbardziej zewnętrzny — po dopłacie globalnej.
+  it("standard: baza 100, satyna 12%, dopłata globalna 30%, EXPRESS 20% → 174,72", () => {
+    setPrice("defaultPrices.dyplomy-qty-50", 100);
+    setVariantDefinitions([buildSurchargeVariant("globalna", "Globalna", ["dyplomy"])]);
+    setPrice("defaultPrices." + surchargeRateKey("globalna"), 0.3);
+
+    const result = calculateDyplomy({
+      qty: 50,
+      isSatin: true,
+      express: true,
+      checkedSurchargeIds: ["globalna"],
+    });
+    expect(result.basePrice).toBe(100);
+    expect(result.totalPrice).toBe(174.72); // 100 * 1.12 * 1.30 * 1.20
+  });
+
+  it("standard: Modigliani (satyna 12% + Modigliani 20%), dopłata 30%, EXPRESS 20% → 209,66", () => {
+    setPrice("defaultPrices.dyplomy-qty-50", 100);
+    setVariantDefinitions([buildSurchargeVariant("globalna", "Globalna", ["dyplomy"])]);
+    setPrice("defaultPrices." + surchargeRateKey("globalna"), 0.3);
+
+    const result = calculateDyplomy({
+      qty: 50,
+      isSatin: false,
+      isModigliani: true,
+      express: true,
+      checkedSurchargeIds: ["globalna"],
+    });
+    expect(result.basePrice).toBe(100);
+    expect((result as any).usingNewPaperModel).toBe(false); // płaska tabela (Branch B)
+    expect(result.totalPrice).toBe(209.66); // 100 * 1.12 * 1.20 * 1.30 * 1.20
+  });
+
+  it("eko: baza 100, satyna 7%, dopłata 30%, EXPRESS 20% → 166,92", () => {
+    setPrice("defaultPrices.dyplomy-eko-A4-qty-10", 100);
+    setVariantDefinitions([buildSurchargeVariant("globalna-eko", "Globalna", ["dyplomy-eko"])]);
+    setPrice("defaultPrices." + surchargeRateKey("globalna-eko"), 0.3);
+
+    const result = calculateDyplomyEko({
+      format: "A4",
+      qty: 10,
+      isSatin: true,
+      express: true,
+      checkedSurchargeIds: ["globalna-eko"],
+    });
+    expect(result.basePrice).toBe(100);
+    expect(result.totalPrice).toBe(166.92); // 100 * 1.07 * 1.30 * 1.20
+  });
+
+  it("bez dopłat i bez EXPRESS wynik bez zmian: baza 100 + satyna 12% = 112", () => {
+    setPrice("defaultPrices.dyplomy-qty-50", 100);
+    const result = calculateDyplomy({ qty: 50, isSatin: true, express: false });
+    expect(result.basePrice).toBe(100);
+    expect(result.totalPrice).toBe(112);
   });
 });

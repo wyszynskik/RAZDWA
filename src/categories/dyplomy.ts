@@ -215,13 +215,13 @@ export function calculateDyplomy(options: DyplomyOptions) {
     if (options.isModigliani) {
       tierPrice = newKreda350Price as number;
       basePrice = tierPrice;
-      materialModifiersTotal = parseFloat((basePrice * modiglianiRate).toFixed(2));
+      materialModifiersTotal = basePrice * modiglianiRate;
       appliedModifiers.push("modigliani");
     } else {
       tierPrice = newKredaPrice as number;
       basePrice = tierPrice;
       if (options.isSatin) {
-        materialModifiersTotal = parseFloat((basePrice * satinRate).toFixed(2));
+        materialModifiersTotal = basePrice * satinRate;
         appliedModifiers.push("satin");
       }
     }
@@ -244,20 +244,16 @@ export function calculateDyplomy(options: DyplomyOptions) {
     }
   }
 
-  const expressModifier = options.express ? basePrice * expressRate : 0;
+  // D-113: baza z papierem → satyna/Modigliani → dopłaty globalne →
+  // EXPRESS mnożnikiem na końcu, jedno zaokrąglenie (jak finalizeSatynaPrice).
+  let price = basePrice + materialModifiersTotal;
+  price = applySurcharges("dyplomy", price, options.checkedSurchargeIds ?? []);
   if (options.express) {
+    price = price * (1 + expressRate);
     appliedModifiers.push("express");
   }
-
-  const modifiersTotal = parseFloat((materialModifiersTotal + expressModifier).toFixed(2));
-  const totalPriceBeforeSurcharges = parseFloat((basePrice + modifiersTotal).toFixed(2));
-  const totalPrice = parseFloat(
-    applySurcharges(
-      "dyplomy",
-      totalPriceBeforeSurcharges,
-      options.checkedSurchargeIds ?? []
-    ).toFixed(2)
-  );
+  const totalPrice = parseFloat(price.toFixed(2));
+  const modifiersTotal = parseFloat((totalPrice - basePrice).toFixed(2));
 
   return {
     tierPrice,
@@ -315,27 +311,21 @@ export function calculateDyplomyEko(options: DyplomyEkoOptions) {
   const expressRate = resolveStoredPrice("modifier-express", 0.2);
 
   const appliedModifiers: string[] = [];
-  let modifiersTotal = 0;
 
+  // D-113: baza → satyna → dopłaty globalne → EXPRESS mnożnikiem na końcu,
+  // jedno zaokrąglenie (jak finalizeSatynaPrice).
+  let price = basePrice;
   if (options.isSatin) {
-    modifiersTotal = parseFloat((basePrice * satinRate).toFixed(2));
+    price = price * (1 + satinRate);
     appliedModifiers.push("satin");
   }
-
-  const expressAmount = options.express ? parseFloat((basePrice * expressRate).toFixed(2)) : 0;
+  price = applySurcharges("dyplomy-eko", price, options.checkedSurchargeIds ?? []);
   if (options.express) {
-    modifiersTotal = parseFloat((modifiersTotal + expressAmount).toFixed(2));
+    price = price * (1 + expressRate);
     appliedModifiers.push("express");
   }
-
-  const totalPriceBeforeSurcharges = parseFloat((basePrice + modifiersTotal).toFixed(2));
-  const totalPrice = parseFloat(
-    applySurcharges(
-      "dyplomy-eko",
-      totalPriceBeforeSurcharges,
-      options.checkedSurchargeIds ?? []
-    ).toFixed(2)
-  );
+  const totalPrice = parseFloat(price.toFixed(2));
+  const modifiersTotal = parseFloat((totalPrice - basePrice).toFixed(2));
 
   return {
     basePrice,

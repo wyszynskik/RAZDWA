@@ -123,7 +123,7 @@ Stan kodu dla sekcji D-1xx i D-2xx: `main` @ beced81 (PR #230), zweryfikowany 20
 ### D-201 Dyplomy: model ceny per papier
 
 - **Data:** 2026-11 (PR do #230), potwierdzone 2026-11-14
-- **Decyzja:** dwa warianty cenowe na format (A4, A5): kreda 250 g i kreda 350 g, każdy z punktami ilości (D-110). Gramatura poniżej 250 g liczy się jak 250 g; pomiędzy 250 g a 350 g cena jest interpolowana. Satyna = cena kredy dla tej gramatury + 12%. Modigliani = cena kredy 350 g + 20%. Stawki pochodzą z cennika.
+- **Decyzja:** dwa warianty cenowe na format (A4, A5): kreda 250 g i kreda 350 g, każdy z punktami ilości (D-110). Gramatura poniżej 250 g liczy się jak 250 g; pomiędzy 250 g a 350 g cena jest interpolowana. Satyna = cena kredy dla tej gramatury + 12%. Modigliani = cena satyny dla danej gramatury + 20%. Stawki pochodzą z cennika.
 - **Konsekwencja:** interpolacji po gramaturze NIE zmieniać.
 - **Status:** OBOWIĄZUJE. Ceny A4/A5 nie są jeszcze wszystkie wprowadzone; do tego czasu działa stara tabela (D-111).
 - **Do wyrównania w kodzie:** ilości jako punkty z interpolacją (D-110); lista papierów i legenda zgodne z aktywnym modelem.

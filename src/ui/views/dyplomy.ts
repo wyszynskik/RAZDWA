@@ -186,8 +186,12 @@ export const DyplomyView: View = {
         } else if (options.isSatin) {
           satinAmount = parseFloat((result.basePrice * satinRate).toFixed(2));
         }
+        // D-113: EXPRESS to mnożnik najbardziej zewnętrzny (po satynie/Modigliani
+        // i dopłatach globalnych), więc jego realny udział liczymy wstecznie od
+        // totalPrice, a nie jako % bazy — inaczej pozycje breakdown nie sumują
+        // się do „Razem".
         const expressAmount = options.express
-          ? parseFloat((result.basePrice * expressRate).toFixed(2))
+          ? parseFloat((result.totalPrice - result.totalPrice / (1 + expressRate)).toFixed(2))
           : 0;
 
         const breakdown = [
@@ -216,7 +220,7 @@ export const DyplomyView: View = {
 
         if (options.express) {
           breakdown.push(
-            `<div><strong>EXPRESS:</strong> ${Math.round(expressRate * 100)}% × ${formatPLN(result.basePrice)} = ${formatPLN(expressAmount)}</div>`
+            `<div><strong>EXPRESS:</strong> +${Math.round(expressRate * 100)}% od podsumowania = ${formatPLN(expressAmount)}</div>`
           );
         }
 
@@ -341,9 +345,13 @@ export const DyplomyView: View = {
           );
         }
         if (ctx.expressMode) {
-          const expressAmount = parseFloat((result.basePrice * expressRate).toFixed(2));
+          // D-113: EXPRESS mnożnikiem na końcu — udział liczony wstecznie od
+          // totalPrice, nie jako % bazy (patrz standard calculate).
+          const expressAmount = parseFloat(
+            (result.totalPrice - result.totalPrice / (1 + expressRate)).toFixed(2)
+          );
           breakdown.push(
-            `<div><strong>EXPRESS:</strong> ${Math.round(expressRate * 100)}% × ${formatPLN(result.basePrice)} = ${formatPLN(expressAmount)}</div>`
+            `<div><strong>EXPRESS:</strong> +${Math.round(expressRate * 100)}% od podsumowania = ${formatPLN(expressAmount)}</div>`
           );
         }
         breakdown.push(
