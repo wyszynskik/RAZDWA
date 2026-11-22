@@ -862,6 +862,44 @@ describe("computeCartResult", () => {
       totalPrice: 30,
     });
   });
+
+  // D-102: gdy admin nie uzupełnił ceny podgrupy (priceFor zwraca 0 na
+  // niesformułowanym kluczu, patrz productModel.priceFor), computeCartResult
+  // NIE zeruje się do null — zwraca totalPrice 0. To właśnie ta wartość ≤ 0
+  // wpada do recalc() i wyzwala w renderPriceResult placeholder
+  // „— (do uzupełnienia)" oraz blokadę przycisku (patrz
+  // tests/renderPriceResult.test.ts). Bez tego guardu karta pokazywałaby
+  // „0,00 zł" z aktywnym Dodaj.
+  it("flat-rate z ceną 0 (brak uzupełnienia): totalPrice 0, nie null — wejście guardu D-102", () => {
+    const product = makeProduct({
+      calcType: "flat-rate",
+      tiers: [{ key: "k", qty: 1, price: 0 }],
+    });
+
+    expect(computeCartResult(product, 1, false)).toEqual({
+      quantity: 1,
+      unitPrice: 0,
+      totalPrice: 0,
+    });
+  });
+
+  it("flat-per-unit z ceną 0: totalPrice 0 niezależnie od qty — ta sama ścieżka guardu D-102", () => {
+    const product = makeProduct({
+      calcType: "flat-per-unit",
+      tiers: [{ key: "k", qty: 1, price: 0 }],
+    });
+
+    expect(computeCartResult(product, 5, false)?.totalPrice).toBe(0);
+  });
+
+  it("cena > 0 nie jest ruszona — totalPrice dodatni karmi gałąź valid guardu D-102", () => {
+    const product = makeProduct({
+      calcType: "flat-rate",
+      tiers: [{ key: "k", qty: 1, price: 50 }],
+    });
+
+    expect(computeCartResult(product, 1, false)?.totalPrice).toBe(50);
+  });
 });
 
 describe("buildCartItem", () => {
