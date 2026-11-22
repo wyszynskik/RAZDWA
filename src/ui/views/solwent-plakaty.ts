@@ -18,6 +18,7 @@ import {
   flashFieldHints,
   setButtonGuarded,
   isButtonGuardDisabled,
+  mountInOptionsRegion,
 } from "../viewHelpers";
 
 function populateMaterialSelect(container: HTMLElement): void {
@@ -57,7 +58,7 @@ export const SolwentPlakatyView: View = {
     const addToCartBtn = container.querySelector("#add-to-cart") as HTMLButtonElement;
     const surchargesBox = document.createElement("div");
     surchargesBox.id = "solwent-surcharges";
-    addToCartBtn.insertAdjacentElement("beforebegin", surchargesBox);
+    mountInOptionsRegion(surchargesBox, container, addToCartBtn);
     const renderSurcharges = (): void => {
       surchargesBox.innerHTML = renderSurchargeCheckboxesHtml("solwent");
     };

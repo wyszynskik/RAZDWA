@@ -14,6 +14,7 @@ import {
   flashFieldHints,
   setButtonGuarded,
   isButtonGuardDisabled,
+  mountInOptionsRegion,
 } from "../viewHelpers";
 
 const data: any = getPrice("plakaty");
@@ -121,7 +122,7 @@ export const PlakatyA4A3View: View = {
     const addBtn = container.querySelector("#pa-add-to-cart") as HTMLButtonElement;
     const surchargesBox = document.createElement("div");
     surchargesBox.id = "pa-surcharges";
-    addBtn.insertAdjacentElement("beforebegin", surchargesBox);
+    mountInOptionsRegion(surchargesBox, container, addBtn);
     const renderSurcharges = (): void => {
       surchargesBox.innerHTML = renderSurchargeCheckboxesHtml("plakaty-a4-a3");
     };

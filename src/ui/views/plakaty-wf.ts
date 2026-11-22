@@ -22,6 +22,7 @@ import {
   flashFieldHints,
   setButtonGuarded,
   isButtonGuardDisabled,
+  mountInOptionsRegion,
 } from "../viewHelpers";
 
 function renderHintContent(target: HTMLElement, lines: string[]): void {
@@ -87,7 +88,7 @@ export const PlakatyWFView: View = {
     const addBtn = container.querySelector("#p-add-to-cart") as HTMLButtonElement;
     const surchargesBox = document.createElement("div");
     surchargesBox.id = "p-surcharges";
-    addBtn.insertAdjacentElement("beforebegin", surchargesBox);
+    mountInOptionsRegion(surchargesBox, container, addBtn);
     const renderSurcharges = (): void => {
       surchargesBox.innerHTML = renderSurchargeCheckboxesHtml("solwent");
     };

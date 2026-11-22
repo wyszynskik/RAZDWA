@@ -18,7 +18,13 @@ import {
 } from "../../core/dynamicSurcharges";
 import { escapeHtml } from "../../core/validation";
 import { mountDynamicSubgroupContainers } from "../dynamicSubgroups";
-import { setFieldHint, flashFieldHints, setButtonGuarded, renderPriceResult } from "../viewHelpers";
+import {
+  setFieldHint,
+  flashFieldHints,
+  setButtonGuarded,
+  renderPriceResult,
+  mountInOptionsRegion,
+} from "../viewHelpers";
 
 export const DyplomyView: View = {
   id: "dyplomy",
@@ -62,7 +68,11 @@ export const DyplomyView: View = {
       const addToCartBtn = container.querySelector("#addToCartBtn") as HTMLButtonElement;
       const surchargesBox = document.createElement("div");
       surchargesBox.id = "dyp-surcharges-standard";
-      addToCartBtn.insertAdjacentElement("beforebegin", surchargesBox);
+      mountInOptionsRegion(
+        surchargesBox,
+        addToCartBtn.closest(".dyp-tab") ?? container,
+        addToCartBtn
+      );
       const renderSurcharges = (): void => {
         surchargesBox.innerHTML = renderSurchargeCheckboxesHtml("dyplomy", "std-");
       };
@@ -269,7 +279,11 @@ export const DyplomyView: View = {
       const ekoAddToCartBtn = container.querySelector("#ekoAddToCartBtn") as HTMLButtonElement;
       const ekoSurchargesBox = document.createElement("div");
       ekoSurchargesBox.id = "dyp-surcharges-eko";
-      ekoAddToCartBtn.insertAdjacentElement("beforebegin", ekoSurchargesBox);
+      mountInOptionsRegion(
+        ekoSurchargesBox,
+        ekoAddToCartBtn.closest(".dyp-tab") ?? container,
+        ekoAddToCartBtn
+      );
       const renderEkoSurcharges = (): void => {
         ekoSurchargesBox.innerHTML = renderSurchargeCheckboxesHtml("dyplomy-eko", "eko-");
       };

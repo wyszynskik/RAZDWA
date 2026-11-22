@@ -22,6 +22,7 @@ import {
   setButtonGuarded,
   isButtonGuardDisabled,
   renderPriceResult,
+  mountInOptionsRegion,
 } from "../viewHelpers";
 
 type BreakdownRow = {
@@ -79,7 +80,7 @@ export const RollUpView: View = {
       const addToCartBtn = container.querySelector("#addToCartBtn") as HTMLButtonElement;
       const surchargesBox = document.createElement("div");
       surchargesBox.id = "rollup-surcharges";
-      addToCartBtn.insertAdjacentElement("beforebegin", surchargesBox);
+      mountInOptionsRegion(surchargesBox, container, addToCartBtn);
       const renderSurcharges = (): void => {
         surchargesBox.innerHTML = renderSurchargeCheckboxesHtml("rollup");
       };

@@ -12,7 +12,12 @@ import {
   collectCheckedSurchargeIds,
   formatCheckedSurchargeNames,
 } from "../../core/dynamicSurcharges";
-import { setFieldHint, flashFieldHints, setButtonGuarded } from "../viewHelpers";
+import {
+  setFieldHint,
+  flashFieldHints,
+  setButtonGuarded,
+  mountInOptionsRegion,
+} from "../viewHelpers";
 
 type BreakdownRow = {
   label: string;
@@ -73,7 +78,7 @@ export const VoucheryView: View = {
     const addToCartBtn = container.querySelector("#v-add-to-cart") as HTMLButtonElement;
     const surchargesBox = document.createElement("div");
     surchargesBox.id = "v-surcharges";
-    addToCartBtn.insertAdjacentElement("beforebegin", surchargesBox);
+    mountInOptionsRegion(surchargesBox, container, addToCartBtn);
     const renderSurcharges = (): void => {
       surchargesBox.innerHTML = renderSurchargeCheckboxesHtml("vouchery");
     };

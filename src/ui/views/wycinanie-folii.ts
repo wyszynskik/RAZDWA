@@ -20,6 +20,7 @@ import {
   flashFieldHints,
   setButtonGuarded,
   isButtonGuardDisabled,
+  mountInOptionsRegion,
 } from "../viewHelpers";
 
 export const WycinanieFoliiView: View = {
@@ -43,7 +44,7 @@ export const WycinanieFoliiView: View = {
     const addBtn = container.querySelector("#wf-add-to-cart") as HTMLButtonElement;
     const surchargesBox = document.createElement("div");
     surchargesBox.id = "wf-surcharges";
-    addBtn.insertAdjacentElement("beforebegin", surchargesBox);
+    mountInOptionsRegion(surchargesBox, container, addBtn);
     const renderSurcharges = (): void => {
       surchargesBox.innerHTML = renderSurchargeCheckboxesHtml("wycinanie-folii");
     };

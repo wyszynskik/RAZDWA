@@ -20,6 +20,7 @@ import {
   flashFieldHints,
   setButtonGuarded,
   isButtonGuardDisabled,
+  mountInOptionsRegion,
 } from "../viewHelpers";
 
 export const DrukCADView: View = {
@@ -75,7 +76,7 @@ export const DrukCADView: View = {
     const addToCartBtn = container.querySelector("#cad-add-to-cart") as HTMLButtonElement;
     const surchargesBox = document.createElement("div");
     surchargesBox.id = "cad-surcharges";
-    addToCartBtn.insertAdjacentElement("beforebegin", surchargesBox);
+    mountInOptionsRegion(surchargesBox, container, addToCartBtn);
     const renderSurcharges = (): void => {
       surchargesBox.innerHTML = renderSurchargeCheckboxesHtml("druk-cad");
     };
