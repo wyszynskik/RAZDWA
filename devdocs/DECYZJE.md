@@ -109,6 +109,13 @@ Stan kodu dla sekcji D-1xx i D-2xx: `main` @ beced81 (PR #230), zweryfikowany 20
 - **Decyzja:** rabaty są usuwane całkowicie tylko w Dyplomach i w Plakatach A4-A3. W pozostałych kategoriach obowiązują do odwołania.
 - **Status:** OBOWIĄZUJE jako decyzja; kod do wyrównania.
 
+### D-113 Kanon ceny i EXPRESS per koszyk
+
+- **Data:** 2026-11-22
+- **Decyzja:** kolejność liczenia pozycji: baza z papierem → modyfikatory kategorii (satyna, Modigliani, dwustronne, okładka) → dopłaty globalne (%) = cena pozycji. EXPRESS to osobna warstwa na poziomie **koszyka**, nie pozycji, z jednym zaokrągleniem. Stawki z cennika (D-105), etykiety z kluczy (D-104).
+- **Powód:** EXPRESS dotyczy całego zlecenia, nie pojedynczej pozycji; liczenie per pozycja rozjeżdża sumę i zaokrąglenia.
+- **Status:** OBOWIĄZUJE. Wdrożenie EXPRESS per koszyk to osobne zadanie; do tego czasu EXPRESS liczy się jak dziś na `main` (per pozycja), bez zmian w tym zakresie.
+
 ---
 
 ## Decyzje per kategoria
@@ -157,6 +164,20 @@ Stan kodu dla sekcji D-1xx i D-2xx: `main` @ beced81 (PR #230), zweryfikowany 20
 - **Data:** 2026-11-14
 - **Decyzja:** obie kategorie zostają włączone do mechanizmu po dwóch zabezpieczeniach: zawężeniu odczytu progów Voucherów do kluczy bazowych oraz kontroli kolizji nazwy podkategorii z wbudowanym prefiksem (Broszury: „A4", „A5", „DL").
 - **Status:** DO POTWIERDZENIA (właściciel), po audycie.
+
+### D-208 Plakaty ekonomiczne: zostają, niezależne
+
+- **Data:** 2026-11-22
+- **Decyzja:** Plakaty ekonomiczne pozostają jako niezależny byt — nie są scalane, usuwane ani podporządkowane innym wariantom plakatów. Model i ceny bez zmian.
+- **Powód:** osobna oferta, działa jak ma działać.
+- **Status:** OBOWIĄZUJE. Nie ruszać bez osobnej decyzji właściciela.
+
+### D-209 Dyplomy ekonomiczne: satyna
+
+- **Data:** 2026-11-22
+- **Decyzja:** sposób naliczania satyny w Dyplomach ekonomicznych czeka na rozstrzygnięcie klientki. Do czasu decyzji kod bez zmian.
+- **Powód:** zmienia to, jak klientka wycenia; wymaga jej potwierdzenia.
+- **Status:** DO POTWIERDZENIA (klientka). Nie ruszać.
 
 ---
 
