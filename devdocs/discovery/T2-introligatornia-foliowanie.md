@@ -22,7 +22,7 @@ W repo czytane ADR `devdocs/adr/I-category-form-composition.md` istnieje i opisu
 ## Zależności i ryzyka (co jeszcze się zepsuje, powiązane kategorie)
 
 - `laminowanieIntro` jest używane przez Lampinowanie; błąd prefiksu może zderzyć nową usługę ze statycznym kluczem płaskim (`src/core/dynamicMaterials.ts:68-69`; `src/categories/laminowanie.ts:117-131`).
-- Widok re-calculuje wszystkie zakładki przez `recalcAll()` i przełączenie zakładki (`src/ui/views/laminowanie.ts:729-754`), więc dynamiczny panel musi mieć własny guard i blokadę dodania. 
+- Widok re-calculuje wszystkie zakładki przez `recalcAll()` i przełączenie zakładki (`src/ui/views/laminowanie.ts:729-754`), więc dynamiczny panel musi mieć własny guard i blokadę dodania.
 - Dopłaty globalne kategorii `laminowanie` muszą być osobną instancją w zakładce Foliowanie z unikalnym prefiksem (`src/ui/views/laminowanie.ts:1697`; `src/core/dynamicSurcharges.ts:110-124`).
 - Istniejące pozycje „Bindowanie”, „Oprawy” nie są w tym samym modelu produktów i nie można zakładać automatycznego unifikowania bez osobnego projektu (`src/ui/views/laminowanie.ts:441-457`).
 
