@@ -17,6 +17,7 @@ import {
   setButtonGuarded,
   isButtonGuardDisabled,
   renderPriceResult,
+  mountInOptionsRegion,
 } from "../viewHelpers";
 
 type BreakdownRow = {
@@ -80,7 +81,9 @@ export const WizytowkiView: View = {
     const addToCartBtn = container.querySelector("#w-add-to-cart") as HTMLButtonElement | null;
     const surchargesBox = document.createElement("div");
     surchargesBox.id = "w-surcharges";
-    addToCartBtn?.insertAdjacentElement("beforebegin", surchargesBox);
+    if (addToCartBtn) {
+      mountInOptionsRegion(surchargesBox, container, addToCartBtn);
+    }
     const renderSurcharges = (): void => {
       surchargesBox.innerHTML = renderSurchargeCheckboxesHtml("wizytowki");
     };

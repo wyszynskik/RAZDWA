@@ -21,6 +21,7 @@ import {
   flashFieldHints,
   setButtonGuarded,
   isButtonGuardDisabled,
+  mountInOptionsRegion,
 } from "../viewHelpers";
 
 export const CanvasView: View = {
@@ -51,7 +52,7 @@ export const CanvasView: View = {
     const addBtn = container.querySelector("#cv-add") as HTMLButtonElement;
     const surchargesBox = document.createElement("div");
     surchargesBox.id = "cv-surcharges";
-    addBtn.insertAdjacentElement("beforebegin", surchargesBox);
+    mountInOptionsRegion(surchargesBox, container, addBtn);
     const renderSurcharges = (): void => {
       surchargesBox.innerHTML = renderSurchargeCheckboxesHtml("canvas");
     };

@@ -16,6 +16,7 @@ import {
   flashFieldHints,
   setButtonGuarded,
   isButtonGuardDisabled,
+  mountInOptionsRegion,
 } from "../viewHelpers";
 
 type BreakdownRow = {
@@ -76,7 +77,7 @@ export const BannerView: View = {
     const addToCartBtn = container.querySelector("#b-add-to-cart") as HTMLButtonElement;
     const surchargesBox = document.createElement("div");
     surchargesBox.id = "b-surcharges";
-    addToCartBtn.insertAdjacentElement("beforebegin", surchargesBox);
+    mountInOptionsRegion(surchargesBox, container, addToCartBtn);
     const renderSurcharges = (): void => {
       surchargesBox.innerHTML = renderSurchargeCheckboxesHtml("banner");
     };

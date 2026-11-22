@@ -14,6 +14,7 @@ import {
   setButtonGuarded,
   isButtonGuardDisabled,
   renderPriceResult,
+  mountInOptionsRegion,
 } from "../viewHelpers";
 
 type BreakdownRow = {
@@ -104,7 +105,7 @@ function initBroszuryKatalogi(container: HTMLElement, ctx: ViewContext): void {
   const addToCartBtn = container.querySelector("#bk-add-to-cart") as HTMLButtonElement;
   const surchargesBox = document.createElement("div");
   surchargesBox.id = "bk-surcharges";
-  addToCartBtn?.insertAdjacentElement("beforebegin", surchargesBox);
+  mountInOptionsRegion(surchargesBox, container, addToCartBtn);
   const renderSurcharges = (): void => {
     surchargesBox.innerHTML = renderSurchargeCheckboxesHtml("broszury-katalogi");
   };

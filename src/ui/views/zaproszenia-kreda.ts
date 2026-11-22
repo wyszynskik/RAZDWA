@@ -12,7 +12,12 @@ import {
   formatCheckedSurchargeNames,
 } from "../../core/dynamicSurcharges";
 import { getPrice } from "../../services/priceService";
-import { setFieldHint, flashFieldHints, setButtonGuarded } from "../viewHelpers";
+import {
+  setFieldHint,
+  flashFieldHints,
+  setButtonGuarded,
+  mountInOptionsRegion,
+} from "../viewHelpers";
 
 export const ZaproszeniaKredaView: View = {
   id: "zaproszenia-kreda",
@@ -35,7 +40,7 @@ export const ZaproszeniaKredaView: View = {
       const addToCartBtn = container.querySelector("#addToCartBtn") as HTMLButtonElement;
       const surchargesBox = document.createElement("div");
       surchargesBox.id = "zap-surcharges";
-      addToCartBtn.insertAdjacentElement("beforebegin", surchargesBox);
+      mountInOptionsRegion(surchargesBox, container, addToCartBtn);
       const renderSurcharges = (): void => {
         surchargesBox.innerHTML = renderSurchargeCheckboxesHtml("zaproszenia");
       };

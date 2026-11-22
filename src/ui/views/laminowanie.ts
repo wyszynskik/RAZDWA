@@ -21,6 +21,7 @@ import {
   flashFieldHints,
   setButtonGuarded,
   isButtonGuardDisabled,
+  mountInOptionsRegion,
 } from "../viewHelpers";
 
 type BreakdownRow = {
@@ -779,7 +780,11 @@ export const LaminowanieView: View = {
     const addToCartBtn = container.querySelector("#lam-add-to-cart") as HTMLButtonElement;
     const lamSurchargesBox = document.createElement("div");
     lamSurchargesBox.id = "lam-surcharges";
-    addToCartBtn.insertAdjacentElement("beforebegin", lamSurchargesBox);
+    mountInOptionsRegion(
+      lamSurchargesBox,
+      addToCartBtn.closest(".tab-content") ?? container,
+      addToCartBtn
+    );
     const renderLamSurcharges = (): void => {
       lamSurchargesBox.innerHTML = renderSurchargeCheckboxesHtml("laminowanie", "lam-");
     };
@@ -1692,7 +1697,13 @@ export const LaminowanieView: View = {
     const introAddBtn = container.querySelector("#intro-add-to-cart") as HTMLButtonElement | null;
     const introSurchargesBox = document.createElement("div");
     introSurchargesBox.id = "intro-surcharges";
-    introAddBtn?.insertAdjacentElement("beforebegin", introSurchargesBox);
+    if (introAddBtn) {
+      mountInOptionsRegion(
+        introSurchargesBox,
+        introAddBtn.closest(".tab-content") ?? container,
+        introAddBtn
+      );
+    }
     const renderIntroSurcharges = (): void => {
       introSurchargesBox.innerHTML = renderSurchargeCheckboxesHtml("laminowanie", "intro-");
     };
