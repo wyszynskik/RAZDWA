@@ -28,7 +28,7 @@ import {
   formatCheckedSurchargeNames,
   formatCheckedSurchargeSummary,
 } from "../core/dynamicSurcharges";
-import { updateSurchargeSummary } from "./viewHelpers";
+import { renderPriceResult, updateSurchargeSummary } from "./viewHelpers";
 import { formatPLN } from "../core/money";
 import { escapeHtml } from "../core/validation";
 import {
@@ -607,8 +607,16 @@ export function mountDynamicSubgroupContainers(
           };
         }
 
-        unitEl.textContent = formatPLN(currentComputation.unitPrice);
-        totalEl.textContent = formatPLN(currentComputation.totalPrice);
+        // D-102: cena ≤ 0 lub niefinitna to brak ceny do uzupełnienia —
+        // pokaż placeholder i zablokuj dodanie (renderPriceResult ustawia
+        // aria-disabled, native disabled odcina sam klik).
+        const valid = renderPriceResult({
+          totalPrice: currentComputation.totalPrice,
+          totalEl,
+          unitPrice: currentComputation.unitPrice,
+          unitEl,
+          button: addBtn,
+        });
         expressHintEl.style.display = ctx.expressMode ? "block" : "none";
         updateSurchargeSummary(
           resultBox,
@@ -616,7 +624,7 @@ export function mountDynamicSubgroupContainers(
           formatCheckedSurchargeSummary(categoryId, checkedSurchargeIds)
         );
         resultBox.style.display = "block";
-        addBtn.disabled = false;
+        addBtn.disabled = !valid;
       };
 
       if (qtyInput) {
