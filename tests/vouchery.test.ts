@@ -1,4 +1,4 @@
-import { afterEach, describe, it, expect, vi } from "vitest";
+import { afterEach, beforeEach, describe, it, expect, vi } from "vitest";
 import { quoteVouchery } from "../src/categories/vouchery";
 import {
   getPrice,
@@ -38,7 +38,7 @@ describe("Vouchery Category", () => {
     expect(result.totalPrice).toBe(48.16);
   });
 
-  it("should calculate 5 szt dwustronne with satin (+12%) and express (+20%)", () => {
+  it("satyna + EXPRESS: EXPRESS mnożnikiem na końcu (D-113)", () => {
     const result = quoteVouchery({
       qty: 5,
       sides: "double",
@@ -46,8 +46,8 @@ describe("Vouchery Category", () => {
       modigliani: false,
       express: true,
     });
-    // 43 + (43 * 0.12) + (43 * 0.20) = 43 + 5.16 + 8.6 = 56.76
-    expect(result.totalPrice).toBe(56.76);
+    // 43 * 1.12 (satyna) = 48,16; * 1.20 (EXPRESS) = 57,792 -> 57,79
+    expect(result.totalPrice).toBe(57.79);
   });
 
   it("should interpolate for qty between tiers (11 szt between 10→52 and 15→60)", () => {
@@ -74,7 +74,7 @@ describe("Vouchery Category", () => {
     expect(result.totalPrice).toBe(57.79);
   });
 
-  it("should calculate Modigliani with express while keeping express on base price", () => {
+  it("Modigliani + EXPRESS: EXPRESS mnożnikiem na końcu, modifiersTotal tylko materiał (D-113)", () => {
     const result = quoteVouchery({
       qty: 5,
       sides: "double",
@@ -82,9 +82,10 @@ describe("Vouchery Category", () => {
       modigliani: true,
       express: true,
     });
-    // baza 43; Modigliani = 14.79; express = 8.60; razem 66.39
-    expect(result.modifiersTotal).toBe(23.39);
-    expect(result.totalPrice).toBe(66.39);
+    // materiał: 43 * 1.12 * 1.20 = 57,792 (baza + 14,79 dopłaty materiałowej)
+    expect(result.modifiersTotal).toBe(14.79);
+    // EXPRESS na końcu: 57,792 * 1.20 = 69,3504 -> 69,35
+    expect(result.totalPrice).toBe(69.35);
   });
 
   describe("Interpolacja liniowa", () => {
@@ -183,5 +184,67 @@ describe("Vouchery Category", () => {
       checkedSurchargeIds: ["dwustronne"],
     });
     expect(withSurcharge.totalPrice).toBeCloseTo(base.totalPrice * 1.4, 2);
+  });
+
+  describe("Kolejność D-113 (baza → satyna/Modigliani → dopłaty globalne → EXPRESS)", () => {
+    // Baza 100 wymaga trwałego override w localStorage: resolveStoredPrice
+    // (klucz "vouchery-30-jed") czyta cache/localStorage, nie mapę defaultPrices.
+    beforeEach(() => {
+      const storage: Record<string, string> = {};
+      vi.stubGlobal("localStorage", {
+        getItem: (k: string) => storage[k] ?? null,
+        setItem: (k: string, v: string) => {
+          storage[k] = String(v);
+        },
+        removeItem: (k: string) => {
+          delete storage[k];
+        },
+      });
+    });
+
+    it("baza 100, dopłata globalna 30%, EXPRESS 20% → 156,00", () => {
+      setPrice("defaultPrices.vouchery-30-jed", 100);
+      setVariantDefinitions([buildSurchargeVariant("globalna", "Globalna", ["vouchery"])]);
+      setPrice("defaultPrices." + surchargeRateKey("globalna"), 0.3);
+      const result = quoteVouchery({
+        qty: 30,
+        sides: "single",
+        satin: false,
+        modigliani: false,
+        express: true,
+        checkedSurchargeIds: ["globalna"],
+      });
+      expect(result.basePrice).toBe(100);
+      expect(result.totalPrice).toBe(156); // 100 * 1.30 * 1.20
+    });
+
+    it("satyna + dopłata globalna + EXPRESS: EXPRESS najbardziej zewnętrzny → 174,72", () => {
+      setPrice("defaultPrices.vouchery-30-jed", 100);
+      setVariantDefinitions([buildSurchargeVariant("globalna", "Globalna", ["vouchery"])]);
+      setPrice("defaultPrices." + surchargeRateKey("globalna"), 0.3);
+      const result = quoteVouchery({
+        qty: 30,
+        sides: "single",
+        satin: true,
+        modigliani: false,
+        express: true,
+        checkedSurchargeIds: ["globalna"],
+      });
+      expect(result.basePrice).toBe(100);
+      // 100 * 1.12 (satyna) * 1.30 (dopłata) * 1.20 (EXPRESS) = 174,72
+      expect(result.totalPrice).toBe(174.72);
+    });
+
+    it("bez dopłat i bez EXPRESS: wynik = baza bez zmiany", () => {
+      setPrice("defaultPrices.vouchery-30-jed", 100);
+      const result = quoteVouchery({
+        qty: 30,
+        sides: "single",
+        satin: false,
+        modigliani: false,
+        express: false,
+      });
+      expect(result.totalPrice).toBe(100);
+    });
   });
 });

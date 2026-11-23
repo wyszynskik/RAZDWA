@@ -208,14 +208,19 @@ export function calculateDyplomy(options: DyplomyOptions) {
   const appliedModifiers: string[] = [];
 
   if (usingNewPaperModel) {
-    // Papier jako realny wymiar ceny: Modigliani liczy się wprost od kredy
-    // 350g tego formatu (nie od satyny — zastępuje stare "satyna+modigliani
-    // stacked"); każdy inny papier (kreda/satyna danej gramatury) liczy się
-    // od ceny kredy zinterpolowanej po gramaturze, +satyna% gdy wybrana.
+    // Papier jako realny wymiar ceny: Modigliani = cena satyny dla tej
+    // gramatury + 20% (D-201), liczone od kredy 350g tego formatu — tak samo
+    // jak w płaskiej tabeli (gałąź B); każdy inny papier (kreda/satyna danej
+    // gramatury) liczy się od ceny kredy zinterpolowanej po gramaturze,
+    // +satyna% gdy wybrana.
     if (options.isModigliani) {
       tierPrice = newKreda350Price as number;
       basePrice = tierPrice;
-      materialModifiersTotal = basePrice * modiglianiRate;
+      const satinModifier = basePrice * satinRate;
+      const satinSubtotal = basePrice + satinModifier;
+      const modiglianiModifier = satinSubtotal * modiglianiRate;
+      materialModifiersTotal = satinModifier + modiglianiModifier;
+      appliedModifiers.push("satin");
       appliedModifiers.push("modigliani");
     } else {
       tierPrice = newKredaPrice as number;

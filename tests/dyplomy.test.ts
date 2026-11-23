@@ -614,7 +614,8 @@ describe("Dyplomy — papier jako wymiar ceny (dynamicMaterials, kreda per grama
     });
     expect((result as any).usingNewPaperModel).toBe(true);
     expect(result.basePrice).toBe(150);
-    expect(result.totalPrice).toBeCloseTo(180, 2); // 150 * 1.20 (modifier-modigliani default 0.2)
+    // D-201: Modigliani = satyna (+12%) z kredy 350g, potem +20%.
+    expect(result.totalPrice).toBeCloseTo(201.6, 2); // 150 * 1.12 * 1.20
   });
 
   it("calculateDyplomy: Modigliani bez wycenionej kredy-350 → fallback do starego mechanizmu", () => {
@@ -784,7 +785,28 @@ describe("Dyplomy — tabele papieru z podkategorii (scalenie z głównym formul
     });
     expect(result.usingNewPaperModel).toBe(true);
     expect(result.basePrice).toBe(50);
-    expect(result.totalPrice).toBeCloseTo(60, 2); // +20% modifier-modigliani
+    expect(result.totalPrice).toBeCloseTo(67.2, 2); // 50 * 1.12 (satyna) * 1.20 (Modigliani)
+  });
+
+  it("Modigliani w modelu papieru + dopłata globalna + EXPRESS: pełny łańcuch D-113 (D-201)", () => {
+    setVariantDefinitions([
+      ...paperSubgroupDefs("a4", 350, [{ qty: 10, price: 100 }]),
+      buildSurchargeVariant("globalna", "Globalna", ["dyplomy"]),
+    ]);
+    setPrice("defaultPrices." + surchargeRateKey("globalna"), 0.3);
+    const result = calculateDyplomy({
+      format: "A4",
+      qty: 10,
+      isSatin: false,
+      isModigliani: true,
+      express: true,
+      gramatura: 350,
+      checkedSurchargeIds: ["globalna"],
+    });
+    expect(result.usingNewPaperModel).toBe(true);
+    expect(result.basePrice).toBe(100);
+    // 100 * 1.12 (satyna) * 1.20 (Modigliani) = 134,40; * 1.30 (dopłata) * 1.20 (EXPRESS)
+    expect(result.totalPrice).toBe(209.66);
   });
 
   it("'Dodaj materiał' wygrywa z tabelą-podkategorią przy tej samej gramaturze (ścieżka migracji)", () => {
