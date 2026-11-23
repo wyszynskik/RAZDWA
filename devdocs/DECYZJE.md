@@ -70,6 +70,7 @@ Stan kodu dla sekcji D-1xx i D-2xx: `main` @ beced81 (PR #230), zweryfikowany 20
 - **Decyzja:** przy wierszach wbudowanych (z `prices.json`) przycisk ✕ znika; w zamian jest przełącznik „Widoczny w kalkulatorze". Usuwać można tylko to, co klientka sama dodała.
 - **Powód:** dziś usunięcie wbudowanego wiersza przywraca cenę domyślną po zapisie, co wygląda jak błąd. Pole `visibleInCalculator` istnieje w modelu, ale nie ma przełącznika w panelu.
 - **Status:** DO POTWIERDZENIA (klientka).
+- 2026-11-23: właściciel wybrał potwierdzenie przed usunięciem i usuwanie trwałe zamiast przełącznika „widoczny"; realizacja etapami (PR-X1..X5), status: do potwierdzenia z klientką.
 
 ### D-108 Legenda nie zastępuje nazwy
 

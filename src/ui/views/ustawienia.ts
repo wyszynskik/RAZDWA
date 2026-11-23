@@ -1689,6 +1689,23 @@ function getPriceLabel(key: string): string {
   return getAutoPriceLabel(key);
 }
 
+/** Treść potwierdzenia usunięcia pozycji w Ustawieniach. Wspólna dla wszystkich
+ * ścieżek ✕ (cena, pusta podgrupa, materiał, format CAD, dopłata), żeby okno
+ * brzmiało tak samo i odwoływało się do „Zapisz cennik” jako momentu utrwalenia.
+ *
+ * Exported for unit tests only.
+ */
+export function deleteConfirmMessage(label: string): string {
+  return `Usunąć „${label}”? Zmiana zostanie zapisana po „Zapisz cennik”.`;
+}
+
+/** Natywny confirm przed usunięciem pozycji. Zwraca true tylko po akceptacji;
+ * odmowa (lub zamknięcie okna) daje false i wywołujący musi przerwać bez żadnej
+ * mutacji stanu (prices, customPriceLabels, definicje wariantów, podgrupy). */
+function confirmDelete(label: string): boolean {
+  return window.confirm(deleteConfirmMessage(label));
+}
+
 /** Etykieta wyliczona z klucza, bez nadpisania z customPriceLabels — baseline
  * do porównania w flushInputs(), żeby pusty/niezmieniony input etykiety nie
  * tworzył zbędnego nadpisania identycznego z tym co i tak by się wygenerowało.
@@ -3678,7 +3695,7 @@ export const UstawieniaView: View = {
             <input data-field="unitPrice" type="number" step="0.01" min="0" value="${displayPrice}" placeholder="${isUnresolvedFormula ? "brak bazy" : "—"}" class="settings-input settings-input--price"${priceFormula ? ` disabled title="${isUnresolvedFormula ? "Brak progu bazowego dla tej ilości — sprawdź papier bazowy albo edytuj ręcznie po usunięciu formuły" : "Cena liczona na żywo — edytuj cenę papieru bazowego"}" style="${isUnresolvedFormula ? "border-color:#dc2626;color:#dc2626;" : "opacity:0.75;"}"` : ""}>
           </td>
           <td class="settings-td-del">
-            <button type="button" data-action="delete" data-key="${escapeHtml(key)}" class="settings-btn-del" title="Usuń pozycję">✕</button>
+            <button type="button" data-action="delete" data-key="${escapeHtml(key)}" data-label="${escapeHtml(label)}" class="settings-btn-del" title="Usuń pozycję">✕</button>
           </td>
         </tr>
       `);
@@ -3698,7 +3715,7 @@ export const UstawieniaView: View = {
                 <span style="display:block; font-size:0.8em; color:#7a8a9a;">Brak wariantów — niewidoczna dla klienta</span>
               </td>
               <td class="settings-td-del">
-                <button type="button" data-action="delete-subgroup" data-subgroup-prefix="${escapeHtml(prefix)}" class="settings-btn-del" title="Usuń pustą podgrupę">✕</button>
+                <button type="button" data-action="delete-subgroup" data-subgroup-prefix="${escapeHtml(prefix)}" data-label="${escapeHtml(label)}" class="settings-btn-del" title="Usuń pustą podgrupę">✕</button>
               </td>
             </tr>
           `);
@@ -3711,6 +3728,7 @@ export const UstawieniaView: View = {
         button.addEventListener("click", () => {
           const key = button.dataset.key ?? "";
           if (!key) return;
+          if (!confirmDelete(button.dataset.label || key)) return;
           delete prices[key];
           delete customPriceLabels[key];
           deleteVariantDefinition(key);
@@ -3738,6 +3756,7 @@ export const UstawieniaView: View = {
               renderTable();
               return;
             }
+            if (!confirmDelete(button.dataset.label || prefix)) return;
             const groups = customPriceSubgroups[active.id];
             if (groups) delete groups[prefix];
             renderTabs();
@@ -5779,11 +5798,7 @@ export const UstawieniaView: View = {
       if (!categoryId || !materialId) return;
 
       const materialLabel = deleteMaterialSelect?.selectedOptions[0]?.textContent ?? materialId;
-      if (
-        !confirm(
-          `Usunąć materiał "${materialLabel}" wraz z wszystkimi progami cen? Operacja nieodwracalna po „Zapisz cennik”.`
-        )
-      ) {
+      if (!confirmDelete(materialLabel)) {
         return;
       }
 
@@ -5837,9 +5852,7 @@ export const UstawieniaView: View = {
       if (!formatId) return;
 
       const formatLabel = deleteCadFormatSelect?.selectedOptions[0]?.textContent ?? formatId;
-      if (
-        !confirm(`Usunąć format CAD "${formatLabel}"? Operacja nieodwracalna po „Zapisz cennik”.`)
-      ) {
+      if (!confirmDelete(formatLabel)) {
         return;
       }
 
@@ -6039,9 +6052,7 @@ export const UstawieniaView: View = {
       if (!surchargeId) return;
 
       const surchargeLabel = deleteSurchargeSelect?.selectedOptions[0]?.textContent ?? surchargeId;
-      if (
-        !confirm(`Usunąć dopłatę "${surchargeLabel}"? Operacja nieodwracalna po „Zapisz cennik”.`)
-      ) {
+      if (!confirmDelete(surchargeLabel)) {
         return;
       }
 
