@@ -54,6 +54,17 @@ function renderBreakdownRows(target: HTMLElement, rows: BreakdownRow[]): void {
   }
 }
 
+/**
+ * Komórka ceny w legendzie wizytówek: wartość dodatnia → sformatowana kwota,
+ * brak ceny lub 0 → „—" (D-102: w widoku wizytówek nie pokazujemy 0,00 zł —
+ * np. kolumna „90×50 z folią", gdy nie ma wprowadzonych cen foliowane 90×50).
+ *
+ * Exported for unit tests only.
+ */
+export function formatWizytowkiLegendPrice(price: number): string {
+  return price > 0 ? formatPLN(price) : "—";
+}
+
 export const WizytowkiView: View = {
   id: "wizytowki-druk-cyfrowy",
   name: "Wizytówki",
@@ -160,7 +171,7 @@ export const WizytowkiView: View = {
             `wizytowki-90x50-none-${qty}szt`,
             Number(table90none[qty] ?? 0)
           );
-          return `<tr><td>${qty}</td><td>${formatPLN(p85none)}</td><td>${formatPLN(p90none)}</td></tr>`;
+          return `<tr><td>${qty}</td><td>${formatWizytowkiLegendPrice(p85none)}</td><td>${formatWizytowkiLegendPrice(p90none)}</td></tr>`;
         })
         .join("");
 
@@ -196,7 +207,7 @@ export const WizytowkiView: View = {
             `wizytowki-90x50-matt_gloss-${qty}szt`,
             Number(table90matt[qty] ?? 0)
           );
-          return `<tr><td>${qty}</td><td>${formatPLN(p85matt)}</td><td>${formatPLN(p90matt)}</td></tr>`;
+          return `<tr><td>${qty}</td><td>${formatWizytowkiLegendPrice(p85matt)}</td><td>${formatWizytowkiLegendPrice(p90matt)}</td></tr>`;
         })
         .join("");
 
@@ -232,7 +243,7 @@ export const WizytowkiView: View = {
             `wizytowki-90x50-softtouch-${qty}szt`,
             Number(table90soft[qty] ?? 0)
           );
-          return `<tr><td>${qty}</td><td>${formatPLN(p85soft)}</td><td>${formatPLN(p90soft)}</td></tr>`;
+          return `<tr><td>${qty}</td><td>${formatWizytowkiLegendPrice(p85soft)}</td><td>${formatWizytowkiLegendPrice(p90soft)}</td></tr>`;
         })
         .join("");
     };

@@ -1,5 +1,6 @@
 ﻿import { View, ViewContext } from "../types";
 import { escapeHtml } from "../../core/validation";
+import { wizytowkiItemLabelFromKey, wizytowkiGroupLabelFromKey } from "../../core/wizytowkiLabels";
 import { variantSchema } from "../../core/variantSchema";
 import { formatMaterialSizeOption } from "../dynamicSubgroups";
 import {
@@ -859,12 +860,12 @@ function getAddablePrefixOptions(category: PriceCategory): PrefixOption[] {
       break;
     case "wizytowki":
       options.push(
-        { value: "wizytowki-85x55-none-", label: "Wizytówki 85×55 bez laminatu" },
-        { value: "wizytowki-85x55-matt_gloss-", label: "Wizytówki 85×55 z laminatem mat/błysk" },
-        { value: "wizytowki-85x55-softtouch-", label: "Wizytówki 85×55 SoftTouch" },
-        { value: "wizytowki-90x50-none-", label: "Wizytówki 90×50 bez laminatu" },
-        { value: "wizytowki-90x50-matt_gloss-", label: "Wizytówki 90×50 z laminatem mat/błysk" },
-        { value: "wizytowki-90x50-softtouch-", label: "Wizytówki 90×50 SoftTouch" }
+        { value: "wizytowki-85x55-none-", label: "Wizytówki standard 85×55 mm" },
+        { value: "wizytowki-85x55-matt_gloss-", label: "Wizytówki foliowane 85×55 mm" },
+        { value: "wizytowki-85x55-softtouch-", label: "Wizytówki Soft touch 85×55 mm" },
+        { value: "wizytowki-90x50-none-", label: "Wizytówki standard 90×50 mm" },
+        { value: "wizytowki-90x50-matt_gloss-", label: "Wizytówki foliowane 90×50 mm" },
+        { value: "wizytowki-90x50-softtouch-", label: "Wizytówki Soft touch 90×50 mm" }
       );
       break;
     case "broszury-katalogi":
@@ -1630,44 +1631,9 @@ const PRICE_LABELS: Record<string, string> = {
   "koperty-e": "Koperta E",
   "koperty-f": "Koperta F",
   "koperty-g": "Koperta G",
-  // Wizytówki 85×55
-  "wizytowki-85x55-none-50szt": "Wizytówki 85×55 mm – 50 szt.",
-  "wizytowki-85x55-none-100szt": "Wizytówki 85×55 mm – 100 szt.",
-  "wizytowki-85x55-none-150szt": "Wizytówki 85×55 mm – 150 szt.",
-  "wizytowki-85x55-none-200szt": "Wizytówki 85×55 mm – 200 szt.",
-  "wizytowki-85x55-none-250szt": "Wizytówki 85×55 mm – 250 szt.",
-  "wizytowki-85x55-none-300szt": "Wizytówki 85×55 mm – 300 szt.",
-  "wizytowki-85x55-none-400szt": "Wizytówki 85×55 mm – 400 szt.",
-  "wizytowki-85x55-none-500szt": "Wizytówki 85×55 mm – 500 szt.",
-  "wizytowki-85x55-none-1000szt": "Wizytówki 85×55 mm – 1 000 szt.",
-  "wizytowki-85x55-matt_gloss-50szt": "Wizytówki 85×55 mm z laminatem mat/błysk – 50 szt.",
-  "wizytowki-85x55-matt_gloss-100szt": "Wizytówki 85×55 mm z laminatem mat/błysk – 100 szt.",
-  "wizytowki-85x55-matt_gloss-150szt": "Wizytówki 85×55 mm z laminatem mat/błysk – 150 szt.",
-  "wizytowki-85x55-matt_gloss-200szt": "Wizytówki 85×55 mm z laminatem mat/błysk – 200 szt.",
-  "wizytowki-85x55-matt_gloss-250szt": "Wizytówki 85×55 mm z laminatem mat/błysk – 250 szt.",
-  "wizytowki-85x55-matt_gloss-300szt": "Wizytówki 85×55 mm z laminatem mat/błysk – 300 szt.",
-  "wizytowki-85x55-matt_gloss-400szt": "Wizytówki 85×55 mm z laminatem mat/błysk – 400 szt.",
-  "wizytowki-85x55-matt_gloss-500szt": "Wizytówki 85×55 mm z laminatem mat/błysk – 500 szt.",
-  "wizytowki-85x55-matt_gloss-1000szt": "Wizytówki 85×55 mm z laminatem mat/błysk – 1 000 szt.",
-  // Wizytówki 90×50
-  "wizytowki-90x50-none-50szt": "Wizytówki 90×50 mm – 50 szt.",
-  "wizytowki-90x50-none-100szt": "Wizytówki 90×50 mm – 100 szt.",
-  "wizytowki-90x50-none-150szt": "Wizytówki 90×50 mm – 150 szt.",
-  "wizytowki-90x50-none-200szt": "Wizytówki 90×50 mm – 200 szt.",
-  "wizytowki-90x50-none-250szt": "Wizytówki 90×50 mm – 250 szt.",
-  "wizytowki-90x50-none-300szt": "Wizytówki 90×50 mm – 300 szt.",
-  "wizytowki-90x50-none-400szt": "Wizytówki 90×50 mm – 400 szt.",
-  "wizytowki-90x50-none-500szt": "Wizytówki 90×50 mm – 500 szt.",
-  "wizytowki-90x50-none-1000szt": "Wizytówki 90×50 mm – 1 000 szt.",
-  "wizytowki-90x50-matt_gloss-50szt": "Wizytówki 90×50 mm z laminatem mat/błysk – 50 szt.",
-  "wizytowki-90x50-matt_gloss-100szt": "Wizytówki 90×50 mm z laminatem mat/błysk – 100 szt.",
-  "wizytowki-90x50-matt_gloss-150szt": "Wizytówki 90×50 mm z laminatem mat/błysk – 150 szt.",
-  "wizytowki-90x50-matt_gloss-200szt": "Wizytówki 90×50 mm z laminatem mat/błysk – 200 szt.",
-  "wizytowki-90x50-matt_gloss-250szt": "Wizytówki 90×50 mm z laminatem mat/błysk – 250 szt.",
-  "wizytowki-90x50-matt_gloss-300szt": "Wizytówki 90×50 mm z laminatem mat/błysk – 300 szt.",
-  "wizytowki-90x50-matt_gloss-400szt": "Wizytówki 90×50 mm z laminatem mat/błysk – 400 szt.",
-  "wizytowki-90x50-matt_gloss-500szt": "Wizytówki 90×50 mm z laminatem mat/błysk – 500 szt.",
-  "wizytowki-90x50-matt_gloss-1000szt": "Wizytówki 90×50 mm z laminatem mat/błysk – 1 000 szt.",
+  // Wizytówki (standard / foliowane / Soft touch) — etykiety generuje
+  // wizytowkiItemLabelFromKey() z klucza (patrz getAutoPriceLabel), żeby
+  // wszystkie 3 grupy miały jeden, spójny wzorzec zamiast ręcznej mapy.
   // Dopłaty globalne
   "modifier-satyna": "Dopłata papier satynowy (mnożnik, 0.12 = +12%)",
   "modifier-express": "Dopłata tryb express (mnożnik, 0.20 = +20%)",
@@ -1714,6 +1680,10 @@ function confirmDelete(label: string): boolean {
  */
 export function getAutoPriceLabel(key: string): string {
   if (PRICE_LABELS[key]) return PRICE_LABELS[key];
+
+  // Wizytówki (standard / foliowane / Soft touch): jeden wzorzec z klucza.
+  const wizytowkiLabel = wizytowkiItemLabelFromKey(key);
+  if (wizytowkiLabel) return wizytowkiLabel;
 
   const dyplomyMatch = key.match(/^dyplomy-qty-(\d+)$/);
   if (dyplomyMatch) {
@@ -1882,10 +1852,8 @@ export function getBindowanieSubgroupTitle(key: string): string {
 }
 
 function getWizytowkiSectionTitle(key: string): string {
-  if (key.includes("-matt_gloss-")) return "WIZYTÓWKI Z LAMINATEM (MAT/BŁYSK)";
-  if (key.includes("-softtouch-")) return "WIZYTÓWKI SOFTTOUCH";
-  if (key.includes("-none-")) return "WIZYTÓWKI STANDARD (BEZ LAMINATU)";
-  return "WIZYTÓWKI";
+  // Nagłówek per typ ORAZ rozmiar (6 grup): „Wizytówki standard 85×55 mm" itd.
+  return wizytowkiGroupLabelFromKey(key) ?? "Wizytówki";
 }
 
 function getDrukA4A3SkanSectionTitle(key: string): string {
@@ -3408,6 +3376,7 @@ export const UstawieniaView: View = {
       let previousUlotkiSection = "";
       let previousCanvasSection = "";
       let previousUslugiSection = "";
+      let previousWizytowkiSection = "";
       let previousBindowanieSubgroup = "";
       let isBoldGroup = false;
 
@@ -3609,6 +3578,21 @@ export const UstawieniaView: View = {
           }
         }
 
+        if (active.id === "wizytowki") {
+          // Nagłówek nad każdą grupą (standard / foliowane / Soft touch × rozmiar).
+          // Bez przełączania isBoldGroup — wiersze mają jednolitą wagę czcionki,
+          // grupy rozdziela sam nagłówek (wymóg spójności etykiet wizytówek).
+          const sectionTitle = getCategorySectionTitle(active, key);
+          if (sectionTitle !== previousWizytowkiSection) {
+            rows.push(`
+              <tr class="settings-section-row">
+                <td colspan="3"><strong>${escapeHtml(sectionTitle)}</strong></td>
+              </tr>
+            `);
+            previousWizytowkiSection = sectionTitle;
+          }
+        }
+
         // Niezapisana edycja nazwy (flushInputs stage'uje do _draftVariantDefs)
         // musi być widoczna po re-renderze tabeli, zanim admin kliknie „Zapisz
         // cennik”. Nadpisujemy WYŁĄCZNIE wyświetlaną etykietę z draftu — reszta
@@ -3631,7 +3615,8 @@ export const UstawieniaView: View = {
           active.id !== "ulotki" &&
           active.id !== "canvas" &&
           active.id !== "artykuly" &&
-          active.id !== "uslugi"
+          active.id !== "uslugi" &&
+          active.id !== "wizytowki"
         ) {
           const groupLabel = getProductGroupLabel(label);
           if (groupLabel !== previousGroup) {
