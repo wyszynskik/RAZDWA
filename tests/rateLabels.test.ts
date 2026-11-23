@@ -145,4 +145,27 @@ describe("hydrateRateLabels", () => {
     hydrateRateLabels(makeRoot([el]));
     expect(el.textContent).toBe("3,50");
   });
+
+  // D-104 / PR-C: dokładne atrybuty z podmienionych szablonów
+  // (broszury-katalogi legenda EXPRESS, druk-a4-a3-skan hint EXPRESS/e-mail,
+  // druk-cad hint EXPRESS). Dowód, że zaszyte „+20%"/„+1 zł" idą teraz z klucza.
+  it("EXPRESS z klucza modifier-express: zmiana na 0,37 daje legendę '37' (było zaszyte 20)", () => {
+    storageData[PRICES_STORAGE_KEY] = JSON.stringify({ "modifier-express": 0.37 });
+    const el: FakeEl = {
+      dataset: { rateKey: "modifier-express", rateDefault: "0.2" },
+      textContent: "20",
+    };
+    hydrateRateLabels(makeRoot([el]));
+    expect(el.textContent).toBe("37");
+  });
+
+  it("e-mail z klucza druk-email: zmiana na 4 daje etykietę '4,00' (było zaszyte 1 zł)", () => {
+    storageData[PRICES_STORAGE_KEY] = JSON.stringify({ "druk-email": 4 });
+    const el: FakeEl = {
+      dataset: { rateFixed: "druk-email", rateDefault: "1" },
+      textContent: "1,00",
+    };
+    hydrateRateLabels(makeRoot([el]));
+    expect(el.textContent).toBe("4,00");
+  });
 });

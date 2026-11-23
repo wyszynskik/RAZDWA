@@ -2,6 +2,7 @@ import { View, ViewContext } from "../types";
 import { autoCalc } from "../autoCalc";
 import { formatPLN } from "../../core/money";
 import { resolveStoredPrice, mergeStoredNumericTiers } from "../../core/compat";
+import { formatRatePercent } from "../../core/rateLabels";
 import {
   renderSurchargeCheckboxesHtml,
   collectCheckedSurchargeIds,
@@ -159,7 +160,7 @@ function initBroszuryKatalogi(container: HTMLElement, ctx: ViewContext): void {
 
     legend.innerHTML = `
       ${rows}
-      <div class="hint" style="margin-top:8px;">Ceny dotyczą nakładu bez uwzględnienia liczby stron. EXPRESS: +20%</div>
+      <div class="hint" style="margin-top:8px;">Ceny dotyczą nakładu bez uwzględnienia liczby stron. EXPRESS: +<span data-rate-key="modifier-express" data-rate-default="0.2">20</span>%</div>
     `;
   };
 
@@ -222,7 +223,7 @@ function initBroszuryKatalogi(container: HTMLElement, ctx: ViewContext): void {
     if (ctx.expressMode) {
       lines.push({
         label: "EXPRESS",
-        value: `20% × ${formatPLN(basePrice)} = ${formatPLN(expressCost)}`,
+        value: `${formatRatePercent(resolveStoredPrice("modifier-express", 0.2))}% × ${formatPLN(basePrice)} = ${formatPLN(expressCost)}`,
       });
     }
 
