@@ -182,11 +182,19 @@ export const VoucheryView: View = {
         satinAmount = parseFloat((basePrice * satinRate).toFixed(2));
       }
 
-      const expressAmount = options.express ? parseFloat((basePrice * expressRate).toFixed(2)) : 0;
       const envelopeUnitPrice =
         typeof options.envelopeUnitPrice === "number" ? options.envelopeUnitPrice : 0;
       const envelopeQty = typeof options.envelopeQty === "number" ? options.envelopeQty : 0;
       const envelopeTotal = typeof options.envelopeTotal === "number" ? options.envelopeTotal : 0;
+
+      // D-113: EXPRESS to mnożnik najbardziej zewnętrzny (po dopłatach globalnych),
+      // więc realny udział liczymy wstecznie z podsumowania quoteVouchery bez
+      // kopert (T - T/(1+stawka)) — inaczej wiersze nie sumują się do „Razem".
+      // Koperty są poza EXPRESS.
+      const totalWithoutEnvelopes = result.totalPrice - envelopeTotal;
+      const expressAmount = options.express
+        ? parseFloat((totalWithoutEnvelopes - totalWithoutEnvelopes / (1 + expressRate)).toFixed(2))
+        : 0;
 
       const lines: BreakdownRow[] = [
         { label: "Nakład i typ", value: `${options.qty} szt, ${materialLabel}` },
@@ -212,7 +220,7 @@ export const VoucheryView: View = {
       if (options.express) {
         lines.push({
           label: "EXPRESS",
-          value: `${Math.round(expressRate * 100)}% × ${formatPLN(basePrice)} = ${formatPLN(expressAmount)}`,
+          value: `+${Math.round(expressRate * 100)}% od podsumowania = ${formatPLN(expressAmount)}`,
         });
       }
 

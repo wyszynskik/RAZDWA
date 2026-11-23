@@ -809,6 +809,33 @@ describe("Dyplomy — tabele papieru z podkategorii (scalenie z głównym formul
     expect(result.totalPrice).toBe(209.66);
   });
 
+  // Replikuje wzory wierszy rozbicia z src/ui/views/dyplomy.ts: Satyna
+  // (satinRate × baza) + Modigliani (modiglianiRate × (baza + satyna)) musi
+  // równać się "Razem" z calculateDyplomy (bez EXPRESS/dopłat). Brak infra DOM
+  // dla widoku — testujemy tożsamość arytmetyczną tego samego rozkładu.
+  it("Rozbicie Modigliani (model papieru): 150 → Satyna 18,00 + Modigliani 33,60 = Razem 201,60", () => {
+    setVariantDefinitions(paperSubgroupDefs("a4", 350, [{ qty: 10, price: 150 }]));
+    const round2 = (n: number) => parseFloat(n.toFixed(2));
+    const satinRate = 0.12;
+    const modiglianiRate = 0.2;
+    const result = calculateDyplomy({
+      format: "A4",
+      qty: 10,
+      isSatin: false,
+      isModigliani: true,
+      express: false,
+      gramatura: 350,
+    });
+    const base = result.basePrice;
+    const satinAmount = round2(base * satinRate);
+    const modiglianiAmount = round2((base + satinAmount) * modiglianiRate);
+    expect(base).toBe(150);
+    expect(satinAmount).toBe(18);
+    expect(modiglianiAmount).toBe(33.6);
+    expect(round2(base + satinAmount + modiglianiAmount)).toBe(result.totalPrice);
+    expect(result.totalPrice).toBe(201.6);
+  });
+
   it("'Dodaj materiał' wygrywa z tabelą-podkategorią przy tej samej gramaturze (ścieżka migracji)", () => {
     const defs = paperSubgroupDefs("a4", 280, [{ qty: 10, price: 55 }]);
     setVariantDefinitions([

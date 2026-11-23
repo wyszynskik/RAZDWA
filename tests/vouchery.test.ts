@@ -247,4 +247,53 @@ describe("Vouchery Category", () => {
       expect(result.totalPrice).toBe(100);
     });
   });
+
+  // Replikuje wzory wierszy rozbicia z src/ui/views/vouchery.ts (renderBreakdown):
+  // base + satyna + [Modigliani] + EXPRESS(wstecznie od sumy) musi równać się
+  // "Razem" z quoteVouchery (bez kopert). Brak infrastruktury DOM dla widoku —
+  // testujemy tożsamość arytmetyczną tego samego rozkładu.
+  describe("Rozbicie ceny — suma wierszy = Razem (bez dopłat globalnych)", () => {
+    const round2 = (n: number) => parseFloat(n.toFixed(2));
+    const satinRate = 0.12;
+    const modiglianiRate = 0.2;
+    const expressRate = 0.2;
+
+    it("satyna + EXPRESS: 43,00 + 5,16 + 9,63 = 57,79", () => {
+      const quote = quoteVouchery({
+        qty: 5,
+        sides: "double",
+        satin: true,
+        modigliani: false,
+        express: true,
+      });
+      const base = quote.basePrice;
+      const satinAmount = round2(base * satinRate);
+      const expressAmount = round2(quote.totalPrice - quote.totalPrice / (1 + expressRate));
+      expect(base).toBe(43);
+      expect(satinAmount).toBe(5.16);
+      expect(expressAmount).toBe(9.63);
+      expect(round2(base + satinAmount + expressAmount)).toBe(quote.totalPrice);
+      expect(quote.totalPrice).toBe(57.79);
+    });
+
+    it("Modigliani + EXPRESS: 43,00 + 5,16 + 9,63 + 11,56 = 69,35", () => {
+      const quote = quoteVouchery({
+        qty: 5,
+        sides: "double",
+        satin: false,
+        modigliani: true,
+        express: true,
+      });
+      const base = quote.basePrice;
+      const satinAmount = round2(base * satinRate);
+      const modiglianiAmount = round2((base + satinAmount) * modiglianiRate);
+      const expressAmount = round2(quote.totalPrice - quote.totalPrice / (1 + expressRate));
+      expect(base).toBe(43);
+      expect(satinAmount).toBe(5.16);
+      expect(modiglianiAmount).toBe(9.63);
+      expect(expressAmount).toBe(11.56);
+      expect(round2(base + satinAmount + modiglianiAmount + expressAmount)).toBe(quote.totalPrice);
+      expect(quote.totalPrice).toBe(69.35);
+    });
+  });
 });
