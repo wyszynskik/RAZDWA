@@ -118,7 +118,7 @@ export const DyplomyView: View = {
           ];
           if (hasKreda350) {
             notes.push(
-              `<tr><td colspan="2" style="color:#64748b;">Modigliani: cena Kredy 350g +${Math.round(modiglianiRate * 100)}%.</td></tr>`
+              `<tr><td colspan="2" style="color:#64748b;">Modigliani: cena satyny (kreda 350 g +${Math.round(satinRate * 100)}%) +${Math.round(modiglianiRate * 100)}%.</td></tr>`
             );
           }
 
@@ -168,21 +168,15 @@ export const DyplomyView: View = {
         const totalPrice = result.totalPrice;
         const tierPrice = result.tierPrice;
 
-        const usingNewPaperModel = Boolean((result as any).usingNewPaperModel);
         let satinAmount = 0;
         let modiglianiAmount = 0;
         if (options.isModigliani) {
-          // Nowy model (papier jako wymiar): Modigliani liczy się WYŁĄCZNIE
-          // od kredy 350g tego formatu — nie stackuje się z satyną (patrz
-          // calculateDyplomy). Stary model: satyna+modigliani jak dotąd.
-          if (usingNewPaperModel) {
-            modiglianiAmount = parseFloat((result.basePrice * modiglianiRate).toFixed(2));
-          } else {
-            satinAmount = parseFloat((result.basePrice * satinRate).toFixed(2));
-            modiglianiAmount = parseFloat(
-              ((result.basePrice + satinAmount) * modiglianiRate).toFixed(2)
-            );
-          }
+          // Modigliani = satyna (+modifier-satyna) z bazy, potem +modifier-modigliani
+          // od sumy (baza + satyna) — tak samo w obu modelach (D-201).
+          satinAmount = parseFloat((result.basePrice * satinRate).toFixed(2));
+          modiglianiAmount = parseFloat(
+            ((result.basePrice + satinAmount) * modiglianiRate).toFixed(2)
+          );
         } else if (options.isSatin) {
           satinAmount = parseFloat((result.basePrice * satinRate).toFixed(2));
         }
@@ -200,18 +194,12 @@ export const DyplomyView: View = {
         ];
 
         if (options.isModigliani) {
-          if (usingNewPaperModel) {
-            breakdown.push(
-              `<div><strong>Modigliani (od kredy 350g):</strong> ${Math.round(modiglianiRate * 100)}% × ${formatPLN(result.basePrice)} = ${formatPLN(modiglianiAmount)}</div>`
-            );
-          } else {
-            breakdown.push(
-              `<div><strong>Satyna:</strong> ${Math.round(satinRate * 100)}% × ${formatPLN(result.basePrice)} = ${formatPLN(satinAmount)}</div>`
-            );
-            breakdown.push(
-              `<div><strong>Modigliani:</strong> ${Math.round(modiglianiRate * 100)}% × (${formatPLN(result.basePrice)} + ${formatPLN(satinAmount)}) = ${formatPLN(modiglianiAmount)}</div>`
-            );
-          }
+          breakdown.push(
+            `<div><strong>Satyna:</strong> ${Math.round(satinRate * 100)}% × ${formatPLN(result.basePrice)} = ${formatPLN(satinAmount)}</div>`
+          );
+          breakdown.push(
+            `<div><strong>Modigliani:</strong> ${Math.round(modiglianiRate * 100)}% × (${formatPLN(result.basePrice)} + ${formatPLN(satinAmount)}) = ${formatPLN(modiglianiAmount)}</div>`
+          );
         } else if (options.isSatin) {
           breakdown.push(
             `<div><strong>Satyna:</strong> ${Math.round(satinRate * 100)}% × ${formatPLN(result.basePrice)} = ${formatPLN(satinAmount)}</div>`
