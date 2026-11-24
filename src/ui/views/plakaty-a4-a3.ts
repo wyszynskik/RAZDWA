@@ -1,6 +1,10 @@
 import { View, ViewContext } from "../types";
 import { autoCalc } from "../autoCalc";
-import { calculatePlakatyDuzyCanon, getDuzyCanonEffectiveTiers } from "../../categories/plakaty";
+import {
+  calculatePlakatyDuzyCanon,
+  calculatePlakatySatyna200,
+  getDuzyCanonEffectiveTiers,
+} from "../../categories/plakaty";
 import { formatPLN } from "../../core/money";
 import { getPrice } from "../../services/priceService";
 import {
@@ -241,6 +245,23 @@ export const PlakatyA4A3View: View = {
       duzyCanonPaperOptions.unshift({ value: "130", label: "130g kreda" });
     }
 
+    // Papier satyna 200 g: liczony od kredy 200 g, dopóki klientka nie wpisze
+    // własnych cen satyny w Ustawieniach (per format).
+    if (!duzyCanonPaperOptions.some((o) => o.value === "satyna-200")) {
+      duzyCanonPaperOptions.push({ value: "satyna-200", label: "200g satyna" });
+    }
+
+    const DUZY_CANON_PAPER_LABELS: Record<string, string> = duzyCanonPaperOptions.reduce(
+      (acc, option) => {
+        acc[option.value] = option.label;
+        return acc;
+      },
+      {} as Record<string, string>
+    );
+
+    const paperTypeLabel = (paper: string): string =>
+      DUZY_CANON_PAPER_LABELS[paper] ?? `${paper}g kreda`;
+
     const duzyCanonFormatOptions = duzyVariants.reduce((acc, variant) => {
       const key = variant.id.startsWith("a3") ? "a3" : "a4";
       if (!acc.includes(key)) acc.push(key);
@@ -296,16 +317,26 @@ export const PlakatyA4A3View: View = {
     };
 
     const calcDuzyCanon = (qty: number) => {
-      const variantId = resolveDuzyCanonVariantId();
       const finish = duzyCanonFinishSelect.value === "blysk" ? "błysk" : "mat";
       const paper = duzyCanonPaperSelect.value;
+      const isSatyna = paper === "satyna-200";
+      const format = duzyCanonFormatSelect.value === "a3" ? "a3" : "a4";
+      const variantId = isSatyna ? `${format}-200-satyna-200` : resolveDuzyCanonVariantId();
+      const paperLabel = paperTypeLabel(paper);
       const checkedSurchargeIds = collectCheckedSurchargeIds(surchargesBox);
-      const res = calculatePlakatyDuzyCanon({
-        variantId,
-        qty,
-        express: ctx.expressMode,
-        checkedSurchargeIds,
-      });
+      const res = isSatyna
+        ? calculatePlakatySatyna200({
+            format,
+            qty,
+            express: ctx.expressMode,
+            checkedSurchargeIds,
+          })
+        : calculatePlakatyDuzyCanon({
+            variantId,
+            qty,
+            express: ctx.expressMode,
+            checkedSurchargeIds,
+          });
       const trimSurcharge = getDuzyCanonTrimSurcharge();
       const totalWithTrim = parseFloat((res.totalPrice + trimSurcharge).toFixed(2));
 
@@ -320,6 +351,7 @@ export const PlakatyA4A3View: View = {
         qty: res.qty,
         finish,
         paper,
+        paperLabel,
         trimSurcharge,
         checkedSurchargeIds,
       };
@@ -328,7 +360,7 @@ export const PlakatyA4A3View: View = {
       totalPriceEl.innerText = formatPLN(totalWithTrim);
 
       if (qtyLabel) qtyLabel.innerText = "Ilość:";
-      if (qtyValEl) qtyValEl.innerText = `${res.qty} szt, ${paper}g kreda, ${finish}`;
+      if (qtyValEl) qtyValEl.innerText = `${res.qty} szt, ${paperLabel}, ${finish}`;
 
       if (calcHintEl) {
         calcHintEl.style.display = "none";
@@ -340,7 +372,10 @@ export const PlakatyA4A3View: View = {
       const paBreakdownLines = container.querySelector<HTMLElement>("#pa-breakdown-lines");
       if (paBreakdownBox && paBreakdownLines) {
         const breakdown: BreakdownRow[] = [
-          { label: "Parametry", value: `${res.qty} szt, papier ${paper}g, wykończenie ${finish}` },
+          {
+            label: "Parametry",
+            value: `${res.qty} szt, papier ${paperLabel}, wykończenie ${finish}`,
+          },
         ];
 
         if (res.isExact) {
@@ -483,11 +518,11 @@ export const PlakatyA4A3View: View = {
         currentOptions.checkedSurchargeIds ?? []
       );
       const surchargeLabel = surchargeNames ? `, ${surchargeNames}` : "";
-      const hint = `${currentOptions.qty} szt, ${currentOptions.paper}g kreda, ${currentOptions.finish}${trimHint}${surchargeLabel}`;
+      const hint = `${currentOptions.qty} szt, ${currentOptions.paperLabel}, ${currentOptions.finish}${trimHint}${surchargeLabel}`;
       ctx.cart.addItem({
         id: `plakaty-a4-a3-${Date.now()}`,
         category: "Plakaty A4-A3",
-        name: `${currentOptions.paper}g kreda (${currentOptions.finish}, duży Canon)`,
+        name: `${currentOptions.paperLabel} (${currentOptions.finish}, duży Canon)`,
         quantity: currentOptions.qty,
         unit: "szt",
         unitPrice: currentResult.tierPrice,

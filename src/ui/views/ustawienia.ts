@@ -809,7 +809,18 @@ function getAddablePrefixOptions(category: PriceCategory): PrefixOption[] {
           value: "plakaty-duzy-canon-a4-200-kreda-200-",
           label: `Duży Canon A4 200g${canonSuffix}`,
         },
-        { value: "plakaty-duzy-canon-a3-200-kreda-200-", label: `Duży Canon A3 200g${canonSuffix}` }
+        {
+          value: "plakaty-duzy-canon-a3-200-kreda-200-",
+          label: `Duży Canon A3 200g${canonSuffix}`,
+        },
+        {
+          value: "plakaty-duzy-canon-a4-200-satyna-200-",
+          label: `Duży Canon A4 200g satyna — wpisz ceny przy ilościach z cennika; puste = liczone od kredy 200g`,
+        },
+        {
+          value: "plakaty-duzy-canon-a3-200-satyna-200-",
+          label: `Duży Canon A3 200g satyna — wpisz ceny przy ilościach z cennika; puste = liczone od kredy 200g`,
+        }
       );
       break;
     }
@@ -1425,6 +1436,34 @@ const PRICE_LABELS: Record<string, string> = {
   "plakaty-duzy-canon-a3-200-kreda-200-150": "Plakaty duży Canon A3 200g – 150 szt.",
   "plakaty-duzy-canon-a3-200-kreda-200-175": "Plakaty duży Canon A3 200g – 175 szt.",
   "plakaty-duzy-canon-a3-200-kreda-200-200": "Plakaty duży Canon A3 200g – 200 szt.",
+  "plakaty-duzy-canon-a4-200-satyna-200-10": "Plakaty duży Canon A4 200g satyna – 10 szt.",
+  "plakaty-duzy-canon-a4-200-satyna-200-20": "Plakaty duży Canon A4 200g satyna – 20 szt.",
+  "plakaty-duzy-canon-a4-200-satyna-200-30": "Plakaty duży Canon A4 200g satyna – 30 szt.",
+  "plakaty-duzy-canon-a4-200-satyna-200-40": "Plakaty duży Canon A4 200g satyna – 40 szt.",
+  "plakaty-duzy-canon-a4-200-satyna-200-50": "Plakaty duży Canon A4 200g satyna – 50 szt.",
+  "plakaty-duzy-canon-a4-200-satyna-200-60": "Plakaty duży Canon A4 200g satyna – 60 szt.",
+  "plakaty-duzy-canon-a4-200-satyna-200-70": "Plakaty duży Canon A4 200g satyna – 70 szt.",
+  "plakaty-duzy-canon-a4-200-satyna-200-80": "Plakaty duży Canon A4 200g satyna – 80 szt.",
+  "plakaty-duzy-canon-a4-200-satyna-200-90": "Plakaty duży Canon A4 200g satyna – 90 szt.",
+  "plakaty-duzy-canon-a4-200-satyna-200-100": "Plakaty duży Canon A4 200g satyna – 100 szt.",
+  "plakaty-duzy-canon-a4-200-satyna-200-125": "Plakaty duży Canon A4 200g satyna – 125 szt.",
+  "plakaty-duzy-canon-a4-200-satyna-200-150": "Plakaty duży Canon A4 200g satyna – 150 szt.",
+  "plakaty-duzy-canon-a4-200-satyna-200-175": "Plakaty duży Canon A4 200g satyna – 175 szt.",
+  "plakaty-duzy-canon-a4-200-satyna-200-200": "Plakaty duży Canon A4 200g satyna – 200 szt.",
+  "plakaty-duzy-canon-a3-200-satyna-200-10": "Plakaty duży Canon A3 200g satyna – 10 szt.",
+  "plakaty-duzy-canon-a3-200-satyna-200-20": "Plakaty duży Canon A3 200g satyna – 20 szt.",
+  "plakaty-duzy-canon-a3-200-satyna-200-30": "Plakaty duży Canon A3 200g satyna – 30 szt.",
+  "plakaty-duzy-canon-a3-200-satyna-200-40": "Plakaty duży Canon A3 200g satyna – 40 szt.",
+  "plakaty-duzy-canon-a3-200-satyna-200-50": "Plakaty duży Canon A3 200g satyna – 50 szt.",
+  "plakaty-duzy-canon-a3-200-satyna-200-60": "Plakaty duży Canon A3 200g satyna – 60 szt.",
+  "plakaty-duzy-canon-a3-200-satyna-200-70": "Plakaty duży Canon A3 200g satyna – 70 szt.",
+  "plakaty-duzy-canon-a3-200-satyna-200-80": "Plakaty duży Canon A3 200g satyna – 80 szt.",
+  "plakaty-duzy-canon-a3-200-satyna-200-90": "Plakaty duży Canon A3 200g satyna – 90 szt.",
+  "plakaty-duzy-canon-a3-200-satyna-200-100": "Plakaty duży Canon A3 200g satyna – 100 szt.",
+  "plakaty-duzy-canon-a3-200-satyna-200-125": "Plakaty duży Canon A3 200g satyna – 125 szt.",
+  "plakaty-duzy-canon-a3-200-satyna-200-150": "Plakaty duży Canon A3 200g satyna – 150 szt.",
+  "plakaty-duzy-canon-a3-200-satyna-200-175": "Plakaty duży Canon A3 200g satyna – 175 szt.",
+  "plakaty-duzy-canon-a3-200-satyna-200-200": "Plakaty duży Canon A3 200g satyna – 200 szt.",
   // Vouchery jednostronne
   "vouchery-1-jed": "Voucher jednostronny – 1 szt.",
   "vouchery-2-jed": "Voucher jednostronny – 2 szt.",
