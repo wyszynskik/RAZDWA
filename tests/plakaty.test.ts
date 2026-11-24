@@ -4,6 +4,8 @@ import {
   calculatePlakatyFormat,
   calculatePlakatyDuzyCanon,
   interpolatePrice,
+  getDuzyCanonEffectiveTiers,
+  resolveDuzyCanonTierPrice,
 } from "../src/categories/plakaty";
 import { getPlakatyA4A3LegendStyles } from "../src/ui/views/plakaty-a4-a3";
 import {
@@ -424,5 +426,92 @@ describe("Plakaty A4-A3 — źródło stawki EXPRESS (D-105/PR-5)", () => {
       express: true,
     });
     expect(res.totalPrice).toBe(67.6);
+  });
+});
+
+describe("Plakaty Duży Canon — kalkulator czyta ceny z Ustawień (PR-P1, D-105)", () => {
+  afterEach(() => {
+    resetPrices();
+    vi.unstubAllGlobals();
+  });
+
+  function stubStored(entries: Record<string, number>): void {
+    const storage: Record<string, string> = {
+      [PRICES_STORAGE_KEY]: JSON.stringify(entries),
+    };
+    vi.stubGlobal("localStorage", {
+      getItem: (k: string) => storage[k] ?? null,
+      setItem: (k: string, v: string) => {
+        storage[k] = String(v);
+      },
+      removeItem: (k: string) => {
+        delete storage[k];
+      },
+    });
+  }
+
+  describe("ceny domyślne identyczne przed/po (bez nadpisań)", () => {
+    const cases: Array<[string, number, number]> = [
+      ["a4-170-kreda-130-170", 10, 47],
+      ["a4-170-kreda-130-170", 200, 250],
+      ["a4-170-kreda-130-170", 15, 51],
+      ["a3-170-kreda-130-170", 10, 60],
+      ["a3-170-kreda-130-170", 50, 145],
+      ["a4-200-kreda-200", 10, 52],
+      ["a4-200-kreda-200", 200, 268],
+      ["a3-200-kreda-200", 100, 259],
+      ["a3-200-kreda-200", 200, 456],
+    ];
+
+    it.each(cases)("%s %i szt → %f zł (bazowa = total)", (variantId, qty, expected) => {
+      const res = calculatePlakatyDuzyCanon({ variantId, qty });
+      expect(res.basePrice).toBe(expected);
+      expect(res.totalPrice).toBe(expected);
+    });
+
+    it("qty > 200 jest zacięte do 200 (limit bez zmian): 250 szt = 200 szt", () => {
+      const at200 = calculatePlakatyDuzyCanon({ variantId: "a4-170-kreda-130-170", qty: 200 });
+      const at250 = calculatePlakatyDuzyCanon({ variantId: "a4-170-kreda-130-170", qty: 250 });
+      expect(at250.qty).toBe(200);
+      expect(at250.totalPrice).toBe(at200.totalPrice);
+      expect(at250.totalPrice).toBe(250);
+    });
+  });
+
+  it("nadpisanie klucza A4/170g/10 szt → 999: kalkulator i legenda pokazują tę samą kwotę", () => {
+    stubStored({ "plakaty-duzy-canon-a4-170-kreda-130-170-10": 999 });
+
+    const res = calculatePlakatyDuzyCanon({ variantId: "a4-170-kreda-130-170", qty: 10 });
+    expect(res.basePrice).toBe(999);
+    expect(res.totalPrice).toBe(999);
+
+    const legendTier = getDuzyCanonEffectiveTiers("a4-170-kreda-130-170").find((t) => t.qty === 10);
+    expect(legendTier?.price).toBe(999);
+    expect(res.basePrice).toBe(legendTier?.price);
+  });
+
+  it("nadpisanie wartością 0 → fallback do ceny domyślnej (D-102, nigdy 0,00)", () => {
+    stubStored({ "plakaty-duzy-canon-a4-170-kreda-130-170-10": 0 });
+    expect(resolveDuzyCanonTierPrice("a4-170-kreda-130-170", 10, 47)).toBe(47);
+    const res = calculatePlakatyDuzyCanon({ variantId: "a4-170-kreda-130-170", qty: 10 });
+    expect(res.basePrice).toBe(47);
+  });
+
+  it("brak klucza w magazynie → cena domyślna", () => {
+    stubStored({});
+    expect(resolveDuzyCanonTierPrice("a4-200-kreda-200", 10, 52)).toBe(52);
+  });
+
+  it("żaden próg domyślny nie jest 0 (brak 0,00 zł w legendzie/kalkulatorze)", () => {
+    for (const variantId of [
+      "a4-170-kreda-130-170",
+      "a3-170-kreda-130-170",
+      "a4-200-kreda-200",
+      "a3-200-kreda-200",
+    ]) {
+      for (const tier of getDuzyCanonEffectiveTiers(variantId)) {
+        expect(tier.price).toBeGreaterThan(0);
+      }
+    }
   });
 });

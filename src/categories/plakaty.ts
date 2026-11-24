@@ -418,6 +418,38 @@ const DUZY_CANON_TABLE = {
   ],
 };
 
+/**
+ * Jedno źródło ceny progu Dużego Canona (D-105): szablon klucza
+ * `plakaty-duzy-canon-{variantId}-{qty}` żyje wyłącznie tutaj, więc kalkulator
+ * i legenda czytają dokładnie tę samą wartość z Ustawień. Wartość 0, brak klucza
+ * lub nieliczbowa w magazynie = fallback do ceny domyślnej z DUZY_CANON_TABLE
+ * (D-102: nigdy 0,00 zł).
+ */
+export function resolveDuzyCanonTierPrice(
+  variantId: string,
+  qty: number,
+  defaultPrice: number
+): number {
+  const stored = resolveStoredPrice(`plakaty-duzy-canon-${variantId}-${qty}`, defaultPrice);
+  return Number.isFinite(stored) && stored > 0 ? stored : defaultPrice;
+}
+
+/**
+ * Progi danego wariantu z cenami rozwiązanymi z magazynu (fallback do wartości
+ * domyślnych). Wspólne źródło dla kalkulatora i legendy — zwraca nową tablicę,
+ * nie mutuje DUZY_CANON_TABLE.
+ */
+export function getDuzyCanonEffectiveTiers(
+  variantId: string
+): Array<{ qty: number; price: number }> {
+  const variant = DUZY_CANON_TABLE.variants.find((v: any) => v.id === variantId);
+  if (!variant) return [];
+  return variant.tiers.map((t: any) => ({
+    qty: t.qty,
+    price: resolveDuzyCanonTierPrice(variantId, t.qty, t.price),
+  }));
+}
+
 export interface PlakatyDuzyCanonInput {
   variantId: string;
   qty: number;
@@ -449,10 +481,11 @@ export function calculatePlakatyDuzyCanon(input: PlakatyDuzyCanonInput): Plakaty
   const qtyRaw = Math.max(DUZY_CANON_TABLE.minQty, Math.floor(input.qty));
   const qty = Math.min(qtyRaw, DUZY_CANON_TABLE.maxQty);
 
-  const sortedTiers = [...variant.tiers].sort((a: any, b: any) => a.qty - b.qty);
+  const effectiveTiers = getDuzyCanonEffectiveTiers(input.variantId);
+  const sortedTiers = [...effectiveTiers].sort((a, b) => a.qty - b.qty);
 
   // Determine interpolation bounds for breakdown display
-  const exactMatch = sortedTiers.find((t: any) => t.qty === qty);
+  const exactMatch = sortedTiers.find((t) => t.qty === qty);
   let isExact: boolean;
   let lowerTierQty: number;
   let lowerTierPrice: number;
@@ -467,37 +500,34 @@ export function calculatePlakatyDuzyCanon(input: PlakatyDuzyCanonInput): Plakaty
     upperTierPrice = null;
   } else {
     isExact = false;
-    const lowerTier = sortedTiers.reduce((prev: any, curr: any) =>
+    const lowerTier = sortedTiers.reduce((prev, curr) =>
       curr.qty <= qty && curr.qty > (prev?.qty || 0) ? curr : prev
     );
-    const upperTier = sortedTiers.find((t: any) => t.qty > qty);
+    const upperTier = sortedTiers.find((t) => t.qty > qty);
     lowerTierQty = lowerTier?.qty ?? sortedTiers[0].qty;
     lowerTierPrice = lowerTier?.price ?? sortedTiers[0].price;
     upperTierQty = upperTier?.qty ?? null;
     upperTierPrice = upperTier?.price ?? null;
   }
 
-  // Use linear interpolation to find the price
-  const basePrice = interpolatePrice(qty, variant.tiers);
+  // Use linear interpolation to find the price (progi z Ustawień, D-105)
+  const basePrice = interpolatePrice(qty, effectiveTiers);
 
   // Calculate unit price from interpolated basePrice
   const unitPrice = parseFloat((basePrice / qty).toFixed(2));
 
   // Find tier info for reference (closest matching tier) - for display purposes only
   const tier =
-    variant.tiers.find((t: any) => t.qty === qty) ??
-    variant.tiers.reduce((closest: any, t: any) =>
+    effectiveTiers.find((t) => t.qty === qty) ??
+    effectiveTiers.reduce((closest, t) =>
       Math.abs(t.qty - qty) < Math.abs(closest.qty - qty) ? t : closest
     );
   const tierQty = tier?.qty || qty;
   const tierPrice = unitPrice;
 
-  // For single-tier price reference
-  const singleTier = variant.tiers.find((t: any) => t.qty === 1) ?? variant.tiers[0];
-  const singleTierPrice = resolveStoredPrice(
-    `plakaty-duzy-canon-${input.variantId}-${singleTier.qty}`,
-    singleTier.price
-  );
+  // For single-tier price reference (cena rozwiązana z magazynu, D-105)
+  const singleTier = effectiveTiers.find((t) => t.qty === 1) ?? effectiveTiers[0];
+  const singleTierPrice = singleTier?.price ?? 0;
 
   let modifiersTotal = 0;
   const appliedModifiers: string[] = [];
