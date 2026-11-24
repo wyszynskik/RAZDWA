@@ -1,9 +1,8 @@
 import { View, ViewContext } from "../types";
 import { autoCalc } from "../autoCalc";
-import { calculatePlakatyDuzyCanon } from "../../categories/plakaty";
+import { calculatePlakatyDuzyCanon, getDuzyCanonEffectiveTiers } from "../../categories/plakaty";
 import { formatPLN } from "../../core/money";
 import { getPrice } from "../../services/priceService";
-import { resolveStoredPrice } from "../../core/compat";
 import {
   renderSurchargeCheckboxesHtml,
   collectCheckedSurchargeIds,
@@ -156,17 +155,14 @@ export const PlakatyA4A3View: View = {
         legend.insertAdjacentElement("beforebegin", slot);
       }
 
-      const findDuzyVariant = (variantId: string) =>
-        (tableData.duzyCanon?.variants ?? []).find((variant: any) => variant.id === variantId);
-
+      // Wspólne źródło ceny z kalkulatorem (D-105): ten sam helper, ten sam
+      // szablon klucza. Legenda i koszyk nie mogą się rozjechać.
       const getDuzyPrice = (variantId: string, qty: number, fallback = "-") => {
-        const variant = findDuzyVariant(variantId);
-        const tier = (variant?.tiers ?? []).find((entry: any) => entry.qty === qty);
-        if (!tier) return fallback;
-        return formatPLN(resolveStoredPrice(`plakaty-duzy-canon-${variantId}-${qty}`, tier.price));
+        const tier = getDuzyCanonEffectiveTiers(variantId).find((entry) => entry.qty === qty);
+        return tier ? formatPLN(tier.price) : fallback;
       };
 
-      const duzyQuantities = ((findDuzyVariant("a4-170-kreda-130-170")?.tiers ?? []) as any[]).map(
+      const duzyQuantities = getDuzyCanonEffectiveTiers("a4-170-kreda-130-170").map(
         (tier) => tier.qty
       );
 
