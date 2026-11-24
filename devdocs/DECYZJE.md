@@ -180,6 +180,14 @@ Stan kodu dla sekcji D-1xx i D-2xx: `main` @ beced81 (PR #230), zweryfikowany 20
 - **Powód:** zmienia to, jak klientka wycenia; wymaga jej potwierdzenia.
 - **Status:** DO POTWIERDZENIA (klientka). Nie ruszać.
 
+### D-210 Plakaty A4-A3: papier satyna 200 g
+
+- **Data:** 2026-11-24
+- **Decyzja:** Plakaty A4–A3 (Duży Canon) dostają papier satyna 200 g = cena kredy 200 g × (1 + modifier-satyna); własne ceny satyny per format nadpisują formułę. Gdy dla formatu istnieje co najmniej jeden własny punkt cenowy satyny, cała cena (z interpolacją D-110) liczona jest z jego punktów; gdy brak — od kredy. Źródła nigdy nie mieszane w jednej interpolacji. Stawka modifier-satyna z cennika (D-105), domyślnie 0,12. Kolejność D-113 i limit 200 szt bez zmian — satyna tylko podmienia bazę Dużego Canona.
+- **Powód:** decyzja właściciela; klientka chce satynę w suwaku papierów, domyślnie liczoną od kredy (jak w Dyplomach).
+- **Konsekwencja (zaakceptowana):** przy jednym własnym punkcie cenowym D-110 daje poniżej tego progu cenę pierwszego punktu (np. 10 szt może kosztować jak najniższy wpisany próg). To celowe zachowanie interpolacji, nie błąd.
+- **Status:** OBOWIĄZUJE.
+
 ---
 
 ## Zaakceptowane ryzyka
