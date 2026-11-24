@@ -38,6 +38,7 @@ import {
 } from "../core/productModel";
 import { buildProductLabel } from "../core/productLabel";
 import { isDyplomyPaperTableProduct } from "../core/dyplomyPaperTables";
+import { isWizytowkiNativeKey } from "../core/wizytowkiLabels";
 import { isValidSortOrder } from "../core/subgroupOrder";
 import type { CartItem } from "../core/types";
 import type { ViewContext } from "./types";
@@ -146,6 +147,20 @@ function sortProductsByOrder(
 }
 
 /**
+ * Produkt złożony wyłącznie z natywnych kluczy wizytówek (format × laminat ×
+ * ilość). Takie pozycje obsługuje bespoke WizytowkiView, więc nie wolno ich
+ * renderować ponownie jako kart dynamicznych. Sprawdzamy wszystkie progi —
+ * produkt mieszający natywny klucz z freeform kluczem i tak nie powstaje
+ * (klasyfikator grupuje po prefiksie), ale `every` jest tu najbezpieczniejsze.
+ */
+function isWizytowkiNativeProduct(product: Product): boolean {
+  if (product.categoryId !== "wizytowki") return false;
+  return (
+    product.entries.length > 0 && product.entries.every((entry) => isWizytowkiNativeKey(entry.key))
+  );
+}
+
+/**
  * One entry per PRODUCT (never per prefix) for the given category, built on
  * top of classifyVariantsIntoProducts(). Excludes needs-review records,
  * products hidden via visibleInCalculator, and products left with no
@@ -172,7 +187,17 @@ export function getRenderableProducts(categoryId: string): RenderableProduct[] {
     .filter((p) => p.visibleInCalculator)
     // Tabele papieru Dyplomów są scalone z głównym formularzem (wybór
     // papieru + jedna ilość) — osobna karta byłaby duplikatem wyceny.
-    .filter((p) => !isDyplomyPaperTableProduct(p));
+    .filter((p) => !isDyplomyPaperTableProduct(p))
+    // Natywne wizytówki (standard / foliowane / Soft touch) mają własny
+    // kalkulator i legendy w WizytowkiView, sterowane polem „Rodzaj". Gdy
+    // klientka doda im ceny przez „Dodaj wariant" (jedyna droga dla Soft
+    // touch — brak domyślnych cen w prices.json), powstaje VariantDefinition,
+    // który bez tego filtra wyciekał tu jako osobna karta renderowana pod
+    // KAŻDYM rodzajem (np. „Soft touch - 1000 szt" widoczna też pod
+    // Foliowane). Wykluczamy je, żeby Soft touch pojawiał się wyłącznie po
+    // wybraniu rodzaju SoftTouch. Freeform klucze custom-podgrup nie pasują
+    // do natywnego kształtu i renderują się tu normalnie.
+    .filter((p) => !isWizytowkiNativeProduct(p));
 
   return sortProductsByOrder(eligible, freshSubgroups, variantsByIdentity)
     .map((p) => {
