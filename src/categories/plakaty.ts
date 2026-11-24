@@ -474,14 +474,34 @@ export interface PlakatyDuzyCanonResult {
   upperTierPrice: number | null;
 }
 
-export function calculatePlakatyDuzyCanon(input: PlakatyDuzyCanonInput): PlakatyDuzyCanonResult {
-  const variant = DUZY_CANON_TABLE.variants.find((v: any) => v.id === input.variantId);
-  if (!variant) throw new Error(`Unknown duży canon variant: ${input.variantId}`);
+interface AssembleDuzyCanonInput {
+  variantName: string;
+  effectiveTiers: Array<{ qty: number; price: number }>;
+  qty: number;
+  /**
+   * Mnożnik bazy aplikowany PO interpolacji (domyślnie 1). Satyna liczona od
+   * kredy = cena kredy × (1 + modifier-satyna); mnożnik niesie się do jednego
+   * zaokrąglenia na końcu (D-113), bez osobnego round. Dla kredy mnożnik 1 =
+   * zachowanie co do grosza jak przed wprowadzeniem satyny.
+   */
+  baseMultiplier?: number;
+  express?: boolean;
+  checkedSurchargeIds?: string[];
+}
+
+/**
+ * Wspólny montaż wyniku Dużego Canona (D-105/D-113) dla kredy i satyny:
+ * interpolacja po progach, EXPRESS addytywny, dopłaty globalne, jedno
+ * zaokrąglenie na końcu. Progi w breakdown skalowane tym samym
+ * `baseMultiplier`, więc dla satyny pokazują ceny satyny, nie kredy.
+ */
+function assembleDuzyCanonResult(input: AssembleDuzyCanonInput): PlakatyDuzyCanonResult {
+  const mult = input.baseMultiplier ?? 1;
+  const effectiveTiers = input.effectiveTiers;
 
   const qtyRaw = Math.max(DUZY_CANON_TABLE.minQty, Math.floor(input.qty));
   const qty = Math.min(qtyRaw, DUZY_CANON_TABLE.maxQty);
 
-  const effectiveTiers = getDuzyCanonEffectiveTiers(input.variantId);
   const sortedTiers = [...effectiveTiers].sort((a, b) => a.qty - b.qty);
 
   // Determine interpolation bounds for breakdown display
@@ -495,7 +515,7 @@ export function calculatePlakatyDuzyCanon(input: PlakatyDuzyCanonInput): Plakaty
   if (exactMatch) {
     isExact = true;
     lowerTierQty = exactMatch.qty;
-    lowerTierPrice = exactMatch.price;
+    lowerTierPrice = exactMatch.price * mult;
     upperTierQty = null;
     upperTierPrice = null;
   } else {
@@ -505,13 +525,14 @@ export function calculatePlakatyDuzyCanon(input: PlakatyDuzyCanonInput): Plakaty
     );
     const upperTier = sortedTiers.find((t) => t.qty > qty);
     lowerTierQty = lowerTier?.qty ?? sortedTiers[0].qty;
-    lowerTierPrice = lowerTier?.price ?? sortedTiers[0].price;
+    lowerTierPrice = (lowerTier?.price ?? sortedTiers[0].price) * mult;
     upperTierQty = upperTier?.qty ?? null;
-    upperTierPrice = upperTier?.price ?? null;
+    upperTierPrice = upperTier ? upperTier.price * mult : null;
   }
 
-  // Use linear interpolation to find the price (progi z Ustawień, D-105)
-  const basePrice = interpolatePrice(qty, effectiveTiers);
+  // Use linear interpolation to find the price (progi z Ustawień, D-105);
+  // baseMultiplier aplikowany PO interpolacji (satyna liczona od kredy).
+  const basePrice = interpolatePrice(qty, effectiveTiers) * mult;
 
   // Calculate unit price from interpolated basePrice
   const unitPrice = parseFloat((basePrice / qty).toFixed(2));
@@ -527,7 +548,7 @@ export function calculatePlakatyDuzyCanon(input: PlakatyDuzyCanonInput): Plakaty
 
   // For single-tier price reference (cena rozwiązana z magazynu, D-105)
   const singleTier = effectiveTiers.find((t) => t.qty === 1) ?? effectiveTiers[0];
-  const singleTierPrice = singleTier?.price ?? 0;
+  const singleTierPrice = (singleTier?.price ?? 0) * mult;
 
   let modifiersTotal = 0;
   const appliedModifiers: string[] = [];
@@ -551,7 +572,7 @@ export function calculatePlakatyDuzyCanon(input: PlakatyDuzyCanonInput): Plakaty
   );
 
   return {
-    variantName: variant.name,
+    variantName: input.variantName,
     qty,
     tierQty,
     tierPrice,
@@ -566,4 +587,98 @@ export function calculatePlakatyDuzyCanon(input: PlakatyDuzyCanonInput): Plakaty
     upperTierQty,
     upperTierPrice,
   };
+}
+
+export function calculatePlakatyDuzyCanon(input: PlakatyDuzyCanonInput): PlakatyDuzyCanonResult {
+  const variant = DUZY_CANON_TABLE.variants.find((v: any) => v.id === input.variantId);
+  if (!variant) throw new Error(`Unknown duży canon variant: ${input.variantId}`);
+
+  return assembleDuzyCanonResult({
+    variantName: variant.name,
+    effectiveTiers: getDuzyCanonEffectiveTiers(input.variantId),
+    qty: input.qty,
+    express: input.express,
+    checkedSurchargeIds: input.checkedSurchargeIds,
+  });
+}
+
+export type PlakatySatynaFormat = "a4" | "a3";
+
+export interface PlakatySatyna200Input {
+  format: PlakatySatynaFormat;
+  qty: number;
+  express?: boolean;
+  checkedSurchargeIds?: string[];
+}
+
+export type PlakatySatyna200Source = "own" | "from-kreda";
+
+export interface PlakatySatyna200Result extends PlakatyDuzyCanonResult {
+  satynaSource: PlakatySatyna200Source;
+  satynaRate: number;
+}
+
+/**
+ * Identyfikator wariantu satyny 200 g per format. Klucze własnych cen satyny:
+ * `plakaty-duzy-canon-{id}-{qty}` — ten sam schemat co kreda, więc Ustawienia i
+ * kalkulator czytają to samo (D-105).
+ */
+export function duzyCanonSatynaVariantId(format: PlakatySatynaFormat): string {
+  return `${format === "a3" ? "a3" : "a4"}-200-satyna-200`;
+}
+
+/**
+ * Własne progi satyny 200 g danego formatu wczytane z magazynu. Sonduje te same
+ * ilości co kreda; zwraca tylko punkty realnie wpisane (liczba skończona > 0).
+ * Brak punktów = pusta tablica → kalkulator liczy satynę od kredy. Sentinel NaN
+ * odróżnia „brak klucza" od zapisanej wartości (również 0, odrzucanej przez
+ * D-102), pokrywając cache IDB i localStorage w kolejności resolveStoredPrice.
+ */
+export function getDuzyCanonSatynaOwnTiers(
+  format: PlakatySatynaFormat
+): Array<{ qty: number; price: number }> {
+  const variantId = duzyCanonSatynaVariantId(format);
+  const standardQtys = DUZY_CANON_TABLE.variants[0].tiers.map((t: any) => t.qty);
+  return standardQtys
+    .map((qty: number) => ({
+      qty,
+      price: resolveStoredPrice(`plakaty-duzy-canon-${variantId}-${qty}`, NaN),
+    }))
+    .filter((t: { qty: number; price: number }) => Number.isFinite(t.price) && t.price > 0);
+}
+
+/**
+ * Plakaty A4–A3, papier satyna 200 g. Jeśli dla formatu istnieje ≥1 własny punkt
+ * cenowy — cała cena (z D-110) liczona z jego punktów. Jeśli nie ma żadnego —
+ * cena kredy 200 g tego formatu × (1 + modifier-satyna), jedno zaokrąglenie.
+ * Źródła nigdy nie mieszane w jednej interpolacji. Kolejność D-113 i montaż
+ * dziedziczone z Dużego Canona (satyna tylko podmienia bazę).
+ */
+export function calculatePlakatySatyna200(input: PlakatySatyna200Input): PlakatySatyna200Result {
+  const format: PlakatySatynaFormat = input.format === "a3" ? "a3" : "a4";
+  const variantName = format === "a3" ? "A3 200g satyna" : "A4 200g satyna";
+  const ownTiers = getDuzyCanonSatynaOwnTiers(format);
+
+  if (ownTiers.length >= 1) {
+    const base = assembleDuzyCanonResult({
+      variantName,
+      effectiveTiers: ownTiers,
+      qty: input.qty,
+      express: input.express,
+      checkedSurchargeIds: input.checkedSurchargeIds,
+    });
+    return { ...base, satynaSource: "own", satynaRate: 0 };
+  }
+
+  const satynaRate = resolveStoredPrice("modifier-satyna", 0.12);
+  const kredaTiers = getDuzyCanonEffectiveTiers(`${format}-200-kreda-200`);
+  const base = assembleDuzyCanonResult({
+    variantName,
+    effectiveTiers: kredaTiers,
+    qty: input.qty,
+    baseMultiplier: 1 + satynaRate,
+    express: input.express,
+    checkedSurchargeIds: input.checkedSurchargeIds,
+  });
+  return { ...base, satynaSource: "from-kreda", satynaRate };
 }

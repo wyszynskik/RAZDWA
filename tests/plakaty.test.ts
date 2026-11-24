@@ -3,6 +3,8 @@ import {
   calculatePlakatyM2,
   calculatePlakatyFormat,
   calculatePlakatyDuzyCanon,
+  calculatePlakatySatyna200,
+  getDuzyCanonSatynaOwnTiers,
   interpolatePrice,
   getDuzyCanonEffectiveTiers,
   resolveDuzyCanonTierPrice,
@@ -511,6 +513,125 @@ describe("Plakaty Duży Canon — kalkulator czyta ceny z Ustawień (PR-P1, D-10
     ]) {
       for (const tier of getDuzyCanonEffectiveTiers(variantId)) {
         expect(tier.price).toBeGreaterThan(0);
+      }
+    }
+  });
+});
+
+describe("Plakaty Duży Canon — papier satyna 200 g (PR-S1, D-105/D-110/D-113)", () => {
+  afterEach(() => {
+    resetPrices();
+    vi.unstubAllGlobals();
+  });
+
+  function stubStored(entries: Record<string, number>): void {
+    const storage: Record<string, string> = {
+      [PRICES_STORAGE_KEY]: JSON.stringify(entries),
+    };
+    vi.stubGlobal("localStorage", {
+      getItem: (k: string) => storage[k] ?? null,
+      setItem: (k: string, v: string) => {
+        storage[k] = String(v);
+      },
+      removeItem: (k: string) => {
+        delete storage[k];
+      },
+    });
+  }
+
+  describe("bez własnych cen = cena kredy 200 g × (1 + modifier-satyna 0,12), D-110", () => {
+    const cases: Array<["a4" | "a3", number, number]> = [
+      ["a4", 10, 58.24],
+      ["a4", 200, 300.16],
+      ["a4", 15, 65.52],
+      ["a3", 10, 71.68],
+      ["a3", 50, 173.6],
+      ["a3", 100, 290.08],
+      ["a3", 200, 510.72],
+    ];
+
+    it.each(cases)("%s %i szt → %f zł (od kredy)", (format, qty, expected) => {
+      const res = calculatePlakatySatyna200({ format, qty });
+      expect(res.satynaSource).toBe("from-kreda");
+      expect(res.satynaRate).toBeCloseTo(0.12, 10);
+      expect(res.totalPrice).toBe(expected);
+      expect(res.basePrice).toBeCloseTo(expected, 2);
+    });
+
+    it("qty > 200 zacięte do 200 (limit bez zmian): 250 szt = 200 szt", () => {
+      const res = calculatePlakatySatyna200({ format: "a4", qty: 250 });
+      expect(res.qty).toBe(200);
+      expect(res.totalPrice).toBe(300.16);
+    });
+  });
+
+  it("modifier-satyna z magazynu (D-105): 0,20 → 52 × 1,2 = 62,40 zł", () => {
+    stubStored({ "modifier-satyna": 0.2 });
+    const res = calculatePlakatySatyna200({ format: "a4", qty: 10 });
+    expect(res.satynaSource).toBe("from-kreda");
+    expect(res.satynaRate).toBeCloseTo(0.2, 10);
+    expect(res.totalPrice).toBe(62.4);
+  });
+
+  it("własna cena satyny nadpisuje formułę od kredy (A4 100 szt = 300 zł)", () => {
+    stubStored({ "plakaty-duzy-canon-a4-200-satyna-200-100": 300 });
+    const res = calculatePlakatySatyna200({ format: "a4", qty: 100 });
+    expect(res.satynaSource).toBe("own");
+    expect(res.totalPrice).toBe(300);
+    expect(res.totalPrice).not.toBe(182.56);
+  });
+
+  it("jeden własny punkt = brak mieszania źródeł: poniżej punktu cena punktu (D-110)", () => {
+    stubStored({ "plakaty-duzy-canon-a4-200-satyna-200-100": 300 });
+    const res = calculatePlakatySatyna200({ format: "a4", qty: 50 });
+    expect(res.satynaSource).toBe("own");
+    expect(res.totalPrice).toBe(300);
+  });
+
+  it("własne punkty interpolują liniowo tylko między sobą (A4 50→120, 100→300; 75 szt = 210)", () => {
+    stubStored({
+      "plakaty-duzy-canon-a4-200-satyna-200-50": 120,
+      "plakaty-duzy-canon-a4-200-satyna-200-100": 300,
+    });
+    const res = calculatePlakatySatyna200({ format: "a4", qty: 75 });
+    expect(res.satynaSource).toBe("own");
+    expect(res.totalPrice).toBe(210);
+  });
+
+  it("własne ceny jednego formatu nie wpływają na drugi (A4 własne, A3 nadal od kredy)", () => {
+    stubStored({ "plakaty-duzy-canon-a4-200-satyna-200-100": 300 });
+    const a3 = calculatePlakatySatyna200({ format: "a3", qty: 100 });
+    expect(a3.satynaSource).toBe("from-kreda");
+    expect(a3.totalPrice).toBe(290.08);
+  });
+
+  it("własna cena 0 jest odrzucana (D-102) → format liczony od kredy", () => {
+    stubStored({ "plakaty-duzy-canon-a4-200-satyna-200-100": 0 });
+    expect(getDuzyCanonSatynaOwnTiers("a4")).toEqual([]);
+    const res = calculatePlakatySatyna200({ format: "a4", qty: 100 });
+    expect(res.satynaSource).toBe("from-kreda");
+    expect(res.totalPrice).toBe(182.56);
+  });
+
+  it("brak własnych kluczy → pusta lista progów satyny", () => {
+    stubStored({});
+    expect(getDuzyCanonSatynaOwnTiers("a4")).toEqual([]);
+    expect(getDuzyCanonSatynaOwnTiers("a3")).toEqual([]);
+  });
+
+  it("EXPRESS dziedziczy kolejność D-113 widoku: 58,24 × 1,3 = 75,71 zł", () => {
+    stubStored({ "modifier-express": 0.3 });
+    const res = calculatePlakatySatyna200({ format: "a4", qty: 10, express: true });
+    expect(res.satynaSource).toBe("from-kreda");
+    expect(res.totalPrice).toBe(75.71);
+  });
+
+  it("nigdzie 0,00 zł — satyna od kredy zawsze dodatnia", () => {
+    for (const format of ["a4", "a3"] as const) {
+      for (const qty of [10, 15, 50, 100, 175, 200]) {
+        const res = calculatePlakatySatyna200({ format, qty });
+        expect(res.totalPrice).toBeGreaterThan(0);
+        expect(res.basePrice).toBeGreaterThan(0);
       }
     }
   });
