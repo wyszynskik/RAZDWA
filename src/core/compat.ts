@@ -438,7 +438,9 @@ export function mergeStoredQuantityTable(
 
   for (const [key, value] of Object.entries(stored)) {
     if (!key.startsWith(prefix)) continue;
-    if (typeof value !== "number") continue;
+    // D-102: pusty slot (null), 0, wartość ujemna lub nieliczbowa nie nadpisuje
+    // bazy — kalkulator wraca do tabeli bazowej, nigdzie nie pokazuje 0,00 zł.
+    if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) continue;
 
     const quantity = parseQuantityFromKey(key);
     if (quantity === null || !Number.isFinite(quantity)) continue;
