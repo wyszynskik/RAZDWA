@@ -270,6 +270,76 @@ export function calculateDyplomy(options: DyplomyOptions) {
   };
 }
 
+export interface DyplomyLegendRow {
+  qty: number;
+  /** Cena efektywna wybranego papieru przy tej ilości; null = niewycenialna (D-102). */
+  price: number | null;
+}
+
+/**
+ * Progi cenowe legendy dla WYBRANEGO papieru (kreda/satyna/Modigliani) danego
+ * formatu. Każdy wiersz liczy się tą samą ścieżką co wycena — przez
+ * calculateDyplomy — więc legenda jest grosz w grosz zgodna z koszykiem bez
+ * duplikowania formuł satyny/Modigliani.
+ *
+ * Cena wiersza = totalPrice przy express:false i pustej liście dopłat — czysta
+ * drabina papieru, nie suma koszyka. applySurcharges z pustą listą jest no-op,
+ * a EXPRESS pomijamy, więc zostaje sama baza + satyna/Modigliani (D-201).
+ *
+ * D-102: cena niewycenialna (≤0, nieliczbowa, pusta tabela bazowa) → null;
+ * renderowana jako "—", nigdy 0,00. Gramatura powyżej najwyższej wycenionej
+ * spada na starą płaską tabelę wewnątrz calculateDyplomy (D-111) — legenda
+ * pokazuje realnie liczoną cenę, nie "—".
+ */
+export function getDyplomyLegendRows(
+  format: DyplomyPaperFormat,
+  paperVal: string
+): DyplomyLegendRow[] {
+  const isSatin = paperVal.startsWith("satyna");
+  const isModigliani = paperVal === "modigliani";
+  const gramaturaMatch = /_(\d+)$/.exec(paperVal);
+  const gramatura = gramaturaMatch ? Number(gramaturaMatch[1]) : undefined;
+
+  const materials = getDyplomyKredaMaterials(format);
+  if (materials.length === 0) return [];
+
+  const baseGramatura = isModigliani ? 350 : gramatura;
+  const ownEntry = materials.find((m) => m.gramatura === baseGramatura);
+
+  const thresholds = new Set<number>();
+  const collect = (entry: DyplomyKredaLegendEntry): void => {
+    (entry.points ?? []).forEach((p) => thresholds.add(p.qty));
+    (entry.tiers ?? []).forEach((t) => thresholds.add(t.min));
+  };
+  if (ownEntry) {
+    collect(ownEntry);
+  } else {
+    materials.forEach(collect);
+  }
+
+  return [...thresholds]
+    .sort((a, b) => a - b)
+    .map((qty) => {
+      let price: number | null = null;
+      try {
+        const result = calculateDyplomy({
+          format,
+          qty,
+          isSatin,
+          isModigliani,
+          gramatura,
+          express: false,
+          checkedSurchargeIds: [],
+        });
+        const paperPrice = result.totalPrice;
+        price = Number.isFinite(paperPrice) && paperPrice > 0 ? paperPrice : null;
+      } catch {
+        price = null;
+      }
+      return { qty, price };
+    });
+}
+
 export type DyplomyEkoFormat = "A5" | "A4" | "A3";
 
 export interface DyplomyEkoOptions {

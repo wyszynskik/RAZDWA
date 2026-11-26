@@ -7,6 +7,7 @@ import {
   resolveDyplomyKredaPrice,
   resolveDyplomyKreda350Price,
   getDyplomyKredaMaterials,
+  getDyplomyLegendRows,
 } from "../src/categories/dyplomy";
 import {
   getPrice,
@@ -897,6 +898,132 @@ describe("Dyplomy — tabele papieru z podkategorii (scalenie z głównym formul
     expect(products.some((p) => p.subcategoryPrefix === "dyplomy-dyplomy-a4-259g-")).toBe(true);
     // I nie zasila modelu papieru:
     expect(resolveDyplomyKredaPrice("A4", 259, 10)).toBeNull();
+  });
+});
+
+describe("getDyplomyLegendRows — legenda odzwierciedla WYBRANY papier (fix wyświetlania)", () => {
+  // Gramatury celowo UNIKALNE w tym pliku (240/245), poza 350 wymaganym przez
+  // Modigliani. resetPrices() nie czyści kluczy defaultPrices dopisanych przez
+  // wcześniejsze testy; kreda-350 jest używana wyłącznie z sufiksem "1+", więc
+  // nadpisanie jej ceną testu jest deterministyczne.
+  function registerKreda(
+    gramatura: number,
+    price: number,
+    categoryId: "dyplomyA4" | "dyplomyA5" = "dyplomyA4"
+  ): void {
+    setVariantDefinitions([
+      {
+        key: buildMaterialAssignmentKey(categoryId, `kreda-${gramatura}`),
+        categoryId,
+        subcategoryPrefix: MATERIAL_ASSIGNMENT_PREFIX,
+        subgroupLabel: "",
+        label: `Kreda ${gramatura}g`,
+        legend: "",
+        visibleInSettings: true,
+        visibleInCalculator: true,
+        sortOrder: 0,
+        createdAt: "2026-01-01T00:00:00.000Z",
+        updatedAt: "2026-01-01T00:00:00.000Z",
+      },
+    ]);
+    setPrice(`defaultPrices.${materialTierKeyPrefix(categoryId, `kreda-${gramatura}`)}1+`, price);
+  }
+
+  it("bez wycenionej kredy legenda nie renderuje wierszy papieru (stara, płaska ścieżka)", () => {
+    expect(getDyplomyLegendRows("A4", "kreda_240")).toEqual([]);
+  });
+
+  it("kreda pokazuje cenę bazową, satyna tę samą bazę × (1 + modifier-satyna) — te same progi, różne ceny", () => {
+    registerKreda(240, 100);
+    const kreda = getDyplomyLegendRows("A4", "kreda_240");
+    const satyna = getDyplomyLegendRows("A4", "satyna_240");
+
+    expect(kreda.map((r) => r.qty)).toEqual(satyna.map((r) => r.qty));
+    const k = kreda.find((r) => r.qty === 1);
+    const s = satyna.find((r) => r.qty === 1);
+    expect(k?.price).toBe(100);
+    expect(s?.price).toBe(112); // 100 × 1,12 (modifier-satyna default 0.12)
+  });
+
+  it("zmiana gramatury papieru zmienia progi legendy (kreda 240 ≠ kreda 350)", () => {
+    setVariantDefinitions([
+      {
+        key: buildMaterialAssignmentKey("dyplomyA4", "kreda-240"),
+        categoryId: "dyplomyA4",
+        subcategoryPrefix: MATERIAL_ASSIGNMENT_PREFIX,
+        subgroupLabel: "",
+        label: "Kreda 240g",
+        legend: "",
+        visibleInSettings: true,
+        visibleInCalculator: true,
+        sortOrder: 0,
+        createdAt: "2026-01-01T00:00:00.000Z",
+        updatedAt: "2026-01-01T00:00:00.000Z",
+      },
+      {
+        key: buildMaterialAssignmentKey("dyplomyA4", "kreda-350"),
+        categoryId: "dyplomyA4",
+        subcategoryPrefix: MATERIAL_ASSIGNMENT_PREFIX,
+        subgroupLabel: "",
+        label: "Kreda 350g",
+        legend: "",
+        visibleInSettings: true,
+        visibleInCalculator: true,
+        sortOrder: 1,
+        createdAt: "2026-01-01T00:00:00.000Z",
+        updatedAt: "2026-01-01T00:00:00.000Z",
+      },
+    ]);
+    setPrice(`defaultPrices.${materialTierKeyPrefix("dyplomyA4", "kreda-240")}1+`, 100);
+    setPrice(`defaultPrices.${materialTierKeyPrefix("dyplomyA4", "kreda-350")}1+`, 150);
+
+    expect(getDyplomyLegendRows("A4", "kreda_240").find((r) => r.qty === 1)?.price).toBe(100);
+    expect(getDyplomyLegendRows("A4", "kreda_350").find((r) => r.qty === 1)?.price).toBe(150);
+  });
+
+  it("Modigliani liczy się od kredy 350g i jest grosz w grosz z wyceną (D-201, stackuje satynę)", () => {
+    registerKreda(350, 150);
+    const rows = getDyplomyLegendRows("A4", "modigliani");
+    const calc = calculateDyplomy({
+      format: "A4",
+      qty: 1,
+      isSatin: false,
+      isModigliani: true,
+      express: false,
+      gramatura: 350,
+      checkedSurchargeIds: [],
+    });
+    const row = rows.find((r) => r.qty === 1);
+    expect(row?.price).toBe(calc.totalPrice);
+    expect(row?.price).toBeCloseTo(201.6, 2); // 150 × 1,12 (satyna) × 1,20 (Modigliani)
+  });
+
+  it("D-102: gramatura z ceną 0 daje wiersz null (renderowany jako myślnik), nigdy 0,00", () => {
+    registerKreda(245, 0);
+    const rows = getDyplomyLegendRows("A4", "kreda_245");
+    expect(rows.find((r) => r.qty === 1)?.price).toBeNull();
+  });
+
+  it("gramatura powyżej najwyższej wycenionej daje realną cenę starej tabeli (D-111), nie myślnik", () => {
+    registerKreda(240, 100);
+    const rows = getDyplomyLegendRows("A4", "kreda_350"); // 350 > 240 → fallback na starą tabelę
+    const calc = calculateDyplomy({
+      format: "A4",
+      qty: 1,
+      isSatin: false,
+      express: false,
+      gramatura: 350,
+      checkedSurchargeIds: [],
+    });
+    const row = rows.find((r) => r.qty === 1);
+    expect(calc.usingNewPaperModel).toBe(false);
+    expect(row?.price).toBe(calc.totalPrice);
+    expect(row?.price).not.toBeNull();
+  });
+
+  it("A4 i A5 niezależne — wycena kredy A4 nie wycieka do legendy A5", () => {
+    registerKreda(240, 100, "dyplomyA4");
+    expect(getDyplomyLegendRows("A5", "kreda_240")).toEqual([]);
   });
 });
 

@@ -5,6 +5,7 @@ import {
   DyplomyOptions,
   getResolvedDyplomyTiers,
   getDyplomyKredaMaterials,
+  getDyplomyLegendRows,
   calculateDyplomyEko,
   DyplomyEkoFormat,
   getResolvedDyplomyEkoTiers,
@@ -87,42 +88,46 @@ export const DyplomyView: View = {
         const format = formatSel?.value === "A5" ? "A5" : "A4";
         const kredaMaterials = getDyplomyKredaMaterials(format);
 
-        // Nowy model (papier jako wymiar ceny): legenda pokazuje realne progi
-        // każdej wycenionej gramatury kredy dla WYBRANEGO formatu + notkę jak
-        // liczą się satyna/Modigliani. Bez wycenionej kredy — stara legenda.
-        // Gramatura może pochodzić z "Dodaj materiał" (progi zakresowe,
-        // `tiers`) albo z tabeli-podkategorii (punkty ilości, `points`).
+        // Nowy model (papier jako wymiar ceny): legenda odzwierciedla WYBRANY
+        // papier i jego efektywne progi. Ceny liczy getDyplomyLegendRows przez
+        // calculateDyplomy — grosz w grosz z wyceną i koszykiem. Bez wycenionej
+        // kredy — stara, płaska legenda poniżej.
         if (kredaMaterials.length > 0) {
-          const satinRate = resolveStoredPrice("modifier-satyna", 0.12);
-          const modiglianiRate = resolveStoredPrice("modifier-modigliani", 0.2);
-          const hasKreda350 = kredaMaterials.some((m) => m.gramatura === 350);
+          const paperVal = paperSel?.value ?? "";
+          const isSatin = paperVal.startsWith("satyna");
+          const isModigliani = paperVal === "modigliani";
+          const gramatura = /_(\d+)$/.exec(paperVal)?.[1];
+          const paperTitle = isModigliani
+            ? `Modigliani (${format})`
+            : isSatin
+              ? `Satyna ${gramatura}g (${format})`
+              : `Kreda ${gramatura}g (${format})`;
 
-          const sections = kredaMaterials.map((m) => {
-            const header = `<tr><td colspan="2" style="padding-top:10px;"><strong>Kreda ${m.gramatura}g (${format})</strong></td></tr>`;
-            const rangeRows = (m.tiers ?? [])
-              .map((tier) => {
-                const range = tier.max === null ? `${tier.min}+` : `${tier.min}–${tier.max}`;
-                return `<tr><td>${range} szt</td><td>${formatPLN(tier.price)}</td></tr>`;
-              })
-              .join("");
-            const pointRows = (m.points ?? [])
-              .map(
-                (point) => `<tr><td>${point.qty} szt</td><td>${formatPLN(point.price)}</td></tr>`
-              )
-              .join("");
-            return header + rangeRows + pointRows;
-          });
+          const header = `<tr><td colspan="2" style="padding-top:4px;"><strong>${escapeHtml(paperTitle)}</strong></td></tr>`;
+          const priceRows = getDyplomyLegendRows(format, paperVal)
+            .map(
+              (row) =>
+                `<tr><td>${row.qty} szt</td><td>${row.price === null ? "—" : formatPLN(row.price)}</td></tr>`
+            )
+            .join("");
 
-          const notes: string[] = [
-            `<tr><td colspan="2" style="padding-top:10px; color:#64748b;">Satyna: cena kredy tej gramatury +${Math.round(satinRate * 100)}%. Gramatury pomiędzy wycenionymi liczone proporcjonalnie.</td></tr>`,
-          ];
-          if (hasKreda350) {
+          // D-105: stawki modyfikatorów z Ustawień, jak w wycenie.
+          const notes: string[] = [];
+          if (isSatin) {
+            const satinRate = resolveStoredPrice("modifier-satyna", 0.12);
             notes.push(
-              `<tr><td colspan="2" style="color:#64748b;">Modigliani: cena satyny (kreda 350 g +${Math.round(satinRate * 100)}%) +${Math.round(modiglianiRate * 100)}%.</td></tr>`
+              `<tr><td colspan="2" style="padding-top:10px; color:#64748b;">Satyna: cena kredy tej gramatury +${Math.round(satinRate * 100)}%. Gramatury pomiędzy wycenionymi liczone proporcjonalnie.</td></tr>`
+            );
+          }
+          if (isModigliani) {
+            const satinRate = resolveStoredPrice("modifier-satyna", 0.12);
+            const modiglianiRate = resolveStoredPrice("modifier-modigliani", 0.2);
+            notes.push(
+              `<tr><td colspan="2" style="padding-top:10px; color:#64748b;">Modigliani: cena satyny Kredy 350g (+${Math.round(satinRate * 100)}%), powiększona o +${Math.round(modiglianiRate * 100)}%.</td></tr>`
             );
           }
 
-          legendRows.innerHTML = sections.join("") + notes.join("");
+          legendRows.innerHTML = header + priceRows + notes.join("");
           return;
         }
 
@@ -132,6 +137,7 @@ export const DyplomyView: View = {
           .join("");
       };
       formatSel?.addEventListener("change", updateLegend);
+      paperSel?.addEventListener("change", updateLegend);
 
       const calculate = () => {
         const satinRate = resolveStoredPrice("modifier-satyna", 0.12);
