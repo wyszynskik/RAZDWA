@@ -109,6 +109,22 @@ export function hasNativeSubgroupRenderer(categoryId: string): boolean {
 }
 
 /**
+ * Kategorie, których WŁASNY widok sam montuje podgrupy custom (we własnej
+ * zakładce, z własnym hostId) — router NIE może montować ich generycznie,
+ * inaczej powstałby duplikat w DOM. Różni się od
+ * NATIVE_SUBGROUP_RENDERER_CATEGORIES: te kategorie WCIĄŻ używają generycznego
+ * pipeline'u podgrup (ten sam calcScheme/edycja w Ustawieniach) — przejęte jest
+ * tylko MIEJSCE montażu na kalkulatorze. Dlatego sprawdzane wyłącznie w routerze
+ * (mountDynamicSubgroupsFor), nigdy w gatingu formularza Ustawień.
+ * Dziś: plakaty-a4-a3 (podgrupy w zakładce „Ekonomiczne", wzorzec dyplomy-eko).
+ */
+export const VIEW_SELF_MOUNTS_SUBGROUPS: ReadonlySet<string> = new Set(["plakaty-a4-a3"]);
+
+export function viewSelfMountsSubgroups(categoryId: string): boolean {
+  return VIEW_SELF_MOUNTS_SUBGROUPS.has(categoryId);
+}
+
+/**
  * Builds a deterministic base key for quantity-based categories.
  * qty – raw quantity value, e.g. "100". broszury-katalogi's built-in a4/a5/dl
  * tiers still use legacy "51-1000" range suffixes in prices.json, but the
