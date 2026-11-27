@@ -5,7 +5,7 @@ import { isAdminSession, setAdminSession } from "../core/adminSession";
 import { createSingleFlightGuard } from "../core/singleFlight";
 import { mountDynamicSubgroupContainers } from "./dynamicSubgroups";
 import { BASE_PRICE_CATEGORIES } from "../core/productCat";
-import { hasNativeSubgroupRenderer } from "../core/variantKeys";
+import { hasNativeSubgroupRenderer, viewSelfMountsSubgroups } from "../core/variantKeys";
 import { buildRouteToBaseIdMap } from "../core/categoryRegistry";
 import { hydrateRateLabels } from "../core/rateLabels";
 
@@ -301,6 +301,10 @@ export class Router {
     // their own bespoke calculator, so mounting the generic renderer here
     // would double-render them.
     if (hasNativeSubgroupRenderer(priceCategoryId)) return;
+    // Widok sam montuje swoje podgrupy (np. plakaty-a4-a3 w zakładce
+    // „Ekonomiczne", z własnym hostId) — generyczny montaż routera dałby
+    // duplikat. Patrz viewSelfMountsSubgroups (core/variantKeys).
+    if (viewSelfMountsSubgroups(priceCategoryId)) return;
     const category = BASE_PRICE_CATEGORIES.find((c) => c.id === priceCategoryId);
     if (!category) return;
     try {

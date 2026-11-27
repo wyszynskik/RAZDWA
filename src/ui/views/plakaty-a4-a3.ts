@@ -4,9 +4,12 @@ import {
   calculatePlakatyDuzyCanon,
   calculatePlakatySatyna200,
   getDuzyCanonEffectiveTiers,
+  getDuzyCanonSatynaLegendRows,
+  DUZY_CANON_SATYNA_200,
 } from "../../categories/plakaty";
 import { formatPLN } from "../../core/money";
 import { getPrice } from "../../services/priceService";
+import { mountDynamicSubgroupContainers } from "../dynamicSubgroups";
 import {
   renderSurchargeCheckboxesHtml,
   collectCheckedSurchargeIds,
@@ -150,14 +153,9 @@ export const PlakatyA4A3View: View = {
         (paBreakdownBox ?? resultBox).insertAdjacentElement("afterend", legend);
       }
 
-      // Marker for the router's central custom-subgroup mount: custom subgroups
-      // belong directly under the Duży Canon form and ABOVE the Canon reference
-      // legend, so anchor the slot just before that legend.
-      if (!container.querySelector("#dyn-subgroups-slot")) {
-        const slot = document.createElement("div");
-        slot.id = "dyn-subgroups-slot";
-        legend.insertAdjacentElement("beforebegin", slot);
-      }
+      // Podgrupy custom (Ekonomiczne) NIE montują się już tutaj — przeniesione do
+      // zakładki „Ekonomiczne" (mountEkoSubgroups, własny hostId). Router pomija
+      // plakaty-a4-a3 (viewSelfMountsSubgroups), więc brak duplikatu.
 
       // Wspólne źródło ceny z kalkulatorem (D-105): ten sam helper, ten sam
       // szablon klucza. Legenda i koszyk nie mogą się rozjechać.
@@ -194,6 +192,23 @@ export const PlakatyA4A3View: View = {
         )
         .join("");
 
+      // Satyna 200 g — WŁASNY cennik (11 progów, górny 500). A4 wyceniona,
+      // A3 puste → „—" (D-102 all-or-nothing). Dwie kolumny jak kreda.
+      const satynaA4 = getDuzyCanonSatynaLegendRows("a4");
+      const satynaA3 = getDuzyCanonSatynaLegendRows("a3");
+      const satynaRows = satynaA4
+        .map((rowA4, i) => {
+          const a3 = satynaA3[i]?.price ?? null;
+          return `
+          <tr>
+            <td>${rowA4.qty} szt</td>
+            <td>${rowA4.price === null ? "—" : formatPLN(rowA4.price)}</td>
+            <td>${a3 === null ? "—" : formatPLN(a3)}</td>
+          </tr>
+        `;
+        })
+        .join("");
+
       legend.innerHTML = `
         <h4 style="margin:10px 0 6px;">Duży Canon 170g</h4>
         <table>
@@ -216,6 +231,17 @@ export const PlakatyA4A3View: View = {
             </tr>
           </thead>
           <tbody>${duzy200Rows}</tbody>
+        </table>
+        <h4 style="margin:16px 0 6px;">Duży Canon satyna 200g</h4>
+        <table>
+          <thead>
+            <tr>
+              <th>Ilość</th>
+              <th>A4 cena</th>
+              <th>A3 cena</th>
+            </tr>
+          </thead>
+          <tbody>${satynaRows}</tbody>
         </table>
       `;
     };
@@ -285,6 +311,15 @@ export const PlakatyA4A3View: View = {
       return `${size}-${paper}`;
     };
 
+    // Satyna ma własną siatkę z progiem 500; kreda do 200. Limit pola ilości
+    // zależy od papieru, inaczej przeglądarka blokowałaby 250/300/500 dla satyny.
+    const updateQtyMax = () => {
+      const isSatyna = duzyCanonPaperSelect.value === "satyna-200";
+      duzyCanonQtyInput.max = String(isSatyna ? DUZY_CANON_SATYNA_200.maxQty : 200);
+    };
+    duzyCanonPaperSelect.addEventListener("change", updateQtyMax);
+    updateQtyMax();
+
     const parsePositiveInt = (value: string): number | null => {
       const parsed = Number.parseInt(value, 10);
       return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
@@ -337,6 +372,16 @@ export const PlakatyA4A3View: View = {
             express: ctx.expressMode,
             checkedSurchargeIds,
           });
+
+      // D-102: satyna bez kompletnego cennika formatu → blokada koszyka, „—"
+      // w legendzie. Nigdy 0,00 zł ani interpolacja z pustym progiem.
+      if (isSatyna && !(res as { priceable?: boolean }).priceable) {
+        clearResult(
+          `Satyna ${format.toUpperCase()}: uzupełnij wszystkie progi cennika w Ustawieniach, aby wycenić.`
+        );
+        return;
+      }
+
       const trimSurcharge = getDuzyCanonTrimSurcharge();
       const totalWithTrim = parseFloat((res.totalPrice + trimSurcharge).toFixed(2));
 
@@ -494,12 +539,52 @@ export const PlakatyA4A3View: View = {
     });
     ensureLegend();
 
-    // Custom subgroups (incl. "Plakaty ekonomiczne A4") are mounted centrally
-    // by the router below every category container — see mountDynamicSubgroupsFor.
+    // Zakładki [Duży Canon | Ekonomiczne] — wzorzec jak Dyplomy.
+    const switchTab = (tab: "canon" | "eko") => {
+      const canonTab = container.querySelector<HTMLElement>("#paTab-canon");
+      const ekoTabEl = container.querySelector<HTMLElement>("#paTab-eko");
+      const canonBtn = container.querySelector<HTMLButtonElement>("#paTabBtn-canon");
+      const ekoBtn = container.querySelector<HTMLButtonElement>("#paTabBtn-eko");
+      if (!canonTab || !ekoTabEl || !canonBtn || !ekoBtn) return;
+      const canonActive = tab === "canon";
+      canonTab.style.display = canonActive ? "" : "none";
+      ekoTabEl.style.display = canonActive ? "none" : "";
+      canonBtn.style.color = canonActive ? "#2563eb" : "#64748b";
+      canonBtn.style.borderBottomColor = canonActive ? "#2563eb" : "transparent";
+      ekoBtn.style.color = canonActive ? "#64748b" : "#2563eb";
+      ekoBtn.style.borderBottomColor = canonActive ? "transparent" : "#2563eb";
+    };
+    container.querySelector("#paTabBtn-canon")?.addEventListener("click", () => switchTab("canon"));
+    container.querySelector("#paTabBtn-eko")?.addEventListener("click", () => switchTab("eko"));
+
+    // Podgrupy custom kategorii "plakaty-a4-a3" renderują się w zakładce
+    // „Ekonomiczne" z WŁASNYM hostId — router pomija plakaty-a4-a3
+    // (viewSelfMountsSubgroups), więc nie ma podwójnego montażu. Wzorzec jak
+    // dyplomy-eko (dyplomy.ts): własny hostId KONIECZNY, bo querySelector
+    // przeszukuje całe poddrzewo kontenera.
+    const ekoTab = container.querySelector<HTMLElement>("#paTab-eko");
+    const ekoSubgroupsSlot = container.querySelector<HTMLElement>(
+      "#dyn-subgroups-slot-eko-plakaty"
+    );
+    const mountEkoSubgroups = () => {
+      if (!ekoTab) return;
+      mountDynamicSubgroupContainers(
+        ekoTab,
+        ekoSubgroupsSlot ?? ekoTab,
+        "plakaty-a4-a3",
+        "Plakaty A4-A3",
+        ctx,
+        ekoSubgroupsSlot ? "beforebegin" : "beforeend",
+        "dyn-subgroups-host-eko-plakaty"
+      );
+    };
+    mountEkoSubgroups();
+
     ctx?.on?.("prices-updated", () => {
       ensureLegend();
       renderSurcharges();
       recalculate();
+      mountEkoSubgroups();
     });
 
     addBtn.onclick = () => {

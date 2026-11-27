@@ -485,6 +485,12 @@ interface AssembleDuzyCanonInput {
    * zachowanie co do grosza jak przed wprowadzeniem satyny.
    */
   baseMultiplier?: number;
+  /**
+   * Górny limit ilości (domyślnie `DUZY_CANON_TABLE.maxQty` = 200). Satyna ma
+   * własną siatkę z progiem 500, więc podaje `maxQty: 500`. Kreda nie podaje nic
+   * → zachowanie co do grosza jak przed wprowadzeniem satyny.
+   */
+  maxQty?: number;
   express?: boolean;
   checkedSurchargeIds?: string[];
 }
@@ -500,7 +506,7 @@ function assembleDuzyCanonResult(input: AssembleDuzyCanonInput): PlakatyDuzyCano
   const effectiveTiers = input.effectiveTiers;
 
   const qtyRaw = Math.max(DUZY_CANON_TABLE.minQty, Math.floor(input.qty));
-  const qty = Math.min(qtyRaw, DUZY_CANON_TABLE.maxQty);
+  const qty = Math.min(qtyRaw, input.maxQty ?? DUZY_CANON_TABLE.maxQty);
 
   const sortedTiers = [...effectiveTiers].sort((a, b) => a.qty - b.qty);
 
@@ -611,12 +617,40 @@ export interface PlakatySatyna200Input {
   checkedSurchargeIds?: string[];
 }
 
-export type PlakatySatyna200Source = "own" | "from-kreda";
-
 export interface PlakatySatyna200Result extends PlakatyDuzyCanonResult {
-  satynaSource: PlakatySatyna200Source;
-  satynaRate: number;
+  /**
+   * Czy format ma KOMPLETNY cennik satyny (wszystkie progi > 0). Gdy false —
+   * widok blokuje koszyk i pokazuje „—" (D-102 all-or-nothing per format).
+   */
+  priceable: boolean;
 }
+
+/**
+ * Siatka ilości satyny 200 g — WŁASNA, niezależna od kredy: 11 progów, górny
+ * próg 500 (kreda ma 14 progów do 200). Osobny grid, bo satyna ma własny cennik
+ * (m.in. progi 250/300/500, których kreda nie ma).
+ */
+export const DUZY_CANON_SATYNA_200 = {
+  minQty: 10,
+  maxQty: 500,
+  qtys: [10, 20, 30, 40, 50, 100, 150, 200, 250, 300, 500],
+  // Ceny domyślne satyny A4 200 g (zatwierdzone przez właścicielkę). Niosą się
+  // też jako seed w prices.json (panel edytowalny). A3 bez domyślnych → „—",
+  // dopóki właścicielka nie wpisze CAŁEGO formatu (all-or-nothing, D-102).
+  defaultsA4: {
+    10: 85,
+    20: 105,
+    30: 130,
+    40: 160,
+    50: 185,
+    100: 225,
+    150: 299,
+    200: 360,
+    250: 420,
+    300: 490,
+    500: 720,
+  } as Record<number, number>,
+};
 
 /**
  * Identyfikator wariantu satyny 200 g per format. Klucze własnych cen satyny:
@@ -628,57 +662,91 @@ export function duzyCanonSatynaVariantId(format: PlakatySatynaFormat): string {
 }
 
 /**
- * Własne progi satyny 200 g danego formatu wczytane z magazynu. Sonduje te same
- * ilości co kreda; zwraca tylko punkty realnie wpisane (liczba skończona > 0).
- * Brak punktów = pusta tablica → kalkulator liczy satynę od kredy. Sentinel NaN
- * odróżnia „brak klucza" od zapisanej wartości (również 0, odrzucanej przez
- * D-102), pokrywając cache IDB i localStorage w kolejności resolveStoredPrice.
+ * Wszystkie 11 progów satyny 200 g danego formatu rozwiązane z magazynu
+ * (D-105): wartość z Ustawień albo domyślna (tylko A4). A3 bez domyślnych →
+ * punkty niewypełnione mają NaN. Zwraca KOMPLET 11 progów (nie filtruje) —
+ * kompletność sprawdza `isDuzyCanonSatynaPriceable`.
  */
-export function getDuzyCanonSatynaOwnTiers(
+export function getDuzyCanonSatynaResolvedTiers(
   format: PlakatySatynaFormat
 ): Array<{ qty: number; price: number }> {
   const variantId = duzyCanonSatynaVariantId(format);
-  const standardQtys = DUZY_CANON_TABLE.variants[0].tiers.map((t: any) => t.qty);
-  return standardQtys
-    .map((qty: number) => ({
-      qty,
-      price: resolveStoredPrice(`plakaty-duzy-canon-${variantId}-${qty}`, NaN),
-    }))
-    .filter((t: { qty: number; price: number }) => Number.isFinite(t.price) && t.price > 0);
+  const defaults = format === "a4" ? DUZY_CANON_SATYNA_200.defaultsA4 : {};
+  return DUZY_CANON_SATYNA_200.qtys.map((qty) => ({
+    qty,
+    price: resolveStoredPrice(`plakaty-duzy-canon-${variantId}-${qty}`, defaults[qty] ?? NaN),
+  }));
 }
 
 /**
- * Plakaty A4–A3, papier satyna 200 g. Jeśli dla formatu istnieje ≥1 własny punkt
- * cenowy — cała cena (z D-110) liczona z jego punktów. Jeśli nie ma żadnego —
- * cena kredy 200 g tego formatu × (1 + modifier-satyna), jedno zaokrąglenie.
- * Źródła nigdy nie mieszane w jednej interpolacji. Kolejność D-113 i montaż
- * dziedziczone z Dużego Canona (satyna tylko podmienia bazę).
+ * D-102 all-or-nothing per format: satyna wyceniana tylko gdy WSZYSTKIE progi
+ * formatu są dodatnie. Jeden pusty/0 próg → cały format niewycenialny (blokada,
+ * „—"), nigdy interpolacja z pustym progiem (dałaby dodatnią śmieciową cenę).
+ */
+export function isDuzyCanonSatynaPriceable(format: PlakatySatynaFormat): boolean {
+  const tiers = getDuzyCanonSatynaResolvedTiers(format);
+  return (
+    tiers.length === DUZY_CANON_SATYNA_200.qtys.length &&
+    tiers.every((t) => Number.isFinite(t.price) && t.price > 0)
+  );
+}
+
+/** Wiersze legendy satyny: cena, albo null renderowane jako „—" (D-102). */
+export function getDuzyCanonSatynaLegendRows(
+  format: PlakatySatynaFormat
+): Array<{ qty: number; price: number | null }> {
+  return getDuzyCanonSatynaResolvedTiers(format).map((t) => ({
+    qty: t.qty,
+    price: Number.isFinite(t.price) && t.price > 0 ? t.price : null,
+  }));
+}
+
+function unpriceableSatynaResult(variantName: string, qty: number): PlakatySatyna200Result {
+  const clamped = Math.min(
+    Math.max(DUZY_CANON_SATYNA_200.minQty, Math.floor(qty)),
+    DUZY_CANON_SATYNA_200.maxQty
+  );
+  return {
+    variantName,
+    qty: clamped,
+    tierQty: clamped,
+    tierPrice: 0,
+    singleTierPrice: 0,
+    basePrice: 0,
+    modifiersTotal: 0,
+    totalPrice: 0,
+    appliedModifiers: [],
+    isExact: false,
+    lowerTierQty: clamped,
+    lowerTierPrice: 0,
+    upperTierQty: null,
+    upperTierPrice: null,
+    priceable: false,
+  };
+}
+
+/**
+ * Plakaty A4–A3, papier satyna 200 g — WŁASNY cennik (nie liczony od kredy).
+ * Format kompletny (wszystkie progi > 0) → interpolacja po jego 11 progach,
+ * montaż i kolejność D-113 jak Duży Canon, górny próg 500. Format niekompletny
+ * (np. A3 puste) → `priceable:false` i widok blokuje koszyk, pokazuje „—"
+ * (D-102). Nie miesza źródeł: brak fallbacku od kredy.
  */
 export function calculatePlakatySatyna200(input: PlakatySatyna200Input): PlakatySatyna200Result {
   const format: PlakatySatynaFormat = input.format === "a3" ? "a3" : "a4";
   const variantName = format === "a3" ? "A3 200g satyna" : "A4 200g satyna";
-  const ownTiers = getDuzyCanonSatynaOwnTiers(format);
 
-  if (ownTiers.length >= 1) {
-    const base = assembleDuzyCanonResult({
-      variantName,
-      effectiveTiers: ownTiers,
-      qty: input.qty,
-      express: input.express,
-      checkedSurchargeIds: input.checkedSurchargeIds,
-    });
-    return { ...base, satynaSource: "own", satynaRate: 0 };
+  if (!isDuzyCanonSatynaPriceable(format)) {
+    return unpriceableSatynaResult(variantName, input.qty);
   }
 
-  const satynaRate = resolveStoredPrice("modifier-satyna", 0.12);
-  const kredaTiers = getDuzyCanonEffectiveTiers(`${format}-200-kreda-200`);
   const base = assembleDuzyCanonResult({
     variantName,
-    effectiveTiers: kredaTiers,
+    effectiveTiers: getDuzyCanonSatynaResolvedTiers(format),
     qty: input.qty,
-    baseMultiplier: 1 + satynaRate,
+    maxQty: DUZY_CANON_SATYNA_200.maxQty,
     express: input.express,
     checkedSurchargeIds: input.checkedSurchargeIds,
   });
-  return { ...base, satynaSource: "from-kreda", satynaRate };
+  return { ...base, priceable: true };
 }

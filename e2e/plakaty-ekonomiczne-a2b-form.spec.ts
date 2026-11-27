@@ -62,8 +62,20 @@ async function openSettings(page: Page): Promise<void> {
   await expect(page.locator("#new-price-category")).toBeVisible();
 }
 
+/**
+ * Podgrupy custom plakaty-a4-a3 renderują się w zakładce „Ekonomiczne"
+ * (PR plakaty-zakładki), domyślnie ukrytej za aktywną zakładką „Duży Canon".
+ * Odsłania ją, aby karty podgrup były widoczne/klikalne.
+ */
+async function revealEkoTab(page: Page): Promise<void> {
+  const ekoTabBtn = page.locator("#paTabBtn-eko");
+  await ekoTabBtn.waitFor({ state: "visible", timeout: 10000 });
+  await ekoTabBtn.click();
+}
+
 async function openCalculator(page: Page): Promise<void> {
   await page.goto(`/#/${CATEGORY_ID}`);
+  await revealEkoTab(page);
 }
 
 /** Pierwszy próg: tworzy NOWĄ, niezależną podgrupę z materiałem/rozmiarem. */
@@ -254,6 +266,7 @@ test.describe("Plakaty ekonomiczne A4 (B) — nowa podgrupa przez formularz Usta
     // wyrenderowany kalkulator (test reloaduje na stronie kalkulatora,
     // na której już jesteśmy po sprawdzeniu qty=10/20/15 powyżej).
     await page.reload();
+    await revealEkoTab(page);
     await expect(page.locator("h2", { hasText: SUBGROUP_NAME })).toBeVisible();
     const afterReload = await readVariants(page);
     expect(afterReload.filter((v: any) => v.subgroupLabel === SUBGROUP_NAME).length).toBe(2);
